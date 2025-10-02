@@ -1,0 +1,503 @@
+{{- /*
+Copyright Broadcom, Inc. All Rights Reserved.
+SPDX-License-Identifier: APACHE-2.0
+*/}}
+
+apiVersion: {{ include "common.capabilities.deployment.apiVersion" . }}
+kind: Deployment
+metadata:
+  name: {{ include "common.names.fullname" . }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  {{- $podLabels := include "common.tplvalues.merge" ( dict "values" ( list .Values.podLabels .Values.commonLabels ) "context" . ) }}
+  selector:
+    matchLabels: {{- include "common.labels.matchLabels" ( dict "customLabels" $podLabels "context" $ ) | nindent 6 }}
+  {{- if .Values.updateStrategy }}
+  strategy: {{- toYaml .Values.updateStrategy | nindent 4 }}
+  {{- end }}
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  template:
+    metadata:
+      labels: {{- include "common.labels.standard" ( dict "customLabels" $podLabels "context" $ ) | nindent 8 }}
+      {{- if or .Values.podAnnotations .Values.metrics.enabled (include "wordpress.createConfigSecret" .) }}
+      annotations:
+        {{- if .Values.podAnnotations }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.podAnnotations "context" $) | nindent 8 }}
+        {{- end }}
+        {{- if .Values.metrics.podAnnotations }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.metrics.podAnnotations "context" $) | nindent 8 }}
+        {{- end }}
+        {{- if (include "wordpress.createConfigSecret" .) }}
+        checksum/config-secret: {{ include (print $.Template.BasePath "/config-secret.yaml") . | sha256sum }}
+        {{- end }}
+      {{- end }}
+    spec:
+      {{- include "wordpress.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: {{ .Values.automountServiceAccountToken }}
+      {{- if .Values.hostAliases }}
+      # yamllint disable rule:indentation
+      hostAliases: {{- include "common.tplvalues.render" (dict "value" .Values.hostAliases "context" $) | nindent 8 }}
+      # yamllint enable rule:indentation
+      {{- end }}
+      {{- if .Values.affinity }}
+      affinity: {{- include "common.tplvalues.render" (dict "value" .Values.affinity "context" $) | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAffinity: {{- include "common.affinities.pods" (dict "type" .Values.podAffinityPreset "customLabels" $podLabels "context" $) | nindent 10 }}
+        podAntiAffinity: {{- include "common.affinities.pods" (dict "type" .Values.podAntiAffinityPreset "customLabels" $podLabels "context" $) | nindent 10 }}
+        nodeAffinity: {{- include "common.affinities.nodes" (dict "type" .Values.nodeAffinityPreset.type "key" .Values.nodeAffinityPreset.key "values" .Values.nodeAffinityPreset.values) | nindent 10 }}
+      {{- end }}
+      {{- if .Values.nodeSelector }}
+      nodeSelector: {{- include "common.tplvalues.render" (dict "value" .Values.nodeSelector "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" .Values.tolerations "context" $) | nindent 8 }}
+      {{- end }}
+      {{- if .Values.priorityClassName }}
+      priorityClassName: {{ .Values.priorityClassName }}
+      {{- end }}
+      {{- if .Values.schedulerName }}
+      schedulerName: {{ .Values.schedulerName | quote }}
+      {{- end }}
+      {{- if .Values.podSecurityContext.enabled }}
+      securityContext: {{- include "common.compatibility.renderSecurityContext" (dict "secContext" .Values.podSecurityContext "context" $) | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "wordpress.serviceAccountName" .}}
+      {{- if .Values.terminationGracePeriodSeconds }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      {{- end }}
+      {{- if .Values.topologySpreadConstraints }}
+      topologySpreadConstraints: {{- include "common.tplvalues.render" (dict "value" .Values.topologySpreadConstraints "context" .) | nindent 8 }}
+      {{- end }}
+      initContainers:
+        - name: prepare-base-dir
+          image: busybox
+          imagePullPolicy: IfNotPresent
+          {{- if .Values.resources }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- else if ne .Values.resourcesPreset "none" }}
+          resources: {{- include "common.resources.preset" (dict "type" .Values.resourcesPreset) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.containerSecurityContext.enabled }}
+          securityContext: {{- include "common.compatibility.renderSecurityContext" (dict "secContext" .Values.containerSecurityContext "context" $) | nindent 12 }}
+          {{- end }}
+          command:
+            - /bin/ash
+          args:
+            - -ec
+            - |
+              ENVVARS="WORDPRESS_DB_NAME WORDPRESS_DB_USER WORDPRESS_DB_PASSWORD WORDPRESS_DB_HOST WORDPRESS_DB_CHARSET WORDPRESS_DB_COLLATE WORDPRESS_TABLE_PREFIX WORDPRESS_SCHEME WORDPRESS_DEBUG WORDPRESS_CONFIG_EXTRA WORDPRESS_EMAIL WORDPRESS_PLUGINS WORDPRESS_EXTRA_WP_CONFIG_CONTENT"
+
+              echo "Checking environment for required settings …"
+
+              for var in $ENVVARS; do
+                # Use eval to get the value of the variable
+                eval "value=\$$var"
+
+                if [ -z "$value" ]; then
+                  echo "Checking $var: x - Please check!"
+                else
+                  echo "Checking $var: ✓"
+                fi
+              done
+
+              echo "Checking mounted volume …"
+
+              if [ ! -d /wordpress/wp-content ]; then
+                echo "Creating wp-content directory on mounted volume …"
+                mkdir -p /wordpress/wp-content
+                chown www-data:www-data /wordpress/wp-content
+              fi
+
+              if [ ! -f /wordpress/ngingx.conf ]; then
+                echo "Creating site nginx.conf on mounted volume …"
+                touch /wordpress/nginx.conf
+                chown www-data:www-data /wordpress/nginx.conf
+              fi
+
+              if [ ! -f /wordpress/salts.php ]; then
+                echo "Creating site salts.php on mounted volume …"
+                echo "<?php" > /wordpress/salts.php
+                wget -q -O - https://api.wordpress.org/secret-key/1.1/salt/ >> /wordpress/salts.php
+                chown www-data:www-data /wordpress/salts.php
+              fi
+
+              echo "Creating site wp-config.php on mounted volume …"
+              cat <<'EOF' > /wordpress/wp-config.php
+              <?php
+              // a helper function to lookup "env_FILE", "env", then fallback
+              if (!function_exists('getenv_docker')) {
+                  // https://github.com/docker-library/wordpress/issues/588 (WP-CLI will load this file 2x)
+                  function getenv_docker($env, $default) {
+                      if ($fileEnv = getenv($env . '_FILE')) {
+                          return rtrim(file_get_contents($fileEnv), "\r\n");
+                      }
+                      else if (($val = getenv($env)) !== false) {
+                          return $val;
+                      }
+                      else {
+                          return $default;
+                      }
+                  }
+              }
+
+              define( 'DB_NAME', getenv_docker('WORDPRESS_DB_NAME', 'wordpress') );
+              define( 'DB_USER', getenv_docker('WORDPRESS_DB_USER', 'example username') );
+              define( 'DB_PASSWORD', getenv_docker('WORDPRESS_DB_PASSWORD', 'example password') );
+              define( 'DB_HOST', getenv_docker('WORDPRESS_DB_HOST', 'mysql') );
+              define( 'DB_CHARSET', getenv_docker('WORDPRESS_DB_CHARSET', 'utf8mb4') );
+              define( 'DB_COLLATE', getenv_docker('WORDPRESS_DB_COLLATE', '') );
+              EOF
+
+              cat <<'EOF' >> /wordpress/wp-config.php
+
+              $table_prefix = getenv_docker('WORDPRESS_TABLE_PREFIX', 'wp_');
+
+              define( 'WP_DEBUG', false );
+              define( 'FS_METHOD', 'direct' );
+
+              define( 'WP_HOME', getenv_docker('WORDPRESS_SCHEME', 'http') . '://' . $_SERVER['HTTP_HOST'] . '/' );
+              define( 'WP_SITEURL', getenv_docker('WORDPRESS_SCHEME', 'http') . '://' . $_SERVER['HTTP_HOST'] . '/' );
+              define( 'WP_AUTO_UPDATE_CORE', false );
+
+              if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
+                  $_SERVER['HTTPS'] = 'on';
+              }
+
+              if ($configExtra = getenv_docker('WORDPRESS_CONFIG_EXTRA', '')) {
+                  eval($configExtra);
+              }
+
+              if ( ! defined( 'ABSPATH' ) ) {
+                  define( 'ABSPATH', __DIR__ . '/' );
+              }
+
+              require_once ABSPATH . 'salts.php';
+              require_once ABSPATH . 'wp-settings.php';
+
+              /**
+               * Disable pingback.ping xmlrpc method to prevent WordPress from participating in DDoS attacks
+               */
+              if ( !defined( 'WP_CLI' ) ) {
+                // remove x-pingback HTTP header
+                add_filter("wp_headers", function($headers) {
+                        unset($headers["X-Pingback"]);
+                        return $headers;
+                });
+                // disable pingbacks
+                add_filter( "xmlrpc_methods", function( $methods ) {
+                        unset( $methods["pingback.ping"] );
+                        return $methods;
+                });
+              }
+              EOF
+              chown www-data:www-data /wordpress/wp-config.php
+
+              echo "Checks completed."
+          volumeMounts:
+            - name: wordpress-data
+              mountPath: /wordpress
+              subPath: wordpress
+        {{- if .Values.initContainers }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.initContainers "context" $) | nindent 8 }}
+        {{- end }}
+      containers:
+        - name: wordpress
+          image: {{ include "wordpress.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy | quote }}
+          {{- if .Values.diagnosticMode.enabled }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+          {{- else if .Values.command }}
+          command: {{- include "common.tplvalues.render" ( dict "value" .Values.command "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.diagnosticMode.enabled }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
+          {{- else if .Values.args }}
+          args: {{- include "common.tplvalues.render" ( dict "value" .Values.args "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.containerSecurityContext.enabled }}
+          securityContext: {{- include "common.compatibility.renderSecurityContext" (dict "secContext" .Values.containerSecurityContext "context" $) | nindent 12 }}
+          {{- end }}
+          env:
+            - name: ALLOW_EMPTY_PASSWORD
+              value: {{ ternary "yes" "no" .Values.allowEmptyPassword | quote }}
+            - name: WORDPRESS_SKIP_BOOTSTRAP
+              value: {{ ternary "yes" "no" .Values.wordpressSkipInstall | quote }}
+            {{- if or .Values.wordpressConfiguration .Values.existingWordPressConfigurationSecret }}
+            # Override the default data to persist omiting wp-config.php from the list since
+            # it is mounted as a read-only file from a Secret
+            - name: WORDPRESS_DATA_TO_PERSIST
+              value: "wp-content"
+            {{- else }}
+            - name: WORDPRESS_DB_HOST
+              value: {{ include "wordpress.databaseFullHost" . | quote }}
+            - name: WORDPRESS_DB_NAME
+              value: {{ include "wordpress.databaseName" . | quote }}
+            - name: WORDPRESS_DB_USER
+              value: {{ include "wordpress.databaseUser" . | quote }}
+            - name: WORDPRESS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "wordpress.databaseSecretName" . }}
+                  key: mariadb-password
+            - name: WORDPRESS_DB_CHARSET
+              value: {{ include "wordpress.databaseCharset" . | quote }}
+            - name: WORDPRESS_DB_COLLATE
+              value: {{ include "wordpress.databaseCollation" . | quote }}
+            - name: WORDPRESS_USERNAME
+              value: {{ .Values.wordpressUsername | quote }}
+            - name: WORDPRESS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "wordpress.secretName" . }}
+                  key: wordpress-password
+            - name: WORDPRESS_EMAIL
+              value: {{ .Values.wordpressEmail | quote }}
+            - name: WORDPRESS_FIRST_NAME
+              value: {{ .Values.wordpressFirstName | quote }}
+            - name: WORDPRESS_LAST_NAME
+              value: {{ .Values.wordpressLastName | quote }}
+            - name: WORDPRESS_BLOG_NAME
+              value: {{ .Values.wordpressBlogName | quote }}
+            - name: WORDPRESS_TABLE_PREFIX
+              value: {{ .Values.wordpressTablePrefix | quote }}
+            - name: WORDPRESS_SCHEME
+              value: {{ .Values.wordpressScheme | quote }}
+            - name: WORDPRESS_EXTRA_WP_CONFIG_CONTENT
+              value: {{ .Values.wordpressExtraConfigContent | quote }}
+            - name: WORDPRESS_PLUGINS
+              value: {{ join "," .Values.wordpressPlugins | quote }}
+            - name: WORDPRESS_OVERRIDE_DATABASE_SETTINGS
+              value: {{ ternary "yes" "no" .Values.overrideDatabaseSettings | quote }}
+            {{- if .Values.ingress.enabled }}
+            - name: WORDPRESS_ENABLE_REVERSE_PROXY
+              value: "yes"
+            {{- end }}
+            {{- end }}
+            {{- if .Values.multisite.enable }}
+            - name: WORDPRESS_ENABLE_MULTISITE
+              value: "yes"
+            - name: WORDPRESS_MULTISITE_HOST
+              value: {{ .Values.multisite.host | quote }}
+            - name: WORDPRESS_MULTISITE_EXTERNAL_HTTP_PORT_NUMBER
+              value: {{ .Values.service.ports.http | quote }}
+            - name: WORDPRESS_MULTISITE_EXTERNAL_HTTPS_PORT_NUMBER
+              value: {{ .Values.service.ports.https | quote }}
+            - name: WORDPRESS_MULTISITE_NETWORK_TYPE
+              value: {{ .Values.multisite.networkType | quote }}
+            - name: WORDPRESS_MULTISITE_ENABLE_NIP_IO_REDIRECTION
+              value: {{ ternary "yes" "no" .Values.multisite.enableNipIoRedirect | quote }}
+            {{- end }}
+            {{- if .Values.smtpHost }}
+            - name: SMTP_HOST
+              value: {{ .Values.smtpHost | quote }}
+            {{- end }}
+            {{- if .Values.smtpPort }}
+            - name: SMTP_PORT
+              value: {{ .Values.smtpPort | quote }}
+            {{- end }}
+            {{- if .Values.smtpUser }}
+            - name: SMTP_USER
+              value: {{ .Values.smtpUser | quote }}
+            {{- end }}
+            {{- if or .Values.smtpPassword .Values.smtpExistingSecret }}
+            - name: SMTP_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "wordpress.smtpSecretName" . }}
+                  key: smtp-password
+            {{- end }}
+            {{- if .Values.smtpProtocol }}
+            - name: SMTP_PROTOCOL
+              value: {{ .Values.smtpProtocol | quote }}
+            {{- end }}
+            {{- if .Values.smtpFromEmail }}
+            - name: WORDPRESS_SMTP_FROM_EMAIL
+              value: {{ .Values.smtpFromEmail | quote }}
+            {{- end }}
+            {{- if .Values.smtpFromName }}
+            - name: WORDPRESS_SMTP_FROM_NAME
+              value: {{ .Values.smtpFromName | quote }}
+            {{- end }}
+            - name: NGINX_HTTP_PORT_NUMBER
+              value: {{ .Values.containerPorts.http | quote }}
+            - name: NGINX_HTTPS_PORT_NUMBER
+              value: {{ .Values.containerPorts.https | quote }}
+            {{- if .Values.extraEnvVars }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.extraEnvVars "context" $) | nindent 12 }}
+            {{- end }}
+          envFrom:
+            {{- if .Values.extraEnvVarsCM }}
+            - configMapRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.extraEnvVarsCM "context" $) }}
+            {{- end }}
+            {{- if .Values.extraEnvVarsSecret }}
+            - secretRef:
+                name: {{ include "common.tplvalues.render" (dict "value" .Values.extraEnvVarsSecret "context" $) }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPorts.http }}
+            - name: https
+              containerPort: {{ .Values.containerPorts.https }}
+            {{- if .Values.extraContainerPorts }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.extraContainerPorts "context" $) | nindent 12 }}
+            {{- end }}
+          {{- if .Values.lifecycleHooks }}
+          lifecycle: {{- include "common.tplvalues.render" (dict "value" .Values.lifecycleHooks "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if not .Values.diagnosticMode.enabled }}
+          {{- if .Values.customLivenessProbe }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.customLivenessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.livenessProbe.enabled }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.livenessProbe "enabled") "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.customReadinessProbe }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.customReadinessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.readinessProbe.enabled }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.readinessProbe "enabled") "context" $) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.customStartupProbe }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" .Values.customStartupProbe "context" $) | nindent 12 }}
+          {{- else if .Values.startupProbe.enabled }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.startupProbe "enabled") "context" $) | nindent 12 }}
+          {{- end }}
+          {{- end }}
+          {{- if .Values.resources }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- else if ne .Values.resourcesPreset "none" }}
+          resources: {{- include "common.resources.preset" (dict "type" .Values.resourcesPreset) | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: wordpress-data
+              mountPath: /var/www/html/wp-content
+              subPath: wordpress/wp-content
+            - name: wordpress-data
+              mountPath: /var/www/html/nginx.conf
+              subPath: wordpress/nginx.conf
+            - name: empty-dir
+              mountPath: /tmp
+              subPath: tmp-dir
+            {{- if or .Values.wordpressConfiguration .Values.existingWordPressConfigurationSecret }}
+            - name: wordpress-config
+              mountPath: /var/www/html/wp-config.php
+              subPath: wp-config.php
+            {{- else }}
+            - name: wordpress-data
+              mountPath: /var/www/html/wp-config.php
+              subPath: wordpress/wp-config.php
+            - name: wordpress-data
+              mountPath: /var/www/html/salts.php
+              subPath: wordpress/salts.php
+            {{- end }}
+            {{- if or .Values.customPostInitScripts .Values.wordpressConfigureCache }}
+            - mountPath: /etc/hook/application/zz-custom-postinit
+              name: custom-postinit
+            {{- end }}
+            {{- if .Values.extraVolumeMounts }}
+            {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumeMounts "context" $) | nindent 12 }}
+            {{- end }}
+        {{- if .Values.metrics.enabled }}
+        - name: metrics
+          image: {{ include "wordpress.metrics.image" . }}
+          imagePullPolicy: {{ .Values.metrics.image.pullPolicy | quote }}
+          {{- if .Values.diagnosticMode.enabled }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+          args: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.args "context" $) | nindent 12 }}
+          {{- else if .Values.diagnosticMode.enabled }}
+          command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
+          {{- else }}
+          command:
+            - exporter
+          args:
+            - --nginx.scrape-uri
+            - {{ printf "http://127.0.0.1:%d/status" (int (default .Values.containerPorts.http .Values.metrics.port)) | quote }}
+            - --web.listen-address
+            - {{ printf ":%d" (int .Values.metrics.containerPorts.metrics) | quote }}
+            {{- if .Values.metrics.extraArgs }}
+            {{- include "common.tplvalues.render" ( dict "value" .Values.metrics.extraArgs "context" $ ) | nindent 12 }}
+            {{- end }}
+          {{- end }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.metrics.containerPorts.metrics }}
+          {{- if not .Values.diagnosticMode.enabled }}
+          {{- if .Values.metrics.customLivenessProbe }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.metrics.customLivenessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.metrics.livenessProbe.enabled }}
+          livenessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.metrics.livenessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /metrics
+              port: metrics
+          {{- end }}
+          {{- if .Values.metrics.customReadinessProbe }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" .Values.metrics.customReadinessProbe "context" $) | nindent 12 }}
+          {{- else if .Values.metrics.readinessProbe.enabled }}
+          readinessProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.metrics.readinessProbe "enabled") "context" $) | nindent 12 }}
+            httpGet:
+              path: /metrics
+              port: metrics
+          {{- end }}
+          {{- if .Values.metrics.customStartupProbe }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" .Values.metrics.customStartupProbe "context" $) | nindent 12 }}
+          {{- else if .Values.metrics.startupProbe.enabled }}
+          startupProbe: {{- include "common.tplvalues.render" (dict "value" (omit .Values.metrics.startupProbe "enabled") "context" $) | nindent 12 }}
+            tcpSocket:
+              port: metrics
+          {{- end }}
+          {{- end }}
+          {{- if .Values.metrics.resources }}
+          resources: {{- toYaml .Values.metrics.resources | nindent 12 }}
+          {{- else if ne .Values.metrics.resourcesPreset "none" }}
+          resources: {{- include "common.resources.preset" (dict "type" .Values.metrics.resourcesPreset) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.metrics.containerSecurityContext.enabled }}
+          securityContext: {{- include "common.compatibility.renderSecurityContext" (dict "secContext" .Values.metrics.containerSecurityContext "context" $) | nindent 12 }}
+          {{- end }}
+        {{- end }}
+        {{- if .Values.sidecars }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.sidecars "context" $) | nindent 8 }}
+        {{- end }}
+      volumes:
+        - name: empty-dir
+          emptyDir: {}
+        {{- if or .Values.wordpressConfiguration .Values.existingWordPressConfigurationSecret }}
+        - name: wordpress-config
+          secret:
+            secretName: {{ include "wordpress.configSecretName" . }}
+            defaultMode: 0644
+        {{- end }}
+        {{- if or .Values.nginxConfiguration .Values.existingNginxConfigurationConfigMap }}
+        - name: nginx-config
+          configMap:
+            name: {{ include "wordpress.nginx.configmapName" . }}
+            defaultMode: 0644
+        {{- end }}
+        {{- if or .Values.nginxCustomServerBlockAddition .Values.existingCustomServerBlockAdditionConfigMap }}
+        - name: nginx-serverblock-addition
+          configMap:
+            name: {{ include "wordpress.nginx.serverblockConfigmapName" . }}
+            defaultMode: 0644
+        {{- end }}
+        {{- if or .Values.customPostInitScripts .Values.wordpressConfigureCache }}
+        - name: custom-postinit
+          configMap:
+            name: {{ printf "%s-postinit" (include "common.names.fullname" .) }}
+            defaultMode: 0755
+        {{- end }}
+        - name: wordpress-data
+          {{- if .Values.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "common.names.fullname" .) }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- if .Values.extraVolumes }}
+        {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumes "context" $) | nindent 8 }}
+        {{- end }}

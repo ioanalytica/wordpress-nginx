@@ -1,0 +1,24 @@
+#!/usr/bin/env sh
+
+set -e
+
+WP_SRC_DIR=/home/www-data
+
+if [ ! -f ${WP_SRC_DIR}/wordpress.tgz ]; then
+
+    debug-echo -i "Downloading and verifying Wordpress …"
+    web-chown fix "$WP_CLI_DIR" "$WP_CLI_CACHE_DIR" "$WP_CLI_PACKAGES_DIR"
+
+    wp core download \
+        --path=${WP_SRC_DIR} \
+        --version="${WP_VERSION:-latest}" \
+        --locale="${WORDPRESS_LOCALE:-en_US}" \
+        --user=www-data \
+        --no-extract \
+        --force
+
+    mv ${WP_SRC_DIR}/wp_*.tar.gz ${WP_SRC_DIR}/wordpress.tgz
+    chown -R www-data:www-data ${WP_SRC_DIR}/wordpress.tgz
+
+    debug-echo -s "Wordpress sucessfully fetched to ${WP_SRC_DIR}/wordpress.tgz."
+fi

@@ -1,0 +1,83 @@
+
+wordpressUsername: turmsegler
+wordpressEmail: bjs@turmsegler.com
+wordpressFirstName: Benjamin
+wordpressLastName: Stein
+wordpressBlogName: Styxnet Testsite
+wordpressTablePrefix: wp_
+wordpressScheme: https
+wordpressSkipInstall: false
+wordpressConfigureCache: true
+allowEmptyPassword: false
+allowOverrideNone: false
+
+replicaCount: 1
+resourcesPreset: "small"
+
+memcached:
+  enabled: false
+
+externalCache:
+  host: memcached.weblogs.svc
+  port: 11211
+
+ingress:
+  enabled: true
+  tls: true
+  hostname: blog.styxnet.com
+  ingressClassName: "nginx"
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    ingress.kubernetes.io/force-hsts: "true"
+    ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/whitelist-source-range: 0.0.0.0/0, ::/0
+    nginx.ingress.kubernetes.io/proxy-buffering: "on"
+    nginx.ingress.kubernetes.io/keepalive-requests: "6000"
+    nginx.ingress.kubernetes.io/keepalive-timeout: "30"
+    nginx.ingress.kubernetes.io/proxy-buffer-size: "128k"
+    nginx.ingress.kubernetes.io/proxy-body-size: 1G
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/send-timeout: "300"
+    nginx.ingress.kubernetes.io/use-forwarded-headers: "true"
+
+extraEnvVars:
+  - name: PHP_ENABLE_OPCACHE
+    value: "yes"
+
+extraVolumeMounts:
+  - name: wordpress-data
+    mountPath: /var/www/html/wp-content
+    subPath: wordpress/wp-content
+  - name: wordpress-data
+    mountPath: /var/www/html/favicon.ico
+    subPath: favicon.ico
+  - name: wordpress-data
+    mountPath: /var/www/html/nginx.conf
+    subPath: wordpress/nginx.conf
+  - name: wordpress-data
+    mountPath: /var/www/html/wp-config.php
+    subPath: wordpress/wp-config.php
+  - name: wordpress-data
+    mountPath: /var/www/html/img
+    subPath: img
+
+persistence:
+  enabled: true
+  existingClaim: weblog-styxnet-pvc
+  accessMode: ReadWriteMany
+
+mariadb:
+  enabled: false
+
+externalDatabase:
+  host: weblog-db.weblogs.svc
+  user: styxnet
+  existingSecret: styxnet
+  database: styxnet
+  port: 3306
+  charset: utf8
+
+metrics:
+  enabled: false
