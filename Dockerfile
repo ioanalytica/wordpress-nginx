@@ -7,7 +7,7 @@
 ################################################################################
 FROM shinsenter/php:8.4-fpm-nginx-alpine
 
-ENV WP_VERSION=6.8.2
+ENV WP_VERSION=6.8.3
 
 # Enable SBOM attestations
 # See: https://docs.docker.com/build/attestations/sbom/

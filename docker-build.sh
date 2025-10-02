@@ -1,6 +1,6 @@
 #!/bin/bash
-WP_VERSION="${WP_VERSION:-6.8.2}"
-TAG=${WP_VERSION}-alpine-r6
+WP_VERSION="${WP_VERSION:-6.8.3}"
+TAG=${WP_VERSION}-alpine-r1
 PROD_IMAGE="harbor.ioanalytica.com/wordpress/wordpress-nginx:${TAG}"
 
 # docker login harbor.ioanalytica.com
