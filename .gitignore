@@ -1,5 +1,6 @@
 .*
 !.gitignore
 !.gitmodules
+!.gitlab-ci.*
 !.dockerignore
 wordpress-nginx-*.tgz
