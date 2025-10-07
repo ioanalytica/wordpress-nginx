@@ -23,7 +23,7 @@ ARG PHP_VARIANT=""
 ARG DEBUG
 
 ################################################################################
-ADD --link ./rootfs/ /
+COPY ./rootfs/ /
 
 ################################################################################
 # https://wordpress.org/documentation/category/installation/
@@ -44,30 +44,12 @@ ENV PHP_UPLOAD_MAX_FILESIZE="32M"
 ARG WPCLI_URL=https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
 ARG WPCLI_PATH=/usr/local/bin/wp-cli
 
-RUN <<'EOF'
-echo 'Install WP-CLI'
-[ -z "$DEBUG" ] || set -ex && set -e
+# hadolint ignore=DL3059
+RUN /root/setup-wp-cli.sh
 
-env-default "alias wp-cli='$WPCLI_PATH --allow-root'"
-env-default INITIAL_PROJECT     'manual'
-env-default WP_CLI_DIR          '/.wp-cli'
-env-default WP_CLI_CACHE_DIR    '$WP_CLI_DIR/cache/'
-env-default WP_CLI_PACKAGES_DIR '$WP_CLI_DIR/packages/'
-env-default WP_CLI_CONFIG_PATH  '$WP_CLI_DIR/config.yml'
-env-default WP_DEBUG            '$(is-debug && echo 1 || echo 0)'
-env-default WP_DEBUG_LOG        '$(log-path stdout)'
-env-default WORDPRESS_DEBUG     '$(is-debug && echo 1 || echo 0)'
-
-php -r "copy('$WPCLI_URL', '$WPCLI_PATH');" && chmod +xr "$WPCLI_PATH"
-$WPCLI_PATH --allow-root --version
-
-web-cmd wp "$WPCLI_PATH --allow-root"
-EOF
-
+# hadolint ignore=DL3059
 RUN hook create-project
-RUN phpaddmod imagick memcache
-RUN apk update && apk upgrade --no-cache
-RUN rm -Rf /tmp/*
+RUN phpaddmod imagick memcache && apk update && apk upgrade --no-cache && rm -Rf /tmp/*
 
 ################################################################################
 ONBUILD RUN hook onbuild

@@ -9,7 +9,6 @@ annotations:
       image: harbor.ioanalytica.com/wordpress/wordpress-nginx:6.8.3-alpine-r1
 apiVersion: v2
 appVersion: 6.8.3
-version: 6.8.3-1
 dependencies:
 - condition: memcached.enabled
   name: memcached
@@ -42,3 +41,4 @@ maintainers:
 name: wordpress-nginx
 sources:
 - https://github.com/bitnami/charts/tree/main/bitnami/wordpress-nginx
+version: 6.8.3-2

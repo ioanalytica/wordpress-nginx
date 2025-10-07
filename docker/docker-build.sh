@@ -1,6 +1,21 @@
 #!/bin/bash
-WP_VERSION="${WP_VERSION:-6.8.3}"
-TAG=${WP_VERSION}-alpine-r1
+
+set -euo pipefail
+
+RAW="$(
+  grep -m1 -E '^version:[[:space:]]*' ../chart/Chart.yaml \
+  | sed -E 's/^version:[[:space:]]*"?([^"#\r]+)"?.*/\1/' \
+  | tr -d '\r'
+)"
+
+if [ -z "${RAW:-}" ]; then
+  echo "ERROR: could not read chart version from ../chart/Chart.yaml"
+  exit 1
+fi
+
+# Docker tag friendly (no '+')
+TAG="${RAW//+/-}"
+
 PROD_IMAGE="harbor.ioanalytica.com/wordpress/wordpress-nginx:${TAG}"
 
 # docker login harbor.ioanalytica.com
