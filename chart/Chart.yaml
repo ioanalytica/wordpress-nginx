@@ -24,7 +24,7 @@ dependencies:
   - bitnami-common
   version: 2.x.x
 description: WordPress is the world's most popular blogging and content management platform. Powerful yet simple, everyone from students to global corporations use it to build beautiful, functional websites. This Chart uses the -nginx variant of the wordpress container.
-home: https://bitnami.com
+home: https://ioanalytica.com
 icon: https://bitnami.com/assets/stacks/wordpress-nginx/img/wordpress-nginx-stack-220x234.png
 keywords:
 - application
@@ -36,9 +36,9 @@ keywords:
 - wordpress
 - nginx
 maintainers:
-- name: Broadcom, Inc. All Rights Reserved.
-  url: https://github.com/bitnami/charts
+- name: IO ANALYTICA
+  url: https://ioanalytica.com
 name: wordpress-nginx
 sources:
-- https://github.com/bitnami/charts/tree/main/bitnami/wordpress-nginx
+- https://harbor.ioanalytica.com/io/devops/charts/wordpress-nginx
 version: 6.8.3-3

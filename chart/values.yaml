@@ -101,8 +101,6 @@ image:
   ##   - myRegistryKeySecretName
   ##
   ## pullSecrets: []
-  pullSecrets:
-  - harbor-docker-registry-secret
   ## Enable debug mode
   ##
   debug: false
