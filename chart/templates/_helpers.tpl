@@ -197,7 +197,7 @@ Return the MariaDB charset
 {{- if .Values.mariadb.enabled }}
     {{- printf "%s" .Values.mariadb.charset -}}
 {{- else -}}
-    {{- printf "%s" ( default "utf8mb" .Values.externalDatabase.charset ) -}}
+    {{- printf "%s" ( default "utf8mb4" .Values.externalDatabase.charset ) -}}
 {{- end -}}
 {{- end -}}
 
