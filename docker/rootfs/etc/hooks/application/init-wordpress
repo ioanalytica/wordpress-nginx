@@ -4,3 +4,16 @@ web-chown fix "$WP_CLI_DIR" "$WP_CLI_CACHE_DIR" "$WP_CLI_PACKAGES_DIR"
 if ! is-true "$DISABLE_GREETING"; then
     wp --version
 fi
+
+if wp-cli core is-installed --allow-root >/dev/null 2>&1; then
+  debug-echo -i "WordPress is already set up."
+else
+  debug-echo -i "Running Wordpress installer …"
+  wp-cli core install \
+              --url="${WORDPRESS_SCHEME:-http}://localhost" \
+              --title="${WORDPRESS_BLOG_NAME:-Weblog}" \
+              --admin_user="${WORDPRESS_USERNAME:-admin}" \
+              --admin_password="${WORDPRESS_PASSWORD:-admin}" \
+              --admin_email="${WORDPRESS_EMAIL:-admin@localhost}" \
+              --skip-email --quiet --allow-root
+fi
