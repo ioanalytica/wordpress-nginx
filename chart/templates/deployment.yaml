@@ -128,6 +128,9 @@ spec:
                 chown www-data:www-data /wordpress/salts.php
               fi
 
+              mkdir -p /tmp/wp-tmp
+              chmod 777 /tmp/wp-tmp
+
               echo "Creating site wp-config.php on mounted volume …"
               cat <<'EOF' > /wordpress/wp-config.php
               <?php
@@ -159,6 +162,7 @@ spec:
 
               $table_prefix = getenv_docker('WORDPRESS_TABLE_PREFIX', 'wp_');
 
+              define('WP_TEMP_DIR', '/tmp/wp-tmp');
               define( 'WP_DEBUG', false );
               define( 'FS_METHOD', 'direct' );
 
@@ -198,12 +202,14 @@ spec:
               }
               EOF
               chown www-data:www-data /wordpress/wp-config.php
-
               echo "Checks completed."
           volumeMounts:
             - name: wordpress-data
               mountPath: /wordpress
               subPath: wordpress
+            - name: empty-dir
+              mountPath: /tmp
+              subPath: tmp-dir
         {{- if .Values.initContainers }}
         {{- include "common.tplvalues.render" (dict "value" .Values.initContainers "context" $) | nindent 8 }}
         {{- end }}
