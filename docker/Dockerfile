@@ -5,9 +5,14 @@
 #      - Author:  Mai Nhut Tan <shin@shin.company>
 #      - License: https://code.shin.company/php/blob/main/LICENSE
 ################################################################################
-FROM shinsenter/php:8.4-fpm-nginx-alpine
 
-ENV WP_VERSION=6.8.3
+ARG PHP_VERSION="8.4"
+ARG PHP_VARIANT=""
+ARG DEBUG
+
+FROM shinsenter/php:${PHP_VERSION}-fpm-nginx-alpine
+
+ENV WP_VERSION=6.9
 
 # Enable SBOM attestations
 # See: https://docs.docker.com/build/attestations/sbom/
@@ -17,10 +22,6 @@ ARG BUILDKIT_SBOM_SCAN_STAGE=true
 ################################################################################
 ARG BUILD_FROM_IMAGE="shinsenter/phpfpm-apache"
 ARG BUILD_TAG_PREFIX=""
-
-ARG PHP_VERSION="8.4"
-ARG PHP_VARIANT=""
-ARG DEBUG
 
 ################################################################################
 COPY ./rootfs/ /
