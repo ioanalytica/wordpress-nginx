@@ -41,4 +41,4 @@ maintainers:
 name: wordpress-nginx
 sources:
 - https://harbor.ioanalytica.com/io/devops/charts/wordpress-nginx
-version: 6.9.0-1
+version: 6.9.0-2
