@@ -87,7 +87,7 @@ diagnosticMode:
 image:
   registry: harbor.ioanalytica.com
   repository: wordpress/wordpress-nginx
-  tag: 6.9.0-5
+  tag: 6.9.0-6
   digest: ""
   ## Specify a imagePullPolicy
   ## ref: https://kubernetes.io/docs/concepts/containers/images/#pre-pulled-images
@@ -477,7 +477,7 @@ livenessProbe:
 readinessProbe:
   enabled: true
   httpGet:
-    path: /wp-login.php
+    path: /healthz.php
     port: '{{ .Values.wordpressScheme }}'
     scheme: '{{ .Values.wordpressScheme | upper }}'
     ## If using an HTTPS-terminating load-balancer, the probes may need to behave
@@ -506,7 +506,7 @@ readinessProbe:
 startupProbe:
   enabled: false
   httpGet:
-    path: /wp-login.php
+    path: /healthz.php
     port: '{{ .Values.wordpressScheme }}'
     scheme: '{{ .Values.wordpressScheme | upper }}'
     ## If using an HTTPS-terminating load-balancer, the probes may need to behave
