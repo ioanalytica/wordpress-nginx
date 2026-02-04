@@ -6,9 +6,9 @@ annotations:
   licenses: Apache-2.0
   images: |
     - name: wordpress-nginx
-      image: harbor.ioanalytica.com/wordpress/wordpress-nginx:6.9.0-6
+      image: harbor.ioanalytica.com/wordpress/wordpress-nginx:6.9.1-1
 apiVersion: v2
-appVersion: 6.9.0
+appVersion: 6.9.1
 dependencies:
 - condition: memcached.enabled
   name: memcached
@@ -41,4 +41,4 @@ maintainers:
 name: wordpress-nginx
 sources:
 - https://harbor.ioanalytica.com/io/devops/charts/wordpress-nginx
-version: 6.9.0-6
+version: 6.9.1-1
