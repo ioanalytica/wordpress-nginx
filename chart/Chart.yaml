@@ -6,7 +6,7 @@ annotations:
   licenses: Apache-2.0
   images: |
     - name: wordpress-nginx
-      image: harbor.ioanalytica.com/wordpress/wordpress-nginx:6.9.1-4
+      image: harbor.ioanalytica.com/wordpress/wordpress-nginx:6.9.1-5
 apiVersion: v2
 appVersion: 6.9.1
 dependencies:
@@ -41,4 +41,4 @@ maintainers:
 name: wordpress-nginx
 sources:
 - https://harbor.ioanalytica.com/io/devops/charts/wordpress-nginx
-version: 6.9.1-4
+version: 6.9.1-5
