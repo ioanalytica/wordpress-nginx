@@ -292,6 +292,24 @@ Return the SMTP Secret Name
 {{- end -}}
 
 {{/*
+Return the proper wordpress-idx image name
+*/}}
+{{- define "wordpress.idx.image" -}}
+{{- include "common.images.image" (dict "imageRoot" .Values.idx.image "global" .Values.global) -}}
+{{- end -}}
+
+{{/*
+Return the idx reindex API key secret name
+*/}}
+{{- define "wordpress.idx.reindexApiKeySecretName" -}}
+{{- if .Values.idx.existingReindexApiKeySecret -}}
+    {{- printf "%s" .Values.idx.existingReindexApiKeySecret -}}
+{{- else -}}
+    {{- printf "%s-idx" (include "common.names.fullname" .) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Compile all warnings into a single message.
 */}}
 {{- define "wordpress.validateValues" -}}
