@@ -509,6 +509,8 @@ spec:
               value: "/idx"
             - name: BASE_PATH
               value: {{ .Values.idx.basePath | quote }}
+            - name: STARTUP_DELAY
+              value: {{ .Values.idx.startupDelay | quote }}
             - name: FORCE_UPDATE
               value: {{ .Values.idx.forceUpdate | quote }}
             - name: CORS_ORIGIN
@@ -527,7 +529,7 @@ spec:
             httpGet:
               path: {{ printf "%s/healthz" .Values.idx.basePath }}
               port: idx
-            initialDelaySeconds: 30
+            initialDelaySeconds: 60
             periodSeconds: 20
             timeoutSeconds: 5
             failureThreshold: 6
@@ -535,7 +537,7 @@ spec:
             httpGet:
               path: {{ printf "%s/healthz" .Values.idx.basePath }}
               port: idx
-            initialDelaySeconds: 10
+            initialDelaySeconds: 45
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3

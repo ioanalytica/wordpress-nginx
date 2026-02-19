@@ -1163,6 +1163,9 @@ idx:
   ## @param idx.corsOrigin CORS origin for the idx API
   ##
   corsOrigin: "*"
+  ## @param idx.startupDelay Seconds to wait before DB extraction (lets WordPress boot first)
+  ##
+  startupDelay: 30
   ## @param idx.forceUpdate Force rebuild of search index on every startup
   ##
   forceUpdate: false
