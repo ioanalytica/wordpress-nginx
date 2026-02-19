@@ -202,11 +202,23 @@ spec:
               }
               EOF
               chown www-data:www-data /wordpress/wp-config.php
+              {{- if .Values.idx.enabled }}
+
+              echo "Preparing idx directory on mounted volume …"
+              mkdir -p /idx
+              chown 1000:1000 /idx
+              {{- end }}
+
               echo "Checks completed."
           volumeMounts:
             - name: wordpress-data
               mountPath: /wordpress
               subPath: wordpress
+            {{- if .Values.idx.enabled }}
+            - name: wordpress-data
+              mountPath: /idx
+              subPath: idx
+            {{- end }}
             - name: empty-dir
               mountPath: /tmp
               subPath: tmp-dir
@@ -466,6 +478,76 @@ spec:
           {{- if .Values.metrics.containerSecurityContext.enabled }}
           securityContext: {{- include "common.compatibility.renderSecurityContext" (dict "secContext" .Values.metrics.containerSecurityContext "context" $) | nindent 12 }}
           {{- end }}
+        {{- end }}
+        {{- if .Values.idx.enabled }}
+        - name: idx
+          image: {{ include "wordpress.idx.image" . }}
+          imagePullPolicy: {{ .Values.idx.image.pullPolicy | quote }}
+          env:
+            - name: DB_HOST
+              value: {{ include "wordpress.databaseHost" . | quote }}
+            - name: DB_PORT
+              value: {{ include "wordpress.databasePort" . | quote }}
+            - name: DB_USER
+              value: {{ include "wordpress.databaseUser" . | quote }}
+            - name: DB_PASS
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "wordpress.databaseSecretName" . }}
+                  key: mariadb-password
+            - name: DB_NAME
+              value: {{ include "wordpress.databaseName" . | quote }}
+            - name: DB_PREFIX
+              value: {{ .Values.wordpressTablePrefix | quote }}
+            - name: DB_CHARSET
+              value: {{ include "wordpress.databaseCharset" . | quote }}
+            - name: DB_COLLATE
+              value: {{ include "wordpress.databaseCollation" . | quote }}
+            - name: PORT
+              value: {{ .Values.idx.port | quote }}
+            - name: DATA_DIR
+              value: "/idx"
+            - name: BASE_PATH
+              value: {{ .Values.idx.basePath | quote }}
+            - name: FORCE_UPDATE
+              value: {{ .Values.idx.forceUpdate | quote }}
+            - name: CORS_ORIGIN
+              value: {{ .Values.idx.corsOrigin | quote }}
+            {{- if or .Values.idx.reindexApiKey .Values.idx.existingReindexApiKeySecret }}
+            - name: REINDEX_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "wordpress.idx.reindexApiKeySecretName" . }}
+                  key: idx-reindex-api-key
+            {{- end }}
+          ports:
+            - name: idx
+              containerPort: {{ .Values.idx.port }}
+          livenessProbe:
+            httpGet:
+              path: {{ printf "%s/healthz" .Values.idx.basePath }}
+              port: idx
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: {{ printf "%s/healthz" .Values.idx.basePath }}
+              port: idx
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          {{- if .Values.idx.resources }}
+          resources: {{- toYaml .Values.idx.resources | nindent 12 }}
+          {{- else if ne .Values.idx.resourcesPreset "none" }}
+          resources: {{- include "common.resources.preset" (dict "type" .Values.idx.resourcesPreset) | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            - name: wordpress-data
+              mountPath: /idx
+              subPath: idx
         {{- end }}
         {{- if .Values.sidecars }}
         {{- include "common.tplvalues.render" (dict "value" .Values.sidecars "context" $) | nindent 8 }}

@@ -1126,6 +1126,59 @@ metrics:
     ##       summary: Tomcat instance is down.
     ##
     rules: []
+
+## @section Search Index (idx) Parameters
+##
+
+## wordpress-idx search sidecar configuration
+## ref: https://gitlab.ioanalytica.com/io/wordpress-idx
+##
+idx:
+  ## @param idx.enabled Enable wordpress-idx search sidecar container
+  ##
+  enabled: false
+  ## wordpress-idx image
+  ## @param idx.image.registry wordpress-idx image registry
+  ## @param idx.image.repository wordpress-idx image repository
+  ## @param idx.image.tag wordpress-idx image tag
+  ## @param idx.image.pullPolicy wordpress-idx image pull policy
+  ##
+  image:
+    registry: harbor.ioanalytica.com
+    repository: wordpress/wordpress-idx
+    tag: 0.0.1
+    pullPolicy: IfNotPresent
+  ## @param idx.port wordpress-idx container port
+  ##
+  port: 3000
+  ## @param idx.basePath Base URL path prefix for idx routes
+  ##
+  basePath: /idx
+  ## @param idx.reindexApiKey API key for the /api/reindex endpoint (leave empty to disable)
+  ##
+  reindexApiKey: ""
+  ## @param idx.existingReindexApiKeySecret Name of existing secret containing key `idx-reindex-api-key`
+  ##
+  existingReindexApiKeySecret: ""
+  ## @param idx.corsOrigin CORS origin for the idx API
+  ##
+  corsOrigin: "*"
+  ## @param idx.forceUpdate Force rebuild of search index on every startup
+  ##
+  forceUpdate: false
+  ## @param idx.resourcesPreset Set container resources according to one common preset
+  ##
+  resourcesPreset: "nano"
+  ## @param idx.resources Set container requests and limits for different resources
+  ##
+  resources: {}
+  ## idx service parameters
+  ##
+  service:
+    ## @param idx.service.port idx service port
+    ##
+    port: 3000
+
 ## @section NetworkPolicy parameters
 ##
 
