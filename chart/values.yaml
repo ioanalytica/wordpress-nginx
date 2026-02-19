@@ -1145,8 +1145,8 @@ idx:
   ##
   image:
     registry: harbor.ioanalytica.com
-    repository: wordpress/wordpress-idx
-    tag: 0.0.1
+    repository: io/devops/wordpress-idx
+    tag: 0.1.0
     pullPolicy: IfNotPresent
   ## @param idx.port wordpress-idx container port
   ##
