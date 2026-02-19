@@ -529,18 +529,18 @@ spec:
             httpGet:
               path: {{ printf "%s/healthz" .Values.idx.basePath }}
               port: idx
-            initialDelaySeconds: 60
-            periodSeconds: 20
+            initialDelaySeconds: 40
+            periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 6
           readinessProbe:
             httpGet:
-              path: {{ printf "%s/healthz" .Values.idx.basePath }}
+              path: {{ printf "%s/readyz" .Values.idx.basePath }}
               port: idx
             initialDelaySeconds: 45
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 30
           {{- if .Values.idx.resources }}
           resources: {{- toYaml .Values.idx.resources | nindent 12 }}
           {{- else if ne .Values.idx.resourcesPreset "none" }}
