@@ -1171,7 +1171,7 @@ idx:
   forceUpdate: false
   ## @param idx.resourcesPreset Set container resources according to one common preset
   ##
-  resourcesPreset: "nano"
+  resourcesPreset: "small"
   ## @param idx.resources Set container requests and limits for different resources
   ##
   resources: {}
