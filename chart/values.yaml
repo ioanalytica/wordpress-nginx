@@ -87,7 +87,7 @@ diagnosticMode:
 image:
   registry: harbor.ioanalytica.com
   repository: wordpress/wordpress-nginx
-  tag: 6.9.1-6
+  tag: 6.9.1-7
   digest: ""
   ## Specify a imagePullPolicy
   ## ref: https://kubernetes.io/docs/concepts/containers/images/#pre-pulled-images
