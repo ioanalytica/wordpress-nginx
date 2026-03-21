@@ -3,7 +3,7 @@
 
 apiVersion: v2
 name: wordpress-nginx
-version: 6.9.4-6
+version: 6.9.4-7
 appVersion: 6.9.4
 
 description: >-
@@ -32,13 +32,13 @@ keywords:
 annotations:
   category: CMS
   licenses: Apache-2.0
-  imageTag: "6.9.4-6"
-  idxImageTag: "0.1.7"
+  imageTag: "6.9.4-7"
+  idxImageTag: "0.1.8"
   images: |
     - name: wordpress-nginx
-      image: ghcr.io/ioanalytica/wordpress-nginx:6.9.4-6
+      image: ghcr.io/ioanalytica/wordpress-nginx:6.9.4-7
     - name: wordpress-idx
-      image: ghcr.io/ioanalytica/wordpress-idx:0.1.7
+      image: ghcr.io/ioanalytica/wordpress-idx:0.1.8
 
 dependencies:
 - condition: memcached.enabled
