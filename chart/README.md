@@ -27,13 +27,53 @@ A production-ready Helm chart for deploying WordPress with NGINX on Kubernetes. 
 ## Quick Start
 
 ```console
-helm install my-wordpress ./chart \
+helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx \
+  --version 6.9.4-6 \
   --set externalDatabase.host=mydb.example.com \
   --set externalDatabase.user=wordpress \
   --set externalDatabase.password=secret \
   --set externalDatabase.database=wordpress \
   --set ingress.enabled=true \
   --set ingress.hostname=blog.example.com
+```
+
+### Flux CD
+
+```yaml
+---
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: ioanalytica
+  namespace: flux-system
+spec:
+  type: oci
+  interval: 30m
+  url: oci://ghcr.io/ioanalytica/charts
+
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: my-wordpress
+  namespace: default
+spec:
+  interval: 24h
+  chart:
+    spec:
+      chart: wordpress-nginx
+      version: "6.9.4-6"
+      sourceRef:
+        kind: HelmRepository
+        name: ioanalytica
+        namespace: flux-system
+  values:
+    # see values.yaml for all options
+    externalDatabase:
+      host: mydb.example.com
+      user: wordpress
+      password: secret
+      database: wordpress
 ```
 
 ## Docker Image
@@ -47,7 +87,7 @@ The chart uses a custom WordPress-NGINX image based on [shinsenter/php](https://
 The image includes:
 - WordPress (version tracked in `Chart.yaml` `appVersion`)
 - NGINX with optimised configuration
-- PHP 8.4 with FPM, imagick, and memcache extensions
+- PHP 8.4 with FPM, imagick, memcache, redis extensions
 - WP-CLI
 - Health check endpoint at `/healthz.php`
 
@@ -57,7 +97,7 @@ The chart is configured identically to the Bitnami WordPress chart. All standard
 
 ### Current Limitations
 
-The Bitnami sub-charts for MariaDB, Memcached, and Redis are **not fully ported**. Use external services instead:
+The Bitnami sub-charts for MariaDB and Memcached are **not fully ported**. Use external services instead:
 
 ```yaml
 mariadb:
@@ -105,11 +145,6 @@ idx:
   basePath: /idx
   startupDelay: 30
   resourcesPreset: "small"
-  image:
-    registry: ghcr.io
-    repository: ioanalytica/wordpress-idx
-    tag: "0.1.6"
-    pullPolicy: Always
 ```
 
 When enabled:
@@ -119,6 +154,23 @@ When enabled:
 - Ingress path `/idx` is routed to the sidecar's port 3000
 - NetworkPolicy allows ingress on port 3000
 - Liveness probe on `/healthz`, readiness probe on `/readyz`
+
+Note: On large WordPress sites requires much more RAM than the WordPress instance itself. In case the pod the OOMKilled due to lack of memory, set higher limits.
+
+```yaml
+idx:
+  enabled: true
+  basePath: /idx
+  startupDelay: 30
+resources:
+  requests:
+    memory: "512Mi"
+    cpu: "250m"
+  limits:
+    memory: "4Gi"
+    cpu: "2"
+```
+
 
 ### NGINX Configuration
 
