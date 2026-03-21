@@ -1,4 +1,4 @@
-name: Build and push Docker image
+name: Build and push Docker image and Helm chart
 
 on:
   push:
@@ -37,7 +37,7 @@ jobs:
         id: meta
         run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
-      - name: Build and push
+      - name: Build and push Docker image
         uses: docker/build-push-action@v6.18.0
         with:
           context: ./docker
@@ -48,3 +48,14 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Package Helm chart
+        run: helm package chart/
+
+      - name: Push Helm chart to OCI registry
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} --username ${{ github.actor }} --password-stdin
+          helm push wordpress-nginx-${{ steps.meta.outputs.version }}.tgz oci://${{ env.REGISTRY }}/ioanalytica/charts
