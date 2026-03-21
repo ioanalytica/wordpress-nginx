@@ -22,10 +22,12 @@ We truncate at 63 chars because some Kubernetes name fields are limited to this 
 {{- end -}}
 
 {{/*
-Return the proper WordPress image name
+Return the proper WordPress image name.
+Tag is read from Chart.yaml annotation "imageTag" (single source of truth).
 */}}
 {{- define "wordpress.image" -}}
-{{- include "common.images.image" (dict "imageRoot" .Values.image "global" .Values.global) -}}
+{{- $imageRoot := merge (dict "tag" (index .Chart.Annotations "imageTag")) .Values.image -}}
+{{- include "common.images.image" (dict "imageRoot" $imageRoot "global" .Values.global) -}}
 {{- end -}}
 
 {{/*
@@ -292,10 +294,12 @@ Return the SMTP Secret Name
 {{- end -}}
 
 {{/*
-Return the proper wordpress-idx image name
+Return the proper wordpress-idx image name.
+Tag is read from Chart.yaml annotation "idxImageTag" (single source of truth).
 */}}
 {{- define "wordpress.idx.image" -}}
-{{- include "common.images.image" (dict "imageRoot" .Values.idx.image "global" .Values.global) -}}
+{{- $imageRoot := merge (dict "tag" (index .Chart.Annotations "idxImageTag")) .Values.idx.image -}}
+{{- include "common.images.image" (dict "imageRoot" $imageRoot "global" .Values.global) -}}
 {{- end -}}
 
 {{/*
