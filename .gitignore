@@ -3,4 +3,5 @@
 !.gitmodules
 !.gitlab-ci.*
 !.dockerignore
+!.github
 wordpress-nginx-*.tgz
