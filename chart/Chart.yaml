@@ -1,12 +1,12 @@
-# Copyright Broadcom, Inc. All Rights Reserved.
-# SPDX-License-Identifier: APACHE-2.0
+# Copyright IO ANALYTICA. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 annotations:
   category: CMS
   licenses: Apache-2.0
   images: |
     - name: wordpress-nginx
-      image: harbor.ioanalytica.com/wordpress/wordpress-nginx:6.9.4-4
+      image: ghcr.io/ioanalytica/wordpress-nginx:6.9.4-5
 apiVersion: v2
 appVersion: 6.9.4
 dependencies:
@@ -20,12 +20,13 @@ dependencies:
   version: 21.x.x
 - name: common
   repository: oci://registry-1.docker.io/bitnamicharts
-  tags:
-  - bitnami-common
   version: 2.x.x
-description: WordPress is the world's most popular blogging and content management platform. Powerful yet simple, everyone from students to global corporations use it to build beautiful, functional websites. This Chart uses the -nginx variant of the wordpress container.
-home: https://ioanalytica.com
-icon: https://bitnami.com/assets/stacks/wordpress-nginx/img/wordpress-nginx-stack-220x234.png
+description: >-
+  WordPress with NGINX for Kubernetes. Supports Memcached, Redis,
+  and Dragonfly for caching, plus an optional FlexSearch sidecar (wordpress-idx)
+  for full-text search.
+home: https://github.com/ioanalytica/wordpress-nginx
+icon: https://raw.githubusercontent.com/ioanalytica/wordpress-nginx/develop/icon.png
 keywords:
 - application
 - blog
@@ -40,5 +41,5 @@ maintainers:
   url: https://ioanalytica.com
 name: wordpress-nginx
 sources:
-- https://harbor.ioanalytica.com/io/devops/charts/wordpress-nginx
-version: 6.9.4-4
+- https://github.com/ioanalytica/wordpress-nginx
+version: 6.9.4-5

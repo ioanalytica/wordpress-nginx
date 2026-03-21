@@ -1,5 +1,5 @@
-# Copyright Broadcom, Inc. All Rights Reserved.
-# SPDX-License-Identifier: APACHE-2.0
+# Copyright IO ANALYTICA. All Rights Reserved.
+# SPDX-License-Identifier: Apache-2.0
 
 ## @section Global parameters
 ## Global Docker image parameters
@@ -74,8 +74,8 @@ diagnosticMode:
 ## @section WordPress Image parameters
 ##
 
-## Bitnami WordPress image
-## ref: https://hub.docker.com/r/bitnami/wordpress/tags/
+## WordPress-NGINX image
+## ref: https://github.com/ioanalytica/wordpress-nginx/pkgs/container/wordpress-nginx
 ## @param image.registry [default: REGISTRY_NAME] WordPress image registry
 ## @param image.repository [default: REPOSITORY_NAME/wordpress] WordPress image repository
 ## @skip image.tag WordPress image tag (immutable tags are recommended)
@@ -85,9 +85,9 @@ diagnosticMode:
 ## @param image.debug Specify if debug values should be set
 ##
 image:
-  registry: harbor.ioanalytica.com
-  repository: wordpress/wordpress-nginx
-  tag: 6.9.4-4
+  registry: ghcr.io
+  repository: ioanalytica/wordpress-nginx
+  tag: 6.9.4-5
   digest: ""
   ## Specify a imagePullPolicy
   ## ref: https://kubernetes.io/docs/concepts/containers/images/#pre-pulled-images
@@ -1144,9 +1144,9 @@ idx:
   ## @param idx.image.pullPolicy wordpress-idx image pull policy
   ##
   image:
-    registry: harbor.ioanalytica.com
-    repository: io/devops/wordpress-idx
-    tag: 0.1.5
+    registry: ghcr.io
+    repository: ioanalytica/wordpress-idx
+    tag: "0.1.6"
     pullPolicy: IfNotPresent
   ## @param idx.port wordpress-idx container port
   ##
