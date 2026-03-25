@@ -28,7 +28,7 @@ A production-ready Helm chart for deploying WordPress with NGINX on Kubernetes. 
 
 ```console
 helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx \
-  --version 6.9.4-6 \
+  --version 6.9.4-8 \
   --set externalDatabase.host=mydb.example.com \
   --set externalDatabase.user=wordpress \
   --set externalDatabase.password=secret \
@@ -44,7 +44,7 @@ helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx \
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: ioanalytica
+  name: ioanalytica-public
   namespace: flux-system
 spec:
   type: oci
@@ -62,10 +62,10 @@ spec:
   chart:
     spec:
       chart: wordpress-nginx
-      version: "6.9.4-6"
+      version: "6.9.4-8"
       sourceRef:
         kind: HelmRepository
-        name: ioanalytica
+        name: ioanalytica-public
         namespace: flux-system
   values:
     # see values.yaml for all options
@@ -331,4 +331,4 @@ This chart is derived from the [Bitnami WordPress chart](https://github.com/bitn
 
 Copyright &copy; 2024-2026 [IO ANALYTICA](https://ioanalytica.com).
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](../LICENSE) for details.
+Licensed under the GNU General Public License v3.0. See [LICENSE](../LICENSE) for details.
