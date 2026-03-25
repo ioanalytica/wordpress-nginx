@@ -31,7 +31,7 @@ keywords:
 
 annotations:
   category: CMS
-  licenses: Apache-2.0
+  licenses: GPL-3.0
   imageTag: "6.9.4-8"
   idxImageTag: "0.1.8"
   images: |
