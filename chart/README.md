@@ -228,6 +228,11 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 
 ## Upgrading
 
+### To 6.9.4-10
+
+Fixes the image tag alignment: chart version and image tag are now kept in sync (`6.9.4-10`).
+No values changes required.
+
 ### To 6.9.4-9
 
 Version 6.9.4-9 removes all Bitnami chart dependencies. Key changes:
