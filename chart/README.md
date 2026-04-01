@@ -241,4 +241,6 @@ Version 6.9.4-9 removes all Bitnami chart dependencies. Key changes:
 
 ## License
 
-GPL-3.0
+Apache-2.0 — see [LICENSE](../LICENSE)
+
+The WordPress software deployed by this chart is licensed under GPL-2.0+.
