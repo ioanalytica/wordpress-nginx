@@ -53,7 +53,9 @@ jobs:
         uses: azure/setup-helm@v4
 
       - name: Package Helm chart
-        run: helm package chart/
+        run: |
+          helm dependency update chart/
+          helm package chart/
 
       - name: Push Helm chart to OCI registry
         run: |
