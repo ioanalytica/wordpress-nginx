@@ -19,11 +19,6 @@ global:
   ##
   imagePullSecrets: []
   defaultStorageClass: ""
-  ## Security parameters
-  ##
-  security:
-    ## @param global.security.allowInsecureImages Allows skipping image verification
-    allowInsecureImages: true
   ## Compatibility adaptations for Kubernetes platforms
   ##
   compatibility:
@@ -106,7 +101,7 @@ image:
   debug: false
 ## @section WordPress Configuration parameters
 ## WordPress settings based on environment variables
-## ref: https://github.com/bitnami/containers/tree/main/bitnami/wordpress#environment-variables
+## WordPress settings based on environment variables
 ##
 
 ## @param wordpressUsername WordPress username
@@ -141,7 +136,7 @@ wordpressTablePrefix: wp_
 wordpressScheme: http
 ## @param wordpressSkipInstall Skip wizard installation
 ## NOTE: useful if you use an external database that already contains WordPress data
-## ref: https://github.com/bitnami/containers/tree/main/bitnami/wordpress#connect-wordpress-docker-container-to-an-existing-database
+## ref: https://github.com/ioanalytica/wordpress-nginx
 ##
 wordpressSkipInstall: false
 ## @param wordpressExtraConfigContent Add extra content to the default wp-config.php file
@@ -183,21 +178,18 @@ nginxCustomServerBlockAddition: ""
 ##
 existingCustomServerBlockAdditionConfigMap: ""
 ## @param customPostInitScripts Custom post-init.d user scripts
-## ref: https://github.com/bitnami/containers/tree/main/bitnami/wordpress
 ## NOTE: supported formats are `.sh`, `.sql` or `.php`
 ## NOTE: scripts are exclusively executed during the 1st boot of the container
 ## e.g:
 ## customPostInitScripts:
 ##   enable-multisite.sh: |
 ##     #!/bin/bash
-##     chmod +w /bitnami/wordpress/wp-config.php
 ##     wp core multisite-install --url=example.com --title="Welcome to the WordPress Multisite" --admin_user="doesntmatternotreallyused" --admin_password="doesntmatternotreallyused" --admin_email="user@example.com"
-##     chmod -w bitnami/wordpress/wp-config.php
 ##     ...
 ##
 customPostInitScripts: {}
 ## SMTP mail delivery configuration
-## ref: https://github.com/bitnami/containers/tree/main/bitnami/wordpress/#smtp-configuration
+## SMTP mail delivery configuration
 ## @param smtpHost SMTP server host
 ## @param smtpPort SMTP server port
 ## @param smtpUser SMTP username
@@ -248,7 +240,7 @@ extraEnvVarsCM: ""
 ##
 extraEnvVarsSecret: ""
 ## @section WordPress Multisite Configuration parameters
-## ref: https://github.com/bitnami/containers/tree/main/bitnami/wordpress#multisite-configuration
+## WordPress Multisite configuration
 ##
 
 ## @param multisite.enable Whether to enable WordPress Multisite configuration.
@@ -327,7 +319,7 @@ sidecars: []
 ##  - name: your-image-name
 ##    image: your-image
 ##    imagePullPolicy: Always
-##    command: ['sh', '-c', 'copy themes and plugins from git and push to /bitnami/wordpress/wp-content. Should work with extraVolumeMounts and extraVolumes']
+##    command: ['sh', '-c', 'copy themes and plugins from git and push to /var/www/html/wp-content. Should work with extraVolumeMounts and extraVolumes']
 ##
 initContainers: []
 ## @param podLabels Extra labels for WordPress pods
@@ -379,7 +371,7 @@ tolerations: []
 ## WordPress containers' resource requests and limits
 ## ref: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
 ## @param resourcesPreset Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if resources is set (resources is recommended for production).
-## More information: https://github.com/bitnami/charts/blob/main/bitnami/common/templates/_resources.tpl#L15
+## More information: https://github.com/ioanalytica/common-helm
 ##
 resourcesPreset: "micro"
 ## @param resources Set container requests and limits for different resources like CPU or memory (essential for production workloads)
@@ -866,62 +858,6 @@ persistence:
   ## @param persistence.annotations Persistent Volume Claim annotations
   ##
   annotations: {}
-## Init containers parameters:
-## volumePermissions: Change the owner and group of the persistent volume(s) mountpoint(s) to 'runAsUser:fsGroup' on each node
-##
-volumePermissions:
-  ## @param volumePermissions.enabled Enable init container that changes the owner/group of the PV mount point to `runAsUser:fsGroup`
-  ##
-  enabled: false
-  ## OS Shell + Utility image
-  ## ref: https://hub.docker.com/r/bitnami/os-shell/tags/
-  ## @param volumePermissions.image.registry [default: REGISTRY_NAME] OS Shell + Utility image registry
-  ## @param volumePermissions.image.repository [default: REPOSITORY_NAME/os-shell] OS Shell + Utility image repository
-  ## @skip volumePermissions.image.tag OS Shell + Utility image tag (immutable tags are recommended)
-  ## @param volumePermissions.image.digest OS Shell + Utility image digest in the way sha256:aa.... Please note this parameter, if set, will override the tag
-  ## @param volumePermissions.image.pullPolicy OS Shell + Utility image pull policy
-  ## @param volumePermissions.image.pullSecrets OS Shell + Utility image pull secrets
-  ##
-  image:
-    registry: docker.io
-    repository: bitnami/os-shell
-    tag: 12-debian-12-r37
-    digest: ""
-    pullPolicy: IfNotPresent
-    ## Optionally specify an array of imagePullSecrets.
-    ## Secrets must be manually created in the namespace.
-    ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/pull-image-private-registry/
-    ## e.g:
-    ## pullSecrets:
-    ##   - myRegistryKeySecretName
-    ##
-    pullSecrets: []
-  ## Init container's resource requests and limits
-  ## ref: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
-  ## @param volumePermissions.resourcesPreset Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if volumePermissions.resources is set (volumePermissions.resources is recommended for production).
-  ## More information: https://github.com/bitnami/charts/blob/main/bitnami/common/templates/_resources.tpl#L15
-  ##
-  resourcesPreset: "nano"
-  ## @param volumePermissions.resources Set container requests and limits for different resources like CPU or memory (essential for production workloads)
-  ## Example:
-  ## resources:
-  ##   requests:
-  ##     cpu: 2
-  ##     memory: 512Mi
-  ##   limits:
-  ##     cpu: 3
-  ##     memory: 1024Mi
-  ##
-  resources: {}
-  ## Init container' Security Context
-  ## Note: the chown of the data folder is done to containerSecurityContext.runAsUser
-  ## and not the below volumePermissions.containerSecurityContext.runAsUser
-  ## @param volumePermissions.containerSecurityContext.seLinuxOptions [object,nullable] Set SELinux options in container
-  ## @param volumePermissions.containerSecurityContext.runAsUser User ID for the init container
-  ##
-  containerSecurityContext:
-    seLinuxOptions: {}
-    runAsUser: 0
 ## @section Other Parameters
 ##
 
@@ -976,7 +912,7 @@ metrics:
   ## @param metrics.enabled Start a Prometheus exporter sidecar container
   ##
   enabled: false
-  ## Bitnami NGINX Prometheus Exporter image
+  ## NGINX Prometheus Exporter image
   ## ref: https://hub.docker.com/r/bitnami/nginx-exporter/tags/
   ## @param metrics.image.registry [default: REGISTRY_NAME] NGINX Prometheus exporter image registry
   ## @param metrics.image.repository [default: REPOSITORY_NAME/nginx-exporter] NGINX Prometheus exporter image repository
@@ -1019,15 +955,39 @@ metrics:
   ##
   podAnnotations: {}
   ## Container Security Context
-  ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/
-  ## @param metrics.securityContext.enabled Enabled NGINX Exporter containers' Security Context
-  ## @param metrics.securityContext.seLinuxOptions [object,nullable] Set SELinux options in container
-  ## @param metrics.securityContext.runAsUser Set NGINX Exporter container's Security Context runAsUser
+  ## @param metrics.containerSecurityContext.enabled Enabled NGINX Exporter containers' Security Context
+  ## @param metrics.containerSecurityContext.runAsUser Set NGINX Exporter container's Security Context runAsUser
   ##
-  securityContext:
+  containerSecurityContext:
     enabled: false
     seLinuxOptions: {}
     runAsUser: 1001
+  ## Metrics liveness/readiness/startup probes
+  ##
+  livenessProbe:
+    enabled: true
+    initialDelaySeconds: 15
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  readinessProbe:
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3
+    successThreshold: 1
+  startupProbe:
+    enabled: false
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 30
+    successThreshold: 1
+  customLivenessProbe: {}
+  customReadinessProbe: {}
+  customStartupProbe: {}
   ## Prometheus exporter service parameters
   ##
   service:
@@ -1046,7 +1006,7 @@ metrics:
   ## resources, such as Minikube. If you do want to specify resources, uncomment the following
   ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
   ## @param metrics.resourcesPreset Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if metrics.resources is set (metrics.resources is recommended for production).
-  ## More information: https://github.com/bitnami/charts/blob/main/bitnami/common/templates/_resources.tpl#L15
+  ## More information: https://github.com/ioanalytica/common-helm
   ##
   resourcesPreset: "nano"
   ## @param metrics.resources Set container requests and limits for different resources like CPU or memory (essential for production workloads)
@@ -1085,7 +1045,7 @@ metrics:
     ##
     scrapeTimeout: ""
     ## @param metrics.serviceMonitor.selector Prometheus instance selector labels
-    ## ref: https://github.com/bitnami/charts/tree/main/bitnami/prometheus-operator#prometheus-configuration
+    ## ref: https://github.com/prometheus-operator/prometheus-operator
     ##
     ## selector:
     ##   prometheus: my-prometheus
@@ -1243,68 +1203,59 @@ networkPolicy:
 ## @section Database Parameters
 ##
 
-## MariaDB chart configuration
-## ref: https://github.com/bitnami/charts/blob/main/bitnami/mariadb/values.yaml
+## Internal MariaDB configuration
+## Deploys a standalone MariaDB instance as part of this chart.
+## To use an external database, set mariadb.enabled=false and configure `externalDatabase.*`.
 ##
 mariadb:
-  ## @param mariadb.enabled Deploy a MariaDB server to satisfy the applications database requirements
-  ## To use an external database set this to false and configure the `externalDatabase.*` parameters
+  ## @param mariadb.enabled Deploy an internal MariaDB server
   ##
   enabled: true
-  ## @param mariadb.architecture MariaDB architecture. Allowed values: `standalone` or `replication`
+  ## @param mariadb.image MariaDB container image
   ##
-  architecture: standalone
+  image: "mariadb:12.2.2-noble"
   ## MariaDB Authentication parameters
   ## @param mariadb.auth.rootPassword MariaDB root password
-  ## @param mariadb.auth.database MariaDB custom database
-  ## @param mariadb.auth.username MariaDB custom user name
-  ## @param mariadb.auth.password MariaDB custom user password
-  ## ref: https://github.com/bitnami/containers/tree/main/bitnami/mariadb#setting-the-root-password-on-first-run
-  ##      https://github.com/bitnami/containers/blob/main/bitnami/mariadb/README.md#creating-a-database-on-first-run
-  ##      https://github.com/bitnami/containers/blob/main/bitnami/mariadb/README.md#creating-a-database-user-on-first-run
+  ## @param mariadb.auth.database MariaDB database name
+  ## @param mariadb.auth.username MariaDB user name
+  ## @param mariadb.auth.password MariaDB user password
+  ## @param mariadb.auth.existingSecret Name of existing secret containing MariaDB credentials
   ##
   auth:
     rootPassword: ""
-    database: bitnami_wordpress
-    username: bn_wordpress
+    database: wordpress
+    username: wp_user
     password: ""
+    existingSecret: ""
+  ## @param mariadb.databaseCharset MariaDB database character set
+  ##
   databaseCharset: "utf8mb4"
+  ## @param mariadb.databaseCollation MariaDB database collation
+  ##
   databaseCollation: ""
   ## MariaDB Primary configuration
   ##
   primary:
-    ## MariaDB Primary Persistence parameters
-    ## ref: https://kubernetes.io/docs/concepts/storage/persistent-volumes/
+    ## MariaDB Persistence parameters
     ## @param mariadb.primary.persistence.enabled Enable persistence on MariaDB using PVC(s)
     ## @param mariadb.primary.persistence.storageClass Persistent Volume storage class
-    ## @param mariadb.primary.persistence.accessModes [array] Persistent Volume access modes
+    ## @param mariadb.primary.persistence.existingClaim Name of an existing PVC to use
     ## @param mariadb.primary.persistence.size Persistent Volume size
     ##
     persistence:
       enabled: true
       storageClass: ""
-      accessModes:
-        - ReadWriteOnce
+      existingClaim: ""
       size: 8Gi
-    ## MariaDB primary container's resource requests and limits
-    ## ref: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
-    ## We usually recommend not to specify default resources and to leave this as a conscious
-    ## choice for the user. This also increases chances charts run on environments with little
-    ## resources, such as Minikube. If you do want to specify resources, uncomment the following
-    ## lines, adjust them as necessary, and remove the curly braces after 'resources:'.
-    ## @param mariadb.primary.resourcesPreset Set container resources according to one common preset (allowed values: none, nano, small, medium, large, xlarge, 2xlarge). This is ignored if primary.resources is set (primary.resources is recommended for production).
-    ## More information: https://github.com/bitnami/charts/blob/main/bitnami/common/templates/_resources.tpl#L15
-    ##
-    resourcesPreset: "micro"
-    ## @param mariadb.primary.resources Set container requests and limits for different resources like CPU or memory (essential for production workloads)
+    ## @param mariadb.primary.resources Set container requests and limits for different resources like CPU or memory
     ## Example:
     ## resources:
     ##   requests:
-    ##     cpu: 2
-    ##     memory: 512Mi
+    ##     cpu: 250m
+    ##     memory: 256Mi
     ##   limits:
-    ##     cpu: 3
-    ##     memory: 1024Mi
+    ##     cpu: 500m
+    ##     memory: 512Mi
     ##
     resources: {}
 ## External Database Configuration
@@ -1319,13 +1270,13 @@ externalDatabase:
   port: 3306
   ## @param externalDatabase.user External Database username
   ##
-  user: bn_wordpress
+  user: wp_user
   ## @param externalDatabase.password External Database user password
   ##
   password: ""
   ## @param externalDatabase.database External Database database name
   ##
-  database: bitnami_wordpress
+  database: wordpress
   databaseCharset: "utf8mb4"
   databaseCollation: ""
   ## @param externalDatabase.existingSecret The name of an existing secret with database credentials. Evaluated as a template
@@ -1333,54 +1284,39 @@ externalDatabase:
   ## NOTE: When it's set, the `externalDatabase.password` parameter is ignored
   ##
   existingSecret: ""
-## Memcached chart configuration
-## ref: https://github.com/bitnami/charts/blob/main/bitnami/memcached/values.yaml
+## Internal cache server (Dragonfly)
+## Deploys a Dragonfly instance that serves both Redis and Memcached protocols.
+## To use an external cache server, set memcached.enabled=false and configure `externalCache.*`.
 ##
 memcached:
-  ## @param memcached.enabled Deploy a Memcached server for caching database queries
+  ## @param memcached.enabled Deploy an internal Dragonfly cache server (serves both Redis and Memcached protocols)
   ##
   enabled: false
-  ## Authentication parameters
-  ## ref: https://github.com/bitnami/containers/tree/main/bitnami/memcached#creating-the-memcached-admin-user
+  ## @param memcached.image Dragonfly container image
   ##
-  auth:
-    ## @param memcached.auth.enabled Enable Memcached authentication
-    ##
-    enabled: false
-    ## @param memcached.auth.username Memcached admin user
-    ##
-    username: ""
-    ## @param memcached.auth.password Memcached admin password
-    ##
-    password: ""
-    ## @param memcached.auth.existingPasswordSecret Existing secret with Memcached credentials (must contain a value for `memcached-password` key)
-    ##
-    existingPasswordSecret: ""
-  ## Service parameters
+  image: "dragonflydb/dragonfly:v1.26.0"
+  ## @param memcached.password Dragonfly password
   ##
-  service:
-    ## @param memcached.service.port Memcached service port
-    ##
-    port: 11211
-  ## Memcached resource requests and limits
-  ## ref: https://kubernetes.io/docs/concepts/configuration/manage-compute-resources-container/
-  ## @param memcached.resourcesPreset Set container resources according to one common preset (allowed values: none, nano, small, medium, large, xlarge, 2xlarge). This is ignored if resources is set (resources is recommended for production).
-  ## More information: https://github.com/bitnami/charts/blob/main/bitnami/common/templates/_resources.tpl#L15
+  password: ""
+  ## @param memcached.existingSecret Name of existing secret containing cache password (key: cache-password)
   ##
-  resourcesPreset: "nano"
-  ## @param memcached.resources Set container requests and limits for different resources like CPU or memory (essential for production workloads)
-  ## Example:
-  ## resources:
-  ##   requests:
-  ##     cpu: 2
-  ##     memory: 512Mi
-  ##   limits:
-  ##     cpu: 3
-  ##     memory: 1024Mi
+  existingSecret: ""
+  ## Cache Persistence parameters
+  ## @param memcached.persistence.enabled Enable persistence for the cache server
+  ## @param memcached.persistence.storageClass Persistent Volume storage class
+  ## @param memcached.persistence.existingClaim Name of an existing PVC to use
+  ## @param memcached.persistence.size Persistent Volume size
+  ##
+  persistence:
+    enabled: true
+    storageClass: ""
+    existingClaim: ""
+    size: 1Gi
+  ## @param memcached.resources Set container requests and limits for different resources like CPU or memory
   ##
   resources: {}
 
-## External Memcached Configuration
+## External Cache Configuration
 ## All of these values are only used if `memcached.enabled=false`
 ##
 externalCache:

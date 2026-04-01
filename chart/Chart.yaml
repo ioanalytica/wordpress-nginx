@@ -3,13 +3,13 @@
 
 apiVersion: v2
 name: wordpress-nginx
-version: 6.9.4-8
+version: 6.9.4-9
 appVersion: 6.9.4
 
 description: >-
-  WordPress with NGINX for Kubernetes. Supports Memcached, Redis,
-  and Dragonfly for caching, plus an optional FlexSearch sidecar (wordpress-idx)
-  for full-text search.
+  WordPress with NGINX for Kubernetes. Supports internal or external MariaDB,
+  Dragonfly (Redis/Memcached) caching, and an optional FlexSearch sidecar
+  (wordpress-idx) for full-text search.
 home: https://github.com/ioanalytica/wordpress-nginx
 icon: https://raw.githubusercontent.com/ioanalytica/wordpress-nginx/develop/icon.png
 sources:
@@ -41,14 +41,6 @@ annotations:
       image: ghcr.io/ioanalytica/wordpress-idx:0.1.8
 
 dependencies:
-- condition: memcached.enabled
-  name: memcached
-  repository: oci://registry-1.docker.io/bitnamicharts
-  version: 7.x.x
-- condition: mariadb.enabled
-  name: mariadb
-  repository: oci://registry-1.docker.io/bitnamicharts
-  version: 21.x.x
 - name: common
-  repository: oci://registry-1.docker.io/bitnamicharts
-  version: 2.x.x
+  repository: oci://ghcr.io/ioanalytica/charts
+  version: 0.1.x

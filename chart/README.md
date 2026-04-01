@@ -1,199 +1,124 @@
 # WordPress-NGINX Helm Chart
 
-A production-ready Helm chart for deploying WordPress with NGINX on Kubernetes. Developed by [IO ANALYTICA](https://ioanalytica.com), originally derived from the [Bitnami WordPress chart](https://github.com/bitnami/charts/tree/main/bitnami/wordpress) but extensively modified to use NGINX instead of Apache and to support additional caching backends.
+A production-ready Helm chart for deploying WordPress with NGINX on Kubernetes. Developed by [IO ANALYTICA](https://ioanalytica.com).
 
 ## Features
 
-- **NGINX** as web server (instead of Apache)
-- **PHP-FPM** with configurable settings
-- **Memcached** or **Redis** for object caching (including [Dragonfly](https://www.dragonflydb.io/) as drop-in replacement)
+- **NGINX** as web server (instead of Apache) with PHP-FPM
+- **Internal or external MariaDB** database
+- **Internal Dragonfly** cache server (serves both Redis and Memcached protocols) or external cache
+- **W3 Total Cache** auto-configuration for object and database caching
 - **Full-text search sidecar** ([wordpress-idx](https://github.com/ioanalytica/wordpress-idx)) with FlexSearch-based API
-- Multi-arch Docker image (`linux/amd64`, `linux/arm64`)
-- Horizontal Pod Autoscaling (HPA)
-- Pod Disruption Budget (PDB)
-- Network Policies
-- Prometheus metrics via nginx-exporter
-- Ingress with TLS support (primary + secondary)
-- ReadWriteMany volumes for multi-replica deployments
+- **Prometheus metrics** via NGINX exporter sidecar
+- **Horizontal Pod Autoscaling** with CPU/memory targets
+- **Network Policies** for pod-level firewall rules
+- **Dual Ingress** support (primary + secondary for wp-admin restrictions)
+- **OpenShift** compatibility via automatic security context adaptation
+- **Resource presets** (nano through 2xlarge) for quick sizing
 
 ## Prerequisites
 
-- Kubernetes 1.23+
-- Helm 3.8.0+
-- PV provisioner support in the underlying infrastructure
-- External MariaDB/MySQL database
-- (Optional) External Memcached, Redis, or Dragonfly instance
+- Kubernetes 1.19+
+- Helm 3.2+
+- PV provisioner support in the underlying infrastructure (if persistence is enabled)
 
 ## Quick Start
 
-```console
-helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx \
-  --version 6.9.4-8 \
-  --set externalDatabase.host=mydb.example.com \
-  --set externalDatabase.user=wordpress \
-  --set externalDatabase.password=secret \
-  --set externalDatabase.database=wordpress \
-  --set ingress.enabled=true \
-  --set ingress.hostname=blog.example.com
+```bash
+helm repo add ioanalytica oci://ghcr.io/ioanalytica/charts
+
+helm install my-wordpress ioanalytica/wordpress-nginx
 ```
 
-### Flux CD
+Or install from local source:
 
-```yaml
----
-apiVersion: source.toolkit.fluxcd.io/v1
-kind: HelmRepository
-metadata:
-  name: ioanalytica-public
-  namespace: flux-system
-spec:
-  type: oci
-  interval: 30m
-  url: oci://ghcr.io/ioanalytica/charts
-
----
-apiVersion: helm.toolkit.fluxcd.io/v2
-kind: HelmRelease
-metadata:
-  name: my-wordpress
-  namespace: default
-spec:
-  interval: 24h
-  chart:
-    spec:
-      chart: wordpress-nginx
-      version: "6.9.4-8"
-      sourceRef:
-        kind: HelmRepository
-        name: ioanalytica-public
-        namespace: flux-system
-  values:
-    # see values.yaml for all options
-    externalDatabase:
-      host: mydb.example.com
-      user: wordpress
-      password: secret
-      database: wordpress
+```bash
+helm install my-wordpress ./chart
 ```
-
-## Docker Image
-
-The chart uses a custom WordPress-NGINX image based on [shinsenter/php](https://code.shin.company/php) with PHP-FPM and NGINX on Alpine Linux.
-
-| Registry | Image |
-|---|---|
-| GitHub Container Registry | `ghcr.io/ioanalytica/wordpress-nginx` |
-
-The image includes:
-- WordPress (version tracked in `Chart.yaml` `appVersion`)
-- NGINX with optimised configuration
-- PHP 8.4 with FPM, imagick, memcache, redis extensions
-- WP-CLI
-- Health check endpoint at `/healthz.php`
 
 ## Configuration
 
-The chart is configured identically to the Bitnami WordPress chart. All standard Bitnami WordPress values are supported. Key differences and additions are documented below.
+### WordPress Settings
 
-### Current Limitations
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `wordpressUsername` | WordPress admin username | `user` |
+| `wordpressPassword` | WordPress admin password | random |
+| `wordpressEmail` | WordPress admin email | `user@example.com` |
+| `wordpressBlogName` | Blog name | `User's Blog!` |
+| `wordpressScheme` | URL scheme (`http`/`https`) | `http` |
+| `wordpressSkipInstall` | Skip the installation wizard | `false` |
+| `wordpressConfigureCache` | Auto-configure W3 Total Cache | `false` |
+| `wordpressPlugins` | Plugins to activate (`all`, `none`, or list) | `none` |
 
-The Bitnami sub-charts for MariaDB and Memcached are **not fully ported**. Use external services instead:
+### Database (MariaDB)
+
+The chart can deploy an internal MariaDB instance or connect to an external database.
+
+#### Internal Database (default)
+
+```yaml
+mariadb:
+  enabled: true
+  image: "mariadb:12.2.2-noble"
+  auth:
+    rootPassword: "secretroot"
+    database: wordpress
+    username: wp_user
+    password: "secretpass"
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+    resources: {}
+```
+
+#### External Database
 
 ```yaml
 mariadb:
   enabled: false
 
 externalDatabase:
-  host: mydb.example.com
+  host: db.example.com
   port: 3306
-  user: wordpress
-  password: secret
+  user: wp_user
+  password: "secretpass"
   database: wordpress
 ```
 
-### Caching
+### Cache (Dragonfly)
 
-The chart supports Memcached and Redis for WordPress object caching via [W3 Total Cache](https://wordpress.org/plugins/w3-total-cache/). [Dragonfly](https://www.dragonflydb.io/) can be used as a drop-in replacement for either.
+The chart can deploy an internal [Dragonfly](https://www.dragonflydb.io/) instance (which serves both Redis and Memcached protocols simultaneously) or connect to an external cache server.
 
-#### Memcached / Dragonfly (Memcached protocol)
+#### Internal Cache
 
 ```yaml
+memcached:
+  enabled: true
+  image: "dragonflydb/dragonfly:v1.26.0"
+  password: "cachepass"
+  persistence:
+    enabled: true
+    size: 1Gi
+
 wordpressConfigureCache: true
+externalCache:
+  type: redis  # or memcached - determines which protocol to use
+```
+
+#### External Cache
+
+```yaml
 memcached:
   enabled: false
-externalCache:
-  host: my-memcached.example.com
-  port: 11211
-```
 
-#### Redis / Dragonfly (Redis protocol)
-
-```yaml
-wordpressConfigureCache: true
 externalCache:
-  host: my-redis.example.com
+  type: redis        # or memcached
+  host: redis.example.com
   port: 6379
-```
 
-### Full-Text Search Sidecar (wordpress-idx)
-
-The chart supports the [wordpress-idx](https://github.com/ioanalytica/wordpress-idx) sidecar for full-text search:
-
-```yaml
-idx:
-  enabled: true
-  basePath: /idx
-  startupDelay: 30
-  resourcesPreset: "small"
-```
-
-When enabled:
-- The sidecar runs in the same pod as WordPress
-- Shares the pod's PVC at `/idx` (subPath: `idx`) for persistent index storage
-- Database credentials are derived from the WordPress database configuration
-- Ingress path `/idx` is routed to the sidecar's port 3000
-- NetworkPolicy allows ingress on port 3000
-- Liveness probe on `/healthz`, readiness probe on `/readyz`
-
-Note: On large WordPress sites requires much more RAM than the WordPress instance itself. In case the pod the OOMKilled due to lack of memory, set higher limits.
-
-```yaml
-idx:
-  enabled: true
-  basePath: /idx
-  startupDelay: 30
-resources:
-  requests:
-    memory: "512Mi"
-    cpu: "250m"
-  limits:
-    memory: "4Gi"
-    cpu: "2"
-```
-
-
-### NGINX Configuration
-
-Custom NGINX configuration can be provided:
-
-```yaml
-nginxConfiguration: |
-  # Custom nginx.conf content
-```
-
-Or via an existing ConfigMap:
-
-```yaml
-existingNginxConfigurationConfigMap: my-nginx-config
-```
-
-Additional server block directives:
-
-```yaml
-nginxCustomServerBlockAddition: |
-  location /custom {
-    # ...
-  }
+wordpressConfigureCache: true
 ```
 
 ### Ingress
@@ -201,134 +126,119 @@ nginxCustomServerBlockAddition: |
 ```yaml
 ingress:
   enabled: true
-  hostname: blog.example.com
+  hostname: wordpress.example.com
+  ingressClassName: nginx
   tls: true
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt
+    cert-manager.io/cluster-issuer: letsencrypt-prod
 ```
 
-A secondary ingress is also supported for multi-domain setups.
+A secondary ingress can be configured for `/wp-admin` with separate annotations (e.g., IP restrictions):
 
-### Prometheus Metrics
+```yaml
+secondaryIngress:
+  enabled: true
+  hostname: wordpress.example.com
+  path: /wp-admin
+  annotations:
+    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
+```
+
+### Search Index (wordpress-idx)
+
+An optional FlexSearch-based full-text search sidecar:
+
+```yaml
+idx:
+  enabled: true
+  port: 3000
+  basePath: /idx
+  resourcesPreset: "small"
+```
+
+### Metrics & Monitoring
 
 ```yaml
 metrics:
   enabled: true
+  image:
+    registry: docker.io
+    repository: bitnami/nginx-exporter
+    tag: 1.4.1-debian-12-r5
   serviceMonitor:
     enabled: true
 ```
 
-Deploys an [nginx-exporter](https://github.com/nginx/nginx-prometheus-exporter) sidecar with a `ServiceMonitor` for Prometheus Operator.
+### Resources
 
-## Parameters
+Resources can be set explicitly or via presets:
 
-### Global Parameters
+```yaml
+# Using a preset
+resourcesPreset: "small"  # nano, micro, small, medium, large, xlarge, 2xlarge
 
-| Name | Description | Default |
-|---|---|---|
-| `global.imageRegistry` | Global Docker image registry | `""` |
-| `global.imagePullSecrets` | Global Docker registry secret names | `[]` |
-| `global.defaultStorageClass` | Global default StorageClass | `""` |
+# Or explicit resources (overrides preset)
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    cpu: 1000m
+    memory: 1Gi
+```
 
-### WordPress Image
+| Preset | CPU Request | Memory Request |
+|--------|------------|----------------|
+| nano | 100m | 128Mi |
+| micro | 250m | 256Mi |
+| small | 500m | 512Mi |
+| medium | 500m | 1Gi |
+| large | 1.0 | 2Gi |
+| xlarge | 2.0 | 4Gi |
+| 2xlarge | 4.0 | 8Gi |
 
-| Name | Description | Default |
-|---|---|---|
-| `image.registry` | Image registry | `ghcr.io` |
-| `image.repository` | Image repository | `ioanalytica/wordpress-nginx` |
-| `image.tag` | Image tag | (see `Chart.yaml`) |
-| `image.pullPolicy` | Image pull policy | `Always` |
+### Autoscaling
 
-### WordPress Configuration
+```yaml
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPU: 60
+  targetMemory: 70
+```
 
-| Name | Description | Default |
-|---|---|---|
-| `wordpressUsername` | Admin username | `user` |
-| `wordpressPassword` | Admin password | `""` |
-| `wordpressEmail` | Admin email | `user@example.com` |
-| `wordpressBlogName` | Blog name | `User's Blog!` |
-| `wordpressTablePrefix` | Database table prefix | `wp_` |
-| `wordpressSkipInstall` | Skip installation wizard | `false` |
-| `wordpressConfigureCache` | Enable W3 Total Cache | `false` |
-| `wordpressPlugins` | Plugins to activate | `none` |
+When using multiple replicas, ensure the PVC access mode supports `ReadWriteMany`.
 
-### Database
+### Security Context
 
-| Name | Description | Default |
-|---|---|---|
-| `externalDatabase.host` | Database host | `localhost` |
-| `externalDatabase.port` | Database port | `3306` |
-| `externalDatabase.user` | Database user | `bn_wordpress` |
-| `externalDatabase.password` | Database password | `""` |
-| `externalDatabase.database` | Database name | `bitnami_wordpress` |
+```yaml
+podSecurityContext:
+  enabled: true
+  fsGroup: 1001
 
-### Cache
+containerSecurityContext:
+  enabled: true
+  runAsUser: 1001
+  runAsNonRoot: true
+  readOnlyRootFilesystem: true
+```
 
-| Name | Description | Default |
-|---|---|---|
-| `externalCache.host` | Cache server host | `localhost` |
-| `externalCache.port` | Cache server port | `11211` |
+OpenShift compatibility is handled automatically via `global.compatibility.openshift.adaptSecurityContext`.
 
-### IDX Search Sidecar
+## Upgrading
 
-| Name | Description | Default |
-|---|---|---|
-| `idx.enabled` | Enable wordpress-idx sidecar | `false` |
-| `idx.basePath` | API base path | `/idx` |
-| `idx.startupDelay` | Seconds to wait before DB connection | `0` |
-| `idx.resourcesPreset` | Resource preset | `"small"` |
-| `idx.image.registry` | Sidecar image registry | `ghcr.io` |
-| `idx.image.repository` | Sidecar image repository | `ioanalytica/wordpress-idx` |
-| `idx.image.tag` | Sidecar image tag | `"0.1.6"` |
+### To 6.9.4-9
 
-### Deployment
+Version 6.9.4-9 removes all Bitnami chart dependencies. Key changes:
 
-| Name | Description | Default |
-|---|---|---|
-| `replicaCount` | Number of replicas | `1` |
-| `updateStrategy.type` | Deployment strategy | `RollingUpdate` |
-| `resources` | Container resource requests/limits | `{}` |
-| `resourcesPreset` | Resource preset (nano, small, medium, large) | `micro` |
-
-### Persistence
-
-| Name | Description | Default |
-|---|---|---|
-| `persistence.enabled` | Enable persistence | `true` |
-| `persistence.storageClass` | StorageClass | `""` |
-| `persistence.accessModes` | Access modes | `[ReadWriteOnce]` |
-| `persistence.size` | Volume size | `10Gi` |
-
-### Ingress
-
-| Name | Description | Default |
-|---|---|---|
-| `ingress.enabled` | Enable ingress | `false` |
-| `ingress.hostname` | Default hostname | `wordpress.local` |
-| `ingress.tls` | Enable TLS | `false` |
-| `ingress.annotations` | Ingress annotations | `{}` |
-
-### Metrics
-
-| Name | Description | Default |
-|---|---|---|
-| `metrics.enabled` | Enable Prometheus metrics | `false` |
-| `metrics.serviceMonitor.enabled` | Create ServiceMonitor | `false` |
-
-For the complete list of parameters, refer to `values.yaml`.
-
-## Known Limitations
-
-- NGINX does not process `.htaccess` files. Directory-level configuration must be added via NGINX configuration directives.
-- The Bitnami sub-charts for MariaDB, Memcached, and Redis are included as dependencies but not fully ported. Use external services.
-- When running multiple replicas, WordPress maintenance mode only activates on one replica. Use WP-CLI across all replicas for admin operations.
-
-## Attribution
-
-This chart is derived from the [Bitnami WordPress chart](https://github.com/bitnami/charts/tree/main/bitnami/wordpress) and uses the [Bitnami Common library chart](https://github.com/bitnami/charts/tree/main/bitnami/common). It uses a custom Docker image based on [shinsenter/php](https://code.shin.company/php).
+- **MariaDB**: Now uses a native internal deployment (image: `mariadb:12.2.2-noble`) instead of the Bitnami MariaDB subchart. The `mariadb.image` parameter is new. The `mariadb.architecture` parameter (replication mode) is no longer supported for internal deployments.
+- **Cache**: The `memcached.enabled` key is preserved for backward compatibility. When enabled, it now deploys [Dragonfly](https://www.dragonflydb.io/) (serving both Redis and Memcached protocols) instead of the Bitnami Memcached subchart. New parameters: `memcached.image`, `memcached.password`, `memcached.persistence.*`.
+- **Resource presets**: Still available via `resourcesPreset` but now provided by the `ioanalytica/common` library chart.
+- **Volume permissions**: The `volumePermissions` section has been removed.
+- **Default credentials**: Database defaults changed from `bitnami_wordpress`/`bn_wordpress` to `wordpress`/`wp_user`.
+- **Common chart**: Switched from `bitnami/common` to `ioanalytica/common`.
 
 ## License
 
-Copyright &copy; 2024-2026 [IO ANALYTICA](https://ioanalytica.com).
-
-Licensed under the GNU General Public License v3.0. See [LICENSE](../LICENSE) for details.
+GPL-3.0
