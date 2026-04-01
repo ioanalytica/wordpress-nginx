@@ -1,25 +1,9 @@
-{{/*
-Copyright Broadcom, Inc. All Rights Reserved.
-SPDX-License-Identifier: APACHE-2.0
+{{- /*
+Copyright IO ANALYTICA. All Rights Reserved.
+SPDX-License-Identifier: Apache-2.0
 */}}
 
 {{/* vim: set filetype=mustache: */}}
-
-{{/*
-Create a default fully qualified app name.
-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
-*/}}
-{{- define "wordpress.mariadb.fullname" -}}
-{{- include "common.names.dependency.fullname" (dict "chartName" "mariadb" "chartValues" .Values.mariadb "context" $) -}}
-{{- end -}}
-
-{{/*
-Create a default fully qualified app name.
-We truncate at 63 chars because some Kubernetes name fields are limited to this (by the DNS naming spec).
-*/}}
-{{- define "wordpress.memcached.fullname" -}}
-{{- include "common.names.dependency.fullname" (dict "chartName" "memcached" "chartValues" .Values.memcached "context" $) -}}
-{{- end -}}
 
 {{/*
 Return the proper WordPress image name.
@@ -38,17 +22,10 @@ Return the proper image name (for the metrics image)
 {{- end -}}
 
 {{/*
-Return the proper image name (for the init container volume-permissions image)
-*/}}
-{{- define "wordpress.volumePermissions.image" -}}
-{{- include "common.images.image" ( dict "imageRoot" .Values.volumePermissions.image "global" .Values.global ) -}}
-{{- end -}}
-
-{{/*
 Return the proper Docker Image Registry Secret Names
 */}}
 {{- define "wordpress.imagePullSecrets" -}}
-{{- include "common.images.pullSecrets" (dict "images" (list .Values.image .Values.metrics.image .Values.volumePermissions.image) "global" .Values.global) -}}
+{{- include "common.images.pullSecrets" (dict "images" (list .Values.image .Values.metrics.image) "global" .Values.global) -}}
 {{- end -}}
 
 {{/*
@@ -60,13 +37,6 @@ Return the proper Docker Image Registry Secret Names
 {{- else -}}
     {{ default "default" .Values.serviceAccount.name }}
 {{- end -}}
-{{- end -}}
-
-{{/*
-Create chart name and version as used by the chart label.
-*/}}
-{{- define "wordpress.customHTAccessCM" -}}
-{{- printf "%s" .Values.customHTAccessCM -}}
 {{- end -}}
 
 {{/*
@@ -110,7 +80,7 @@ Return true if a configmap should be created for NGINX configuration
 {{- end -}}
 
 {{/*
-Return the WordPress NGINX server block additon
+Return the WordPress NGINX server block addition
 */}}
 {{- define "wordpress.nginx.serverblockConfigmapName" -}}
 {{- if .Values.existingCustomServerBlockAdditionConfigMap -}}
@@ -121,7 +91,7 @@ Return the WordPress NGINX server block additon
 {{- end -}}
 
 {{/*
-Return true if a configmap should be created for NGINX server block additon
+Return true if a configmap should be created for NGINX server block addition
 */}}
 {{- define "wordpress.nginx.createServerblockConfigmap" -}}
 {{- if and .Values.nginxConfiguration (not .Values.existingNginxConfigurationConfigMap) }}
@@ -134,11 +104,7 @@ Return the MariaDB Hostname
 */}}
 {{- define "wordpress.databaseHost" -}}
 {{- if .Values.mariadb.enabled }}
-    {{- if eq .Values.mariadb.architecture "replication" }}
-        {{- printf "%s-primary" (include "wordpress.mariadb.fullname" .) | trunc 63 | trimSuffix "-" -}}
-    {{- else -}}
-        {{- printf "%s" (include "wordpress.mariadb.fullname" .) -}}
-    {{- end -}}
+    {{- printf "%s-mariadb" (include "common.names.fullname" .) -}}
 {{- else -}}
     {{- printf "%s" .Values.externalDatabase.host -}}
 {{- end -}}
@@ -160,11 +126,7 @@ Return the MariaDB Host:Port
 */}}
 {{- define "wordpress.databaseFullHost" -}}
 {{- if .Values.mariadb.enabled }}
-    {{- if eq .Values.mariadb.architecture "replication" }}
-        {{- printf "%s-primary:3306" (include "wordpress.mariadb.fullname" .) | trunc 63 | trimSuffix "-" -}}
-    {{- else -}}
-        {{- printf "%s:%d" (include "wordpress.mariadb.fullname" .) (.Values.externalDatabase.port | int )  -}}
-    {{- end -}}
+    {{- printf "%s-mariadb:3306" (include "common.names.fullname" .) -}}
 {{- else -}}
     {{- printf "%s:%d" .Values.externalDatabase.host (.Values.externalDatabase.port | int ) -}}
 {{- end -}}
@@ -197,21 +159,20 @@ Return the MariaDB charset
 */}}
 {{- define "wordpress.databaseCharset" -}}
 {{- if .Values.mariadb.enabled }}
-    {{- printf "%s" .Values.mariadb.charset -}}
+    {{- printf "%s" (.Values.mariadb.databaseCharset | default "utf8mb4") -}}
 {{- else -}}
-    {{- printf "%s" ( default "utf8mb4" .Values.externalDatabase.charset ) -}}
+    {{- printf "%s" ( default "utf8mb4" .Values.externalDatabase.databaseCharset ) -}}
 {{- end -}}
 {{- end -}}
 
 {{/*
-
 Return the MariaDB collation
 */}}
 {{- define "wordpress.databaseCollation" -}}
 {{- if .Values.mariadb.enabled }}
-    {{- printf "%s" .Values.mariadb.collation -}}
+    {{- printf "%s" (.Values.mariadb.databaseCollation | default "") -}}
 {{- else -}}
-    {{- printf "%s" ( default "" .Values.externalDatabase.collation ) -}}
+    {{- printf "%s" ( default "" .Values.externalDatabase.databaseCollation ) -}}
 {{- end -}}
 {{- end -}}
 
@@ -223,7 +184,7 @@ Return the MariaDB Secret Name
     {{- if .Values.mariadb.auth.existingSecret -}}
         {{- printf "%s" .Values.mariadb.auth.existingSecret -}}
     {{- else -}}
-        {{- printf "%s" (include "wordpress.mariadb.fullname" .) -}}
+        {{- printf "%s" (include "common.names.fullname" .) -}}
     {{- end -}}
 {{- else if .Values.externalDatabase.existingSecret -}}
     {{- include "common.tplvalues.render" (dict "value" .Values.externalDatabase.existingSecret "context" $) -}}
@@ -239,7 +200,7 @@ Return the cache hostname
 {{- if .Values.memcached.enabled }}
     {{- $releaseNamespace := .Release.Namespace }}
     {{- $clusterDomain := .Values.clusterDomain }}
-    {{- printf "%s.%s.svc.%s" (include "wordpress.memcached.fullname" .) $releaseNamespace $clusterDomain -}}
+    {{- printf "%s-cache.%s.svc.%s" (include "common.names.fullname" .) $releaseNamespace $clusterDomain -}}
 {{- else -}}
     {{- printf "%s" .Values.externalCache.host -}}
 {{- end -}}
@@ -250,7 +211,11 @@ Return the cache port
 */}}
 {{- define "wordpress.cachePort" -}}
 {{- if .Values.memcached.enabled }}
-    {{- printf "11211" -}}
+    {{- if eq .Values.externalCache.type "redis" -}}
+        {{- printf "6379" -}}
+    {{- else -}}
+        {{- printf "11211" -}}
+    {{- end -}}
 {{- else -}}
     {{- printf "%d" (.Values.externalCache.port | int ) -}}
 {{- end -}}
@@ -260,15 +225,11 @@ Return the cache port
 Return and validate the cache type
 */}}
 {{- define "wordpress.cacheType" -}}
-{{- if .Values.memcached.enabled }}
-    {{- printf "memcached" -}}
-{{- else -}}
-    {{- $validCacheTypes := list "memcached" "redis" -}}
-    {{- if not (has .Values.externalCache.type $validCacheTypes) -}}
-        {{- fail (printf "externalCache.type must be one of %v" $validCacheTypes) -}}
-    {{- end -}}
-    {{- printf "%s" .Values.externalCache.type -}}
+{{- $validCacheTypes := list "memcached" "redis" -}}
+{{- if not (has .Values.externalCache.type $validCacheTypes) -}}
+    {{- fail (printf "externalCache.type must be one of %v" $validCacheTypes) -}}
 {{- end -}}
+{{- printf "%s" .Values.externalCache.type -}}
 {{- end -}}
 
 {{/*
@@ -343,7 +304,7 @@ wordpress: wordpressConfiguration
 {{- define "wordpress.validateValues.database" -}}
 {{- if and (not .Values.mariadb.enabled) (or (empty .Values.externalDatabase.host) (empty .Values.externalDatabase.port) (empty .Values.externalDatabase.database)) -}}
 wordpress: database
-   You disable the MariaDB installation but you did not provide the required parameters
+   You disabled the MariaDB installation but you did not provide the required parameters
    to use an external database. To use an external database, please ensure you provide
    (at least) the following values:
 
@@ -357,9 +318,9 @@ wordpress: database
 {{- define "wordpress.validateValues.cache" -}}
 {{- if and .Values.wordpressConfigureCache (not .Values.memcached.enabled) (or (empty .Values.externalCache.host) (empty .Values.externalCache.port)) -}}
 wordpress: cache
-   You enabled cache via W3 Total Cache without but you did not enable the Memcached
-   installation nor you did provided the required parameters to use an external cache server.
-   Please enable the Memcached installation (--set memcached.enabled=true) or
+   You enabled cache via W3 Total Cache but you did not enable the internal cache server
+   nor did you provide the required parameters to use an external cache server.
+   Please enable the internal cache (--set memcached.enabled=true) or
    provide the external cache server values:
 
        externalCache.host=CACHE_SERVER_HOST

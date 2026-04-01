@@ -5,3 +5,5 @@
 !.dockerignore
 !.github
 wordpress-nginx-*.tgz
+chart/charts/
+chart/Chart.lock
