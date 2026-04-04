@@ -1,5 +1,9 @@
 # Changelog
 
+## 6.9.4-11
+
+* Update wordpress-idx image to 0.1.9
+
 ## 6.9.4-5
 
 * Migrate to GitHub and ghcr.io

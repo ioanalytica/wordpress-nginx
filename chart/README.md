@@ -228,6 +228,11 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 
 ## Upgrading
 
+### To 6.9.4-11
+
+Updates the default wordpress-idx image to `0.1.9`.
+No values changes required.
+
 ### To 6.9.4-10
 
 Fixes the image tag alignment: chart version and image tag are now kept in sync (`6.9.4-10`).
