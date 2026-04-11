@@ -1,5 +1,9 @@
 # Changelog
 
+## 6.9.4-12
+
+* Update wordpress-idx image to 0.1.10
+
 ## 6.9.4-11
 
 * Update wordpress-idx image to 0.1.9

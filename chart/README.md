@@ -228,6 +228,11 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 
 ## Upgrading
 
+### To 6.9.4-12
+
+Updates the default wordpress-idx image to `0.1.10`.
+No values changes required.
+
 ### To 6.9.4-11
 
 Updates the default wordpress-idx image to `0.1.9`.
