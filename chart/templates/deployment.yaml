@@ -418,6 +418,12 @@ spec:
             - mountPath: /etc/hook/application/zz-custom-postinit
               name: custom-postinit
             {{- end }}
+            {{- if or .Values.nginxCustomServerBlockAddition .Values.existingCustomServerBlockAdditionConfigMap }}
+            - name: nginx-serverblock-addition
+              mountPath: /etc/nginx/custom.d/01_userconfig.conf
+              subPath: 01_userconfig.conf
+              readOnly: true
+            {{- end }}
             {{- if .Values.extraVolumeMounts }}
             {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumeMounts "context" $) | nindent 12 }}
             {{- end }}

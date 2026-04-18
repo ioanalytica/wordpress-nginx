@@ -1,5 +1,11 @@
 # Changelog
 
+## 6.9.4-13
+
+* Remove overly restrictive nginx method allow-list (`if ($request_method !~ ^(GET|HEAD|POST)$) { return 444; }`) that broke the WordPress REST API for `OPTIONS`, `PUT`, `DELETE`, `PATCH` — these are required by the Gutenberg block editor and other REST API clients.
+* Fix `nginxCustomServerBlockAddition` / `existingCustomServerBlockAdditionConfigMap`: the ConfigMap volume was declared in the Deployment but never mounted into the nginx container, so any user-supplied server-block content was silently ignored. The ConfigMap is now mounted at `/etc/nginx/custom.d/01_userconfig.conf` via `subPath` so the image's baked-in `02-userconfig.conf` remains visible.
+* Document in `values.yaml` that `existingCustomServerBlockAdditionConfigMap` must expose its content under the key `01_userconfig.conf`.
+
 ## 6.9.4-12
 
 * Update wordpress-idx image to 0.1.10
