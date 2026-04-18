@@ -171,10 +171,16 @@ nginxConfiguration: ""
 ##
 existingNginxConfigurationConfigMap: ""
 ## @param nginxCustomServerBlockAddition Additional content that's being added to all NGINX server blocks
+## The content is projected into the nginx container as `/etc/nginx/custom.d/01_userconfig.conf`
+## and included via the existing `custom.d/*.conf` glob. It loads *before* the image's baked-in
+## `02-userconfig.conf`, so directives here can set defaults that the image config can still override.
 ##
 nginxCustomServerBlockAddition: ""
 ## @param existingCustomServerBlockAdditionConfigMap The name of an existing configmap with content that's being added to all NGINX server blocks
-## NOTE: When it's set the `nginxCustomServerBlockAddition` parameter is ignored
+## NOTE: When it's set the `nginxCustomServerBlockAddition` parameter is ignored.
+## NOTE: The ConfigMap MUST expose its content under the key `01_userconfig.conf` — that exact
+## filename is used as the `subPath` when mounting into the nginx container, so any other key will
+## not be visible to nginx.
 ##
 existingCustomServerBlockAdditionConfigMap: ""
 ## @param customPostInitScripts Custom post-init.d user scripts

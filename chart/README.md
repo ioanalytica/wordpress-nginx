@@ -228,6 +228,15 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 
 ## Upgrading
 
+### To 6.9.4-13
+
+Two nginx behavior fixes:
+
+- Removes an overly restrictive method allow-list in the image's nginx config that returned `444` (TCP RST) for any method outside `GET` / `HEAD` / `POST`. This silently broke the WordPress REST API for `OPTIONS` (capability discovery + CORS preflights), `PUT`, `DELETE`, and `PATCH` — methods the Gutenberg block editor and most REST clients rely on. After upgrading, all HTTP methods reach PHP-FPM, and WordPress handles unsupported methods itself with proper `405 Method Not Allowed` responses.
+- Fixes a dead `volumeMount` so that `nginxCustomServerBlockAddition` / `existingCustomServerBlockAdditionConfigMap` actually take effect. Previously the ConfigMap volume was declared in the Deployment but never mounted, so user-supplied server-block additions were ignored.
+
+No values changes are required. If you use `existingCustomServerBlockAdditionConfigMap`, ensure the ConfigMap exposes its content under the key `01_userconfig.conf`.
+
 ### To 6.9.4-12
 
 Updates the default wordpress-idx image to `0.1.10`.
