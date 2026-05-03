@@ -1,5 +1,9 @@
 # Changelog
 
+## 6.9.4-14
+
+* Maintenance release: rebuild image to address CVEs.
+
 ## 6.9.4-13
 
 * Remove overly restrictive nginx method allow-list (`if ($request_method !~ ^(GET|HEAD|POST)$) { return 444; }`) that broke the WordPress REST API for `OPTIONS`, `PUT`, `DELETE`, `PATCH` — these are required by the Gutenberg block editor and other REST API clients.

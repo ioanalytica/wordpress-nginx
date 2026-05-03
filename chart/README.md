@@ -228,6 +228,11 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 
 ## Upgrading
 
+### To 6.9.4-14
+
+Maintenance release: rebuilds the wordpress-nginx image to pick up upstream package updates and address CVEs.
+No values changes required.
+
 ### To 6.9.4-13
 
 Two nginx behavior fixes:
