@@ -1,5 +1,9 @@
 # Changelog
 
+## 6.9.4-15
+
+* Maintenance release: rebuild image to address CVEs.
+
 ## 6.9.4-14
 
 * Maintenance release: rebuild image to address CVEs.
