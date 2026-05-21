@@ -228,6 +228,10 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 
 ## Upgrading
 
+### To 7.0.0-1
+
+Updates WordPress to 7.0.0. Review the [WordPress 7.0 release notes](https://wordpress.org/news/) for breaking changes before upgrading. No chart values changes required.
+
 ### To 6.9.4-15
 
 Maintenance release: rebuilds the wordpress-nginx image to pick up upstream package updates and address CVEs.

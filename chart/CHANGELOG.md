@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.0.0-1
+
+* Update to WordPress 7.0.0.
+
 ## 6.9.4-15
 
 * Maintenance release: rebuild image to address CVEs.

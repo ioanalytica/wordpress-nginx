@@ -12,7 +12,7 @@ ARG DEBUG
 
 FROM shinsenter/php:${PHP_VERSION}-fpm-nginx-alpine
 
-ENV WP_VERSION=6.9.4
+ENV WP_VERSION=7.0
 
 # Enable SBOM attestations
 # See: https://docs.docker.com/build/attestations/sbom/
