@@ -1,0 +1,74 @@
+{{- /*
+Copyright IO ANALYTICA. All Rights Reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Path-preserving redirect for ingress.ingressClassName in
+["nginx-traefik", "traefik"].
+
+Both presume Traefik is present in the cluster (nginx-traefik is the
+bridge provider that runs inside Traefik); the IngressRoute itself
+declares `ingressClassName: traefik` (the native kubernetesCRD provider),
+independent of which provider serves the primary Ingress.
+
+Emits:
+  - kind:Middleware (RedirectRegex with capture group → preserves request
+    path and query string)
+  - kind:IngressRoute (host match across all .Values.redirect.hosts,
+    references the middleware, uses Traefik's built-in noop@internal
+    service since RedirectRegex terminates with 308 before any backend
+    lookup)
+
+TLS cert: see certificate-redirect.yaml. cert-manager's ingress-shim does
+NOT watch IngressRoute, so when the redirect needs a cert-manager-issued
+cert, an explicit kind:Certificate is emitted alongside.
+
+Source-verified against Traefik v3.7:
+  - noop@internal is a built-in handler returning HTTP 418 (never reached
+    because RedirectRegex 308 terminates first).
+  - crossProviderNamespaces defaults to nil → noop@internal references
+    are allowed from any namespace.
+  - spec.ingressClassName is the canonical form since v3.7 (replaces the
+    deprecated kubernetes.io/ingress.class annotation).
+*/}}
+{{- if and .Values.redirect.enabled (or (eq .Values.ingress.ingressClassName "nginx-traefik") (eq .Values.ingress.ingressClassName "traefik")) }}
+{{- if not .Values.redirect.targetUrl }}
+{{- fail "redirect.targetUrl is required when redirect.enabled is true" }}
+{{- end }}
+{{- if not .Values.redirect.hosts }}
+{{- fail "redirect.hosts must not be empty when redirect.enabled is true" }}
+{{- end }}
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: {{ include "wordpress.redirect.middlewareName" . }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" (dict "customLabels" .Values.commonLabels "context" $) | nindent 4 }}
+spec:
+  redirectRegex:
+    regex: "^https?://[^/]+(/.*)?$"
+    replacement: "{{ .Values.redirect.targetUrl }}${1}"
+    permanent: true   ## → 308 (RFC 7538), preserves HTTP method
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: {{ include "common.names.fullname" . }}-redirect
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" (dict "customLabels" .Values.commonLabels "context" $) | nindent 4 }}
+spec:
+  ingressClassName: traefik
+  entryPoints:
+    - websecure
+  routes:
+    - match: {{ range $i, $h := .Values.redirect.hosts }}{{ if $i }} || {{ end }}Host(`{{ $h }}`){{ end }}
+      kind: Rule
+      middlewares:
+        - name: {{ include "wordpress.redirect.middlewareName" . }}
+      services:
+        - kind: TraefikService
+          name: noop@internal
+  {{- with (first .Values.redirect.tls) }}
+  tls:
+    secretName: {{ .secretName | quote }}
+  {{- end }}
+{{- end }}

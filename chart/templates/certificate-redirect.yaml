@@ -1,0 +1,43 @@
+{{- /*
+Copyright IO ANALYTICA. All Rights Reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Certificate CR for the redirect IngressRoute (ingress.ingressClassName in
+["nginx-traefik", "traefik"]). cert-manager's ingress-shim does not watch
+IngressRoute resources, so when the user wants a cert-manager-issued cert
+for the redirect, we emit an explicit Certificate referencing the
+cluster-issuer named in
+redirect.annotations["cert-manager.io/cluster-issuer"].
+
+This Cert is FREE-STANDING (no ownerReferences) — independent of any
+Ingress lifecycle, survives chart upgrades, can be deleted only by
+removing it from the chart values. The wp-main-site Cert is still
+ingress-shim-managed via the primary Ingress; only the redirect Cert is
+chart-emitted.
+
+Skipped if:
+  - redirect is disabled
+  - ingress.ingressClassName is "nginx" (the nginx form has its own
+    cert-shim-driven Ingress in ingress-redirect.yaml)
+  - no cert-manager.io/cluster-issuer annotation is set (user is expected
+    to provide an existing secret in redirect.tls[].secretName)
+  - redirect.tls is empty (no secret to target)
+*/}}
+{{- $issuer := include "wordpress.redirect.clusterIssuer" . -}}
+{{- if and .Values.redirect.enabled (or (eq .Values.ingress.ingressClassName "nginx-traefik") (eq .Values.ingress.ingressClassName "traefik")) $issuer (gt (len .Values.redirect.tls) 0) }}
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: {{ include "common.names.fullname" . }}-redirect
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" (dict "customLabels" .Values.commonLabels "context" $) | nindent 4 }}
+spec:
+  secretName: {{ (first .Values.redirect.tls).secretName | quote }}
+  issuerRef:
+    name: {{ $issuer | quote }}
+    kind: ClusterIssuer
+  dnsNames:
+    {{- range .Values.redirect.hosts }}
+    - {{ . | quote }}
+    {{- end }}
+{{- end }}

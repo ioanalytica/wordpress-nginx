@@ -3,7 +3,7 @@
 
 apiVersion: v2
 name: wordpress-nginx
-version: 7.0.0-1
+version: 7.0.0-2
 appVersion: 7.0.0
 
 description: >-

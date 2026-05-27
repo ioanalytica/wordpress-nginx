@@ -133,6 +133,24 @@ ingress:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 ```
 
+#### Supported `ingressClassName` values
+
+Since **7.0.0-2** the chart renders correctly under all three values
+relevant for the nginx → Traefik migration arc:
+
+| Class | Served by | nginx-style annotations | Use when |
+| --- | --- | --- | --- |
+| `nginx` | `rke2-ingress-nginx` / upstream ingress-nginx | interpreted natively | legacy path, nginx-ingress is your only controller |
+| `nginx-traefik` | Traefik `kubernetesIngressNGINX` bridge provider | **translated** on the fly (proxy-body-size, whitelist-source-range, auth-url, backend-protocol, cors-*, …) | transition — same `kind:Ingress` manifest, swap controllers without touching annotations |
+| `traefik` | Traefik native `kubernetesIngress` provider | **silently ignored** | steady state — manage behaviour via `traefik.ingress.kubernetes.io/router.middlewares: …` annotations and Middleware CRDs |
+
+The chart itself emits no `nginx.ingress.kubernetes.io/*` annotations
+on the primary Ingress; everything in `ingress.annotations` and
+top-level `commonAnnotations` is the user's responsibility. Under
+`traefik` the user is expected to attach a middleware chain (e.g. body
+size limit, IP allowlist, forward auth) via the standard Traefik
+annotation rather than expecting the chart to translate.
+
 A secondary ingress can be configured for `/wp-admin` with separate annotations (e.g., IP restrictions):
 
 ```yaml
@@ -143,6 +161,69 @@ secondaryIngress:
   annotations:
     nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
 ```
+
+#### Redirects (vanity / backup domains, www variants)
+
+The `redirect:` block emits a permanent redirect from a list of source
+hostnames to a single `targetUrl`. Works across all three supported
+IngressClasses (`nginx`, `nginx-traefik`, `traefik`) — the chart picks
+the right resource shape per class automatically (an Ingress with the
+`permanent-redirect` annotation on `nginx`, a Middleware +
+IngressRoute + optional Certificate on the Traefik variants).
+
+Example: apex `example.com` is the primary site; `example.org`,
+`example.net`, and the `www.` variants of each should all redirect to
+`https://example.com`:
+
+```yaml
+ingress:
+  enabled: true
+  hostname: example.com
+  ingressClassName: traefik   # or nginx-traefik / nginx
+  tls: true
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+
+redirect:
+  enabled: true
+  targetUrl: https://example.com
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  hosts:
+    - example.org
+    - example.net
+    - www.example.org
+    - www.example.net
+  tls:
+    - hosts:
+        - example.org
+        - example.net
+        - www.example.org
+        - www.example.net
+      secretName: example-aliases-tls
+```
+
+**Path preservation differs by class**:
+
+| Class | Resource emitted | Path-preserving? | Notes |
+| --- | --- | --- | --- |
+| `nginx` | `kind:Ingress` with `nginx.ingress.kubernetes.io/permanent-redirect` | **No** | Annotation issues a static-target 308; path is dropped. `https://www.example.org/foo?x=1` → `https://example.com/` |
+| `nginx-traefik` | `kind:Middleware` (`redirectRegex` with capture group) + `kind:IngressRoute` (the IngressRoute itself sets `ingressClassName: traefik` regardless of the primary's class — only the chart's main Ingress goes through the bridge provider) | **Yes** | `https://www.example.org/foo?x=1` → `https://example.com/foo?x=1` |
+| `traefik` | identical to `nginx-traefik` (the IngressRoute / Middleware shape is the same) | **Yes** | same as above |
+
+When a cert-manager `cluster-issuer` annotation is set on the
+`redirect:` block, the chart additionally emits a free-standing
+`kind:Certificate` for the redirect hosts (cert-manager's ingress-shim
+doesn't watch IngressRoute resources). The Certificate is owned only
+by the Helm release — independent of any Ingress lifecycle, survives
+chart upgrades.
+
+> **Retired in 7.0.0-2**: the bitnami-compatible
+> `nginx.ingress.kubernetes.io/from-to-www-redirect: "true"` annotation
+> is no longer honoured. Use `redirect:` for the actual redirect
+> (works on every class, supports arbitrary host lists, path-preserving
+> on Traefik), and set `ingress.tlsWwwPrefix: true` separately when the
+> primary cert should also cover the `www.` variant.
 
 ### Search Index (wordpress-idx)
 
@@ -227,6 +308,31 @@ containerSecurityContext:
 OpenShift compatibility is handled automatically via `global.compatibility.openshift.adaptSecurityContext`.
 
 ## Upgrading
+
+### To 7.0.0-2
+
+* **First-class Traefik support**: `ingress.ingressClassName: traefik`
+  is now a fully supported steady-state value alongside `nginx` and
+  `nginx-traefik`. See "Supported `ingressClassName` values" in the
+  Ingress section for the per-class behaviour matrix (which provider
+  serves the Ingress, whether nginx-style annotations are translated,
+  silently ignored, or interpreted natively).
+
+* **New**: `redirect:` values block (see Ingress → Redirects section
+  above). Backwards-compatible — opt-in, defaults to disabled. Renders
+  a `kind:Ingress` on `nginx` and a `kind:Middleware` +
+  `kind:IngressRoute` (+ optional `kind:Certificate`) on
+  `nginx-traefik` / `traefik`. **Note**: the `nginx`-path redirect
+  drops the request path (annotation limitation); the Traefik-path
+  redirect preserves it (`redirectRegex` with capture group).
+
+* **Breaking**: the bitnami-compatible
+  `nginx.ingress.kubernetes.io/from-to-www-redirect: "true"` annotation
+  is no longer honoured. If you relied on it for cert expansion only,
+  set `ingress.tlsWwwPrefix: true` (or
+  `secondaryIngress.tlsWwwPrefix: true`). If you relied on it for the
+  actual www-magic redirect, declare the redirect explicitly via the
+  new `redirect:` block.
 
 ### To 7.0.0-1
 

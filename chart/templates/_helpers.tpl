@@ -275,6 +275,69 @@ Return the idx reindex API key secret name
 {{- end -}}
 
 {{/*
+Validate ingress.ingressClassName when redirect is enabled. Must be one
+of: nginx, nginx-traefik, traefik. Empty fails.
+
+Class semantics for the REDIRECT:
+  - nginx:
+      Renders kind:Ingress with the `permanent-redirect` annotation.
+      Served by rke2-ingress-nginx, drops the request path
+      (nginx-ingress limitation, no path-preservation mechanism).
+  - nginx-traefik, traefik:
+      Both presume Traefik is present. The redirect is rendered as
+      kind:Middleware (RedirectRegex with capture group) +
+      kind:IngressRoute (uses ingressClassName: traefik, independent of
+      the primary's class) + optional kind:Certificate. Path preserved.
+
+      Pick nginx-traefik over traefik when the PRIMARY ingress needs the
+      bridge provider to translate nginx-style annotations during
+      migration; the redirect is identical between the two.
+
+Usage: {{ include "wordpress.ingress.validateClass" . }}
+*/}}
+{{- define "wordpress.ingress.validateClass" -}}
+{{- $allowed := list "nginx" "nginx-traefik" "traefik" -}}
+{{- $cls := .Values.ingress.ingressClassName | default "" -}}
+{{- if not (has $cls $allowed) -}}
+{{- fail (printf "ingress.ingressClassName is required when redirect.enabled and must be one of %v; got %q" $allowed $cls) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Merged annotation map for the redirect Ingress (ingressClassName=nginx
+path only): commonAnnotations + auto-injected permanent-redirect +
+redirect.annotations. The IngressRoute path doesn't use annotations.
+Usage: {{ include "wordpress.ingress.redirectAnnotations" . }}
+*/}}
+{{- define "wordpress.ingress.redirectAnnotations" -}}
+{{- $base := default (dict) .Values.commonAnnotations -}}
+{{- $auto := dict "nginx.ingress.kubernetes.io/permanent-redirect" .Values.redirect.targetUrl -}}
+{{- $extra := default (dict) .Values.redirect.annotations -}}
+{{- mergeOverwrite (deepCopy $base) $auto $extra | toYaml -}}
+{{- end -}}
+
+{{/*
+Name of the redirect Middleware (traefik path). Used by both the
+Middleware itself and the IngressRoute's middlewares reference.
+Usage: {{ include "wordpress.redirect.middlewareName" . }}
+*/}}
+{{- define "wordpress.redirect.middlewareName" -}}
+{{- printf "%s-redirect-preserve-path" (include "common.names.fullname" .) -}}
+{{- end -}}
+
+{{/*
+Returns the cluster-issuer name from redirect.annotations, or empty
+string. Used to decide whether to emit a Certificate CR for the redirect
+(traefik path). cert-manager's ingress-shim doesn't watch IngressRoute,
+so for the traefik form we have to emit a standalone Certificate to get
+a cert-manager-issued cert.
+Usage: {{ include "wordpress.redirect.clusterIssuer" . }}
+*/}}
+{{- define "wordpress.redirect.clusterIssuer" -}}
+{{- index (default (dict) .Values.redirect.annotations) "cert-manager.io/cluster-issuer" | default "" -}}
+{{- end -}}
+
+{{/*
 Compile all warnings into a single message.
 */}}
 {{- define "wordpress.validateValues" -}}

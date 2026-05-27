@@ -1,0 +1,48 @@
+{{- /*
+Copyright IO ANALYTICA. All Rights Reserved.
+SPDX-License-Identifier: Apache-2.0
+
+Optional redirect Ingress — ONLY rendered for ingress.ingressClassName == "nginx"
+(rke2-ingress-nginx, no Traefik present).
+
+For className "nginx-traefik" and "traefik" the redirect is rendered as
+Middleware + IngressRoute (path-preserving) in
+ingressroute-redirect.yaml. Both presume Traefik is present in the
+cluster, so the path-preserving form is always available there.
+
+Every host in .Values.redirect.hosts is sent a permanent redirect to
+.Values.redirect.targetUrl. A single Ingress is used so all redirect hosts
+share one TLS list (and thus one cert-manager request). The redirect drops
+the request path — limitation of the `permanent-redirect` annotation in
+nginx-ingress.
+*/}}
+{{- if .Values.redirect.enabled }}
+{{- include "wordpress.ingress.validateClass" . }}
+{{- if not .Values.redirect.targetUrl }}
+{{- fail "redirect.targetUrl is required when redirect.enabled is true" }}
+{{- end }}
+{{- if not .Values.redirect.hosts }}
+{{- fail "redirect.hosts must not be empty when redirect.enabled is true" }}
+{{- end }}
+{{- if eq .Values.ingress.ingressClassName "nginx" }}
+apiVersion: {{ include "common.capabilities.ingress.apiVersion" . }}
+kind: Ingress
+metadata:
+  name: {{ include "common.names.fullname" . }}-redirect
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" (dict "customLabels" .Values.commonLabels "context" $) | nindent 4 }}
+  annotations:
+    {{- include "common.tplvalues.render" (dict "value" (include "wordpress.ingress.redirectAnnotations" . | fromYaml) "context" $) | nindent 4 }}
+spec:
+  {{- if and .Values.ingress.ingressClassName (eq "true" (include "common.ingress.supportsIngressClassname" .)) }}
+  ingressClassName: {{ .Values.ingress.ingressClassName | quote }}
+  {{- end }}
+  rules:
+    {{- range .Values.redirect.hosts }}
+    - host: {{ . | quote }}
+    {{- end }}
+  {{- with .Values.redirect.tls }}
+  tls: {{- include "common.tplvalues.render" (dict "value" . "context" $) | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
