@@ -2,6 +2,12 @@
 
 ## 7.0.0-2
 
+* **Maintenance**: `imageTag` / `idxImageTag` annotations bumped in
+  lockstep with the chart version (chart convention is that the
+  application image tag and the chart version always match). For this
+  release the image content is unchanged from 7.0.0-1 — a rebuild +
+  retag is required as part of the release pipeline.
+
 * **First-class Traefik support**. The chart's primary Ingress now
   renders correctly under all three supported values of
   `ingress.ingressClassName`:
@@ -37,6 +43,11 @@
   any set of source hostnames in one declaration — vanity domains,
   backup TLDs, multiple www variants. See the README "Redirects"
   section for an example covering apex + www across multiple TLDs.
+
+  All chart-emitted redirect resources (Ingress on `nginx`; Middleware
+  + IngressRoute + Certificate on `nginx-traefik`/`traefik`) inherit
+  the top-level `commonAnnotations` and the `redirect.annotations`
+  overrides — same convention as the primary Ingress.
 
   **Path preservation matrix** (different by design):
   - `nginx`: redirect **drops** the request path. Limitation of

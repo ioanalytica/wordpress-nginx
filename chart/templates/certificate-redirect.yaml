@@ -31,6 +31,9 @@ metadata:
   name: {{ include "common.names.fullname" . }}-redirect
   namespace: {{ include "common.names.namespace" . | quote }}
   labels: {{- include "common.labels.standard" (dict "customLabels" .Values.commonLabels "context" $) | nindent 4 }}
+  {{- if or .Values.commonAnnotations .Values.redirect.annotations }}
+  annotations: {{- include "common.tplvalues.render" (dict "value" (include "wordpress.redirect.traefikAnnotations" . | fromYaml) "context" $) | nindent 4 }}
+  {{- end }}
 spec:
   secretName: {{ (first .Values.redirect.tls).secretName | quote }}
   issuerRef:

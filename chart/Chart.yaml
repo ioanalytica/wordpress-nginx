@@ -33,11 +33,11 @@ annotations:
   category: CMS
   licenses: Apache-2.0
   # NOTE: The WordPress application deployed by this chart is GPL-2.0+.
-  imageTag: "7.0.0-1"
+  imageTag: "7.0.0-2"
   idxImageTag: "0.1.10"
   images: |
     - name: wordpress-nginx
-      image: ghcr.io/ioanalytica/wordpress-nginx:7.0.0-1
+      image: ghcr.io/ioanalytica/wordpress-nginx:7.0.0-2
     - name: wordpress-idx
       image: ghcr.io/ioanalytica/wordpress-idx:0.1.10
 
