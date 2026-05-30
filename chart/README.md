@@ -309,6 +309,8 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 
 ## Upgrading
 
+Only releases that require operator action are documented here. For the full release history (including routine maintenance / CVE rebuilds), see [CHANGELOG.md](./CHANGELOG.md).
+
 ### To 7.0.0-2
 
 * **First-class Traefik support**: `ingress.ingressClassName: traefik`
@@ -338,16 +340,6 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 
 Updates WordPress to 7.0.0. Review the [WordPress 7.0 release notes](https://wordpress.org/news/) for breaking changes before upgrading. No chart values changes required.
 
-### To 6.9.4-15
-
-Maintenance release: rebuilds the wordpress-nginx image to pick up upstream package updates and address CVEs.
-No values changes required.
-
-### To 6.9.4-14
-
-Maintenance release: rebuilds the wordpress-nginx image to pick up upstream package updates and address CVEs.
-No values changes required.
-
 ### To 6.9.4-13
 
 Two nginx behavior fixes:
@@ -356,21 +348,6 @@ Two nginx behavior fixes:
 - Fixes a dead `volumeMount` so that `nginxCustomServerBlockAddition` / `existingCustomServerBlockAdditionConfigMap` actually take effect. Previously the ConfigMap volume was declared in the Deployment but never mounted, so user-supplied server-block additions were ignored.
 
 No values changes are required. If you use `existingCustomServerBlockAdditionConfigMap`, ensure the ConfigMap exposes its content under the key `01_userconfig.conf`.
-
-### To 6.9.4-12
-
-Updates the default wordpress-idx image to `0.1.10`.
-No values changes required.
-
-### To 6.9.4-11
-
-Updates the default wordpress-idx image to `0.1.9`.
-No values changes required.
-
-### To 6.9.4-10
-
-Fixes the image tag alignment: chart version and image tag are now kept in sync (`6.9.4-10`).
-No values changes required.
 
 ### To 6.9.4-9
 

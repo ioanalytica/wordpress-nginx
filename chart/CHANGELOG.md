@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.0.0-3
+
+* Maintenance release: rebuild image to address CVEs.
+
 ## 7.0.0-2
 
 * **Maintenance**: `imageTag` / `idxImageTag` annotations bumped in
