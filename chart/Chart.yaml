@@ -3,7 +3,7 @@
 
 apiVersion: v2
 name: wordpress-nginx
-version: 7.0.0-5
+version: 7.0.0-6
 appVersion: 7.0.0
 
 description: >-
@@ -33,13 +33,13 @@ annotations:
   category: CMS
   licenses: Apache-2.0
   # NOTE: The WordPress application deployed by this chart is GPL-2.0+.
-  imageTag: "7.0.0-5"
-  idxImageTag: "0.1.10"
+  imageTag: "7.0.0-6"
+  idxImageTag: "0.1.11"
   images: |
     - name: wordpress-nginx
-      image: ghcr.io/ioanalytica/wordpress-nginx:7.0.0-5
+      image: ghcr.io/ioanalytica/wordpress-nginx:7.0.0-6
     - name: wordpress-idx
-      image: ghcr.io/ioanalytica/wordpress-idx:0.1.10
+      image: ghcr.io/ioanalytica/wordpress-idx:0.1.11
 
 dependencies:
 - name: common

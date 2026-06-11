@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.0.0-6
+
+* Maintenance release: update wordpress-idx image to 0.1.11 to address CVEs.
+
 ## 7.0.0-5
 
 * Maintenance release: rebuild image to address CVEs in base images.
