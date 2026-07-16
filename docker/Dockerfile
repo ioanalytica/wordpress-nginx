@@ -14,6 +14,22 @@ FROM shinsenter/php:${PHP_VERSION}-fpm-nginx-alpine
 
 ENV WP_VERSION=7.0
 
+################################################################################
+# WORKAROUND: repair broken s6-overlay service DB in upstream base image.
+# The shinsenter/php base rebuilt on 2026-07-15 ships an inconsistent
+# /etc/s6-overlay/s6-rc.d tree, so s6-rc-compile aborts at boot before
+# nginx/php-fpm start (container never listens -> liveness/readiness fail).
+# Three upstream defects, each a boot blocker:
+#   1. the "user" bundle is missing its mandatory "type" file
+#   2. "user/contents.d/crontab" dangles (crontab is moved to .disabled at boot)
+#   3. the stock "top" bundle requires "user2", which no longer exists
+# Remove this block once upstream ships a fixed base image.
+# hadolint ignore=DL3059
+RUN echo bundle > /etc/s6-overlay/s6-rc.d/user/type \
+ && rm -f /etc/s6-overlay/s6-rc.d/user/contents.d/crontab \
+ && mkdir -p /etc/s6-overlay/s6-rc.d/user2/contents.d \
+ && echo bundle > /etc/s6-overlay/s6-rc.d/user2/type
+
 # Enable SBOM attestations
 # See: https://docs.docker.com/build/attestations/sbom/
 ARG BUILDKIT_SBOM_SCAN_CONTEXT=true
