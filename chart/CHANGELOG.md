@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.0.0-9
+
+* Maintenance release: rebuild image to address CVEs.
+
 ## 7.0.0-8
 
 * Maintenance release: rebuild image to address CVEs.
