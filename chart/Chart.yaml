@@ -3,7 +3,7 @@
 
 apiVersion: v2
 name: wordpress-nginx
-version: 7.0.0-9
+version: 7.0.0-10
 appVersion: 7.0.0
 
 description: >-
@@ -37,7 +37,7 @@ annotations:
   idxImageTag: "0.1.11"
   images: |
     - name: wordpress-nginx
-      image: ghcr.io/ioanalytica/wordpress-nginx:7.0.0-9
+      image: ghcr.io/ioanalytica/wordpress-nginx:7.0.0-10
     - name: wordpress-idx
       image: ghcr.io/ioanalytica/wordpress-idx:0.1.11
 
