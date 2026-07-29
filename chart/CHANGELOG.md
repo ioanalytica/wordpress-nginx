@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.0.0-11
+
+* Maintenance release: rebuild image to address CVEs (incl. ImageMagick 7.1.2.27-r0).
+* Fix: bump `imageTag` annotation so the rebuilt image is actually deployed (it was still pinned to 7.0.0-9).
+
 ## 7.0.0-10
 
 * Maintenance release: rebuild image to address CVEs.
