@@ -1,0 +1,105 @@
+name: Track upstream WordPress releases
+
+on:
+  schedule:
+    - cron: '0 5 * * *'  # Daily at 05:00 UTC (one hour after the CVE scan)
+  workflow_dispatch:      # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Get latest WordPress version
+        id: wp
+        run: |
+          latest=$(curl -fsSL https://api.wordpress.org/core/version-check/1.7/ | jq -r '.offers[0].current')
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "Could not determine latest WordPress version" >&2
+            exit 1
+          fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Read current version
+        id: current
+        run: |
+          current=$(sed -n 's/^ENV WP_VERSION=//p' docker/Dockerfile)
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+
+      - name: Compare versions
+        id: cmp
+        run: |
+          latest="${{ steps.wp.outputs.latest }}"
+          current="${{ steps.current.outputs.current }}"
+          if [ "$latest" = "$current" ]; then
+            echo "Already up to date ($current)"
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Only proceed when upstream is strictly newer than what we ship.
+          newest=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n1)
+          if [ "$newest" != "$latest" ]; then
+            echo "Current ($current) is newer than or equal to upstream ($latest); nothing to do"
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "New WordPress release available: $current -> $latest"
+          echo "update=true" >> "$GITHUB_OUTPUT"
+
+      - name: Apply version bump
+        if: steps.cmp.outputs.update == 'true'
+        env:
+          NEW: ${{ steps.wp.outputs.latest }}
+        run: |
+          set -euo pipefail
+          # New WordPress version => reset the release suffix to -1.
+          sed -i "s/^ENV WP_VERSION=.*/ENV WP_VERSION=${NEW}/" docker/Dockerfile
+          sed -i "s/^version: .*/version: ${NEW}-1/" chart/Chart.yaml
+          sed -i "s/^appVersion: .*/appVersion: ${NEW}/" chart/Chart.yaml
+          sed -i "s/^  imageTag: .*/  imageTag: \"${NEW}-1\"/" chart/Chart.yaml
+          sed -i "s|^      image: ghcr.io/ioanalytica/wordpress-nginx:.*|      image: ghcr.io/ioanalytica/wordpress-nginx:${NEW}-1|" chart/Chart.yaml
+          # Prepend a CHANGELOG entry directly under the "# Changelog" header.
+          awk -v new="$NEW" '
+            NR==1 {
+              print
+              print ""
+              print "## " new "-1"
+              print ""
+              print "* Update to WordPress " new ". Review the [WordPress release notes](https://wordpress.org/news/) before upgrading."
+              next
+            }
+            { print }
+          ' chart/CHANGELOG.md > chart/CHANGELOG.md.tmp
+          mv chart/CHANGELOG.md.tmp chart/CHANGELOG.md
+          echo "----- Dockerfile -----"; grep '^ENV WP_VERSION=' docker/Dockerfile
+          echo "----- Chart.yaml -----"; grep -E '^(version|appVersion):|imageTag:|wordpress-nginx:' chart/Chart.yaml
+
+      - name: Create Pull Request
+        if: steps.cmp.outputs.update == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: wp-bump/${{ steps.wp.outputs.latest }}
+          base: develop
+          commit-message: "Version ${{ steps.wp.outputs.latest }}-1"
+          title: "Bump WordPress to ${{ steps.wp.outputs.latest }} (${{ steps.wp.outputs.latest }}-1)"
+          body: |
+            Automated version bump: upstream WordPress **${{ steps.wp.outputs.latest }}** is available (was `${{ steps.current.outputs.current }}`).
+
+            Bumped:
+            - `docker/Dockerfile` — `WP_VERSION=${{ steps.wp.outputs.latest }}`
+            - `chart/Chart.yaml` — `version` / `appVersion` / `imageTag` / `images` → `${{ steps.wp.outputs.latest }}-1`
+            - `chart/CHANGELOG.md` — new entry
+
+            **After merge, set the tag manually** to trigger the build/push + release:
+
+            ```
+            git tag ${{ steps.wp.outputs.latest }}-1 && git push origin ${{ steps.wp.outputs.latest }}-1
+            ```
+
+            WordPress release notes: https://wordpress.org/news/
