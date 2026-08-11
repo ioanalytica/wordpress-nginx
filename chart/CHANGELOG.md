@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.0.3-2
+
+* Add `idx.pluginAutoUpdate` (default `true`): when the wordpress-idx sidecar serves the bundled WordPress plugin, WordPress installs plugin updates automatically. Set to `false` to only surface updates in wp-admin. Passed to the sidecar as the `PLUGIN_AUTO_UPDATE` environment variable.
+* Bump `idxImageTag` to `1.3.0`, the wordpress-idx image that serves the bundled plugin and its update manifest.
+
 ## 7.0.3-1
 
 * Update to WordPress 7.0.3. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.

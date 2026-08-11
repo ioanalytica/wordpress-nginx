@@ -1186,6 +1186,9 @@ idx:
   ## @param idx.forceUpdate Force rebuild of search index on every startup
   ##
   forceUpdate: false
+  ## @param idx.pluginAutoUpdate Let the bundled WordPress plugin install its own updates automatically (served by the sidecar). Set to false to only surface updates in wp-admin.
+  ##
+  pluginAutoUpdate: true
   ## @param idx.resourcesPreset Set container resources according to one common preset
   ##
   resourcesPreset: "small"

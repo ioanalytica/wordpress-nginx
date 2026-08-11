@@ -521,6 +521,8 @@ spec:
               value: {{ .Values.idx.forceUpdate | quote }}
             - name: CORS_ORIGIN
               value: {{ .Values.idx.corsOrigin | quote }}
+            - name: PLUGIN_AUTO_UPDATE
+              value: {{ .Values.idx.pluginAutoUpdate | quote }}
             {{- if or .Values.idx.reindexApiKey .Values.idx.existingReindexApiKeySecret }}
             - name: REINDEX_API_KEY
               valueFrom:

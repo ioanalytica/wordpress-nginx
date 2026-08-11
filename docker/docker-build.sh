@@ -16,9 +16,9 @@ fi
 # Docker tag friendly (no '+')
 TAG="${RAW//+/-}"
 
-PROD_IMAGE="harbor.ioanalytica.com/wordpress/wordpress-nginx:${TAG}"
+PROD_IMAGE="ghcr.io/ioanalytica/wordpress-nginx:${TAG}"
 
-# docker login harbor.ioanalytica.com
+# docker login ghcr.io
 docker buildx build --platform linux/amd64,linux/arm64 -t ${PROD_IMAGE} --push --pull .
 
 # end
