@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.0.4-1
+
+* Update to WordPress 7.0.4. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.
+
 ## 7.0.3-2
 
 * Add `idx.pluginAutoUpdate` (default `true`): when the wordpress-idx sidecar serves the bundled WordPress plugin, WordPress installs plugin updates automatically. Set to `false` to only surface updates in wp-admin. Passed to the sidecar as the `PLUGIN_AUTO_UPDATE` environment variable.
