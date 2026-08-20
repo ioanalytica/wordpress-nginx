@@ -26,7 +26,7 @@ Custom WordPress image based on [shinsenter/php](https://code.shin.company/php) 
 |---|---|
 | GitHub Container Registry | `ghcr.io/ioanalytica/wordpress-nginx` |
 
-Includes WordPress, NGINX with optimised configuration, PHP extensions (imagick, memcache, redis), WP-CLI, and a health check endpoint at `/healthz.php`.
+Includes WordPress, NGINX with optimised configuration, PHP extensions (imagick, memcache, redis), WP-CLI, and a health check endpoint at `/healthz.php`. A PHP execution allowlist restricts PHP execution to known WordPress entry points, so PHP files planted in writable locations such as `wp-content/uploads` are never executed (see the [chart README](chart/README.md#php-execution-allowlist)).
 
 ## Related Projects
 

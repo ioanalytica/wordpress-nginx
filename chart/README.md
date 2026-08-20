@@ -121,6 +121,42 @@ externalCache:
 wordpressConfigureCache: true
 ```
 
+### PHP Execution Allowlist
+
+Since **7.1.0-2** NGINX only executes PHP for known WordPress entry points:
+`index.php`, `wp-login.php`, `wp-cron.php`, `wp-comments-post.php`,
+`wp-signup.php`, `wp-activate.php`, `wp-admin/*.php` and the chart's
+`healthz.php` probe. Any other `.php` request — most importantly PHP files
+written to `wp-content/uploads` — is answered with **403**.
+
+Plugins and themes are not affected: their code is `include()`d by WordPress
+and reached through the entry points above (front controller, `admin-ajax.php`,
+REST API, cron). Only legacy plugins that expose their own direct-access `.php`
+endpoints (typically files that bootstrap `wp-load.php` themselves) need an
+explicit allow entry:
+
+```yaml
+phpExecutionAllowlist:
+  mode: enforce            # enforce | report | off
+  extraAllowedPaths:
+    - '~*^/wp-content/plugins/myplugin/callback\.php$'
+```
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `phpExecutionAllowlist.mode` | `enforce` blocks non-allowlisted PHP requests with 403, `report` only logs them, `off` disables the allowlist | `enforce` |
+| `phpExecutionAllowlist.extraAllowedPaths` | Additional NGINX map regex patterns allowed to execute PHP | `[]` |
+
+To validate an existing installation before enforcing, set `mode: report` and
+watch the container logs for `[php-allowlist]` lines: each one shows a request
+that `enforce` would have blocked. If nothing legitimate shows up after a
+representative period, switch back to `enforce` (the default). To find plugins
+that may need an allow entry up front:
+
+```bash
+grep -rl "wp-load\.php" wp-content/plugins/ --include="*.php"
+```
+
 ### Ingress
 
 ```yaml

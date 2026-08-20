@@ -424,6 +424,18 @@ spec:
               subPath: 01_userconfig.conf
               readOnly: true
             {{- end }}
+            {{- if ne .Values.phpExecutionAllowlist.mode "enforce" }}
+            - name: nginx-php-allowlist
+              mountPath: /etc/nginx/custom.d/00-php-allowlist.conf
+              subPath: 00-php-allowlist.conf
+              readOnly: true
+            {{- end }}
+            {{- if .Values.phpExecutionAllowlist.extraAllowedPaths }}
+            - name: nginx-php-allowlist
+              mountPath: /etc/nginx/php-allowlist.d/50-extra-allow.conf
+              subPath: 50-extra-allow.conf
+              readOnly: true
+            {{- end }}
             {{- if .Values.extraVolumeMounts }}
             {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumeMounts "context" $) | nindent 12 }}
             {{- end }}
@@ -588,6 +600,12 @@ spec:
           configMap:
             name: {{ printf "%s-postinit" (include "common.names.fullname" .) }}
             defaultMode: 0755
+        {{- end }}
+        {{- if (include "wordpress.nginx.createPhpAllowlistConfigmap" .) }}
+        - name: nginx-php-allowlist
+          configMap:
+            name: {{ include "wordpress.nginx.phpAllowlistConfigmapName" . }}
+            defaultMode: 0644
         {{- end }}
         - name: wordpress-data
           {{- if .Values.persistence.enabled }}

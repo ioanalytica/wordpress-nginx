@@ -23,6 +23,26 @@
       "title": "Blog Name",
       "form": true
     },
+    "phpExecutionAllowlist": {
+      "type": "object",
+      "title": "PHP Execution Allowlist",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "title": "Mode",
+          "enum": ["enforce", "report", "off"],
+          "description": "enforce blocks non-allowlisted PHP requests with 403, report only logs them, off disables the allowlist"
+        },
+        "extraAllowedPaths": {
+          "type": "array",
+          "title": "Extra allowed paths",
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional NGINX map regex patterns allowed to execute PHP"
+        }
+      }
+    },
     "persistence": {
       "type": "object",
       "properties": {

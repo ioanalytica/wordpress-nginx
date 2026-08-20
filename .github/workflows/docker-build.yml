@@ -37,6 +37,19 @@ jobs:
         id: meta
         run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
+      - name: Build image for smoke test
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: ./docker
+          platforms: linux/amd64
+          load: true
+          tags: wordpress-nginx:smoke-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run smoke test
+        run: ./docker/tests/smoke-test.sh wordpress-nginx:smoke-test
+
       - name: Build and push Docker image
         uses: docker/build-push-action@v6.18.0
         with:

@@ -1,0 +1,37 @@
+name: Docker image smoke test
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker-test.yml'
+  pull_request:
+    paths:
+      - 'docker/**'
+      - '.github/workflows/docker-test.yml'
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.10.0
+
+      - name: Build image
+        uses: docker/build-push-action@v6.18.0
+        with:
+          context: ./docker
+          platforms: linux/amd64
+          load: true
+          tags: wordpress-nginx:smoke-test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run smoke test
+        run: ./docker/tests/smoke-test.sh wordpress-nginx:smoke-test

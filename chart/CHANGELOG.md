@@ -1,5 +1,13 @@
 # Changelog
 
+## 7.1.0-2
+
+* Security hardening release. **Upgrading promptly is recommended for all installations.**
+* NGINX now enforces a **PHP execution allowlist**: PHP is only executed for known WordPress entry points (`index.php`, `wp-login.php`, `wp-cron.php`, `wp-comments-post.php`, `wp-signup.php`, `wp-activate.php`, `wp-admin/*.php` and the `healthz.php` probe); every other `.php` request is answered with 403. The check runs as an `$uri` map plus a rewrite-phase guard, independent of location matching order. Plugins and themes are unaffected — their code is `include()`d by WordPress via the entry points above; only legacy plugins with direct-access `.php` endpoints need an explicit allow entry.
+* New values: `phpExecutionAllowlist.mode` (`enforce` [default] | `report` | `off`) and `phpExecutionAllowlist.extraAllowedPaths` (additional NGINX map regex patterns). `report` mode logs would-be blocks as `[php-allowlist]` lines on container stderr without blocking — use it to validate existing installations before enforcing. See the chart README for details.
+* Added a smoke test (`docker/tests/smoke-test.sh`, wired into CI) that asserts the allowlist blocks and allows the right URLs in all three modes.
+* When upgrading, auditing the uploads directory for stray PHP files is good practice: `find wp-content/uploads -name '*.php'`.
+
 ## 7.1.0-1
 
 * Update to WordPress 7.1. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.

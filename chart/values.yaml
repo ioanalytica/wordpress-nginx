@@ -183,6 +183,21 @@ nginxCustomServerBlockAddition: ""
 ## not be visible to nginx.
 ##
 existingCustomServerBlockAdditionConfigMap: ""
+## PHP execution allowlist: NGINX only executes PHP for known WordPress entry
+## points (index.php, wp-login.php, wp-cron.php, wp-comments-post.php,
+## wp-signup.php, wp-activate.php, wp-admin/*.php, healthz.php); any other
+## `.php` request is answered with 403. This blocks execution of PHP files
+## written to writable locations such as `wp-content/uploads`. Plugins and
+## themes are NOT affected: their code is include()d by WordPress and reached
+## through the entry points above (index.php, admin-ajax.php, REST API,
+## wp-cron.php). Only legacy plugins exposing their own direct-access `.php`
+## endpoints need an entry in `extraAllowedPaths`.
+## @param phpExecutionAllowlist.mode PHP execution allowlist mode: `enforce` blocks non-allowlisted PHP requests with 403, `report` only logs them (`[php-allowlist]` lines on container stderr), `off` disables the allowlist
+## @param phpExecutionAllowlist.extraAllowedPaths Additional NGINX map regex patterns allowed to execute PHP, e.g. `'~*^/wp-content/plugins/myplugin/callback\.php$'`
+##
+phpExecutionAllowlist:
+  mode: enforce
+  extraAllowedPaths: []
 ## @param customPostInitScripts Custom post-init.d user scripts
 ## NOTE: supported formats are `.sh`, `.sql` or `.php`
 ## NOTE: scripts are exclusively executed during the 1st boot of the container

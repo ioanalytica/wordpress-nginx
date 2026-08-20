@@ -1,0 +1,36 @@
+{{- /*
+Copyright IO ANALYTICA. All Rights Reserved.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+
+{{- if (include "wordpress.nginx.createPhpAllowlistConfigmap" .) }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "wordpress.nginx.phpAllowlistConfigmapName" . }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+data:
+  {{- if ne .Values.phpExecutionAllowlist.mode "enforce" }}
+  00-php-allowlist.conf: |-
+    {{- if eq .Values.phpExecutionAllowlist.mode "report" }}
+    # PHP execution allowlist in report-only mode (phpExecutionAllowlist.mode).
+    # Requests that enforce mode would block are logged to container stderr
+    # with the [php-allowlist] marker, but still executed.
+    access_log /proc/1/fd/2 php_allowlist if=$wp_php_denied;
+    {{- else }}
+    # PHP execution allowlist disabled (phpExecutionAllowlist.mode: off).
+    {{- end }}
+  {{- end }}
+  {{- if .Values.phpExecutionAllowlist.extraAllowedPaths }}
+  50-extra-allow.conf: |-
+    # Additional PHP execution allow patterns
+    # (phpExecutionAllowlist.extraAllowedPaths). Map entries for $wp_php_denied.
+    {{- range .Values.phpExecutionAllowlist.extraAllowedPaths }}
+    "{{ . }}" 0;
+    {{- end }}
+  {{- end }}
+{{- end }}

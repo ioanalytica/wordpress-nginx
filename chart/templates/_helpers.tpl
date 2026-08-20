@@ -100,6 +100,22 @@ Return true if a configmap should be created for NGINX server block addition
 {{- end -}}
 
 {{/*
+Return the name of the configmap holding PHP execution allowlist overrides
+*/}}
+{{- define "wordpress.nginx.phpAllowlistConfigmapName" -}}
+{{- printf "%s-nginx-php-allowlist" (include "common.names.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+Return true if a configmap should be created for PHP execution allowlist overrides
+*/}}
+{{- define "wordpress.nginx.createPhpAllowlistConfigmap" -}}
+{{- if or (ne .Values.phpExecutionAllowlist.mode "enforce") .Values.phpExecutionAllowlist.extraAllowedPaths }}
+    {{- true -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return the MariaDB Hostname
 */}}
 {{- define "wordpress.databaseHost" -}}
@@ -360,6 +376,7 @@ Compile all warnings into a single message.
 {{- $messages := append $messages (include "wordpress.validateValues.configuration" .) -}}
 {{- $messages := append $messages (include "wordpress.validateValues.database" .) -}}
 {{- $messages := append $messages (include "wordpress.validateValues.cache" .) -}}
+{{- $messages := append $messages (include "wordpress.validateValues.phpExecutionAllowlist" .) -}}
 {{- $messages := without $messages "" -}}
 {{- $message := join "\n" $messages -}}
 {{- if $message -}}
@@ -375,6 +392,15 @@ Validate values of WordPress - Custom wp-config.php
 wordpress: wordpressConfiguration
     You are trying to use a wp-config.php file. This setup is only supported
     when skipping wizard installation (--set wordpressSkipInstall=true).
+{{- end -}}
+{{- end -}}
+
+{{/* Validate values of WordPress - PHP execution allowlist */}}
+{{- define "wordpress.validateValues.phpExecutionAllowlist" -}}
+{{- if not (has .Values.phpExecutionAllowlist.mode (list "enforce" "report" "off")) -}}
+wordpress: phpExecutionAllowlist.mode
+    Invalid value {{ .Values.phpExecutionAllowlist.mode | quote }}.
+    Allowed values are: enforce, report, off.
 {{- end -}}
 {{- end -}}
 
