@@ -2,12 +2,9 @@
 
 ## 7.1.0-3
 
-* Fix: setting only `nginxCustomServerBlockAddition` did not render the server
-  block addition ConfigMap (the `wordpress.nginx.createServerblockConfigmap`
-  helper checked `nginxConfiguration` instead), while the Deployment still
-  mounted it — leaving the pod stuck on a missing ConfigMap. The helper now
-  checks `nginxCustomServerBlockAddition` and
-  `existingCustomServerBlockAdditionConfigMap`.
+* The `/healthz.php` readiness endpoint is now executed by PHP-FPM, so the probe genuinely verifies PHP-FPM, WordPress core and database connectivity. Previously NGINX served the file statically, and the readiness probe effectively only verified that NGINX itself was up.
+* **Behavior change to be aware of**: a pod whose PHP stack or database is unavailable now fails its readiness probe and is taken out of the Service endpoints until the dependency recovers. Liveness is unaffected (it remains a plain TCP check), so pods are not restarted during a database outage.
+* Extended the smoke test to assert that `/healthz.php` responses are rendered by PHP.
 
 ## 7.1.0-2
 
@@ -16,6 +13,7 @@
 * New values: `phpExecutionAllowlist.mode` (`enforce` [default] | `report` | `off`) and `phpExecutionAllowlist.extraAllowedPaths` (additional NGINX map regex patterns). `report` mode logs would-be blocks as `[php-allowlist]` lines on container stderr without blocking — use it to validate existing installations before enforcing. See the chart README for details.
 * Added a smoke test (`docker/tests/smoke-test.sh`, wired into CI) that asserts the allowlist blocks and allows the right URLs in all three modes.
 * When upgrading, auditing the uploads directory for stray PHP files is good practice: `find wp-content/uploads -name '*.php'`.
+* Fix: setting only `nginxCustomServerBlockAddition` did not render the server block addition ConfigMap (the `wordpress.nginx.createServerblockConfigmap` helper checked `nginxConfiguration` instead), while the Deployment still mounted it — leaving the pod stuck on a missing ConfigMap. The helper now checks `nginxCustomServerBlockAddition` and `existingCustomServerBlockAdditionConfigMap`.
 
 ## 7.1.0-1
 

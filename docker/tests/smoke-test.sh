@@ -62,7 +62,7 @@ echo "<?php echo \"PLUGIN-EXECUTED\";"    > /var/www/html/wp-content/plugins/tes
 echo "<?php echo \"INDEX-EXECUTED\";"     > /var/www/html/index.php
 echo "<?php echo \"AJAX-EXECUTED\";"      > /var/www/html/wp-admin/admin-ajax.php
 echo "<?php echo \"LOGIN-EXECUTED\";"     > /var/www/html/wp-login.php
-echo "<?php echo \"HEALTHZ\";"            > /var/www/html/healthz.php
+echo "<?php echo \"EXEC\" . \"UTED-HEALTHZ\";" > /var/www/html/healthz.php
 '
 
 echo "=== Mode: enforce (image default)"
@@ -76,7 +76,7 @@ assert "front page executes"              200 / INDEX-EXECUTED
 assert "admin-ajax.php executes"          200 /wp-admin/admin-ajax.php AJAX-EXECUTED
 assert "wp-login.php executes"            200 /wp-login.php LOGIN-EXECUTED
 assert "sitemap rewrite executes"         200 /sitemap.xml INDEX-EXECUTED
-assert "healthz allows kube-probe"        200 /healthz.php "" kube-probe/1.0
+assert "healthz executes for kube-probe"  200 /healthz.php EXECUTED-HEALTHZ kube-probe/1.0
 assert "healthz rejects other agents"     403 /healthz.php
 
 echo "=== Extra allow pattern"
