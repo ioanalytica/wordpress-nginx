@@ -1,5 +1,14 @@
 # Changelog
 
+## 7.1.0-3
+
+* Fix: setting only `nginxCustomServerBlockAddition` did not render the server
+  block addition ConfigMap (the `wordpress.nginx.createServerblockConfigmap`
+  helper checked `nginxConfiguration` instead), while the Deployment still
+  mounted it — leaving the pod stuck on a missing ConfigMap. The helper now
+  checks `nginxCustomServerBlockAddition` and
+  `existingCustomServerBlockAdditionConfigMap`.
+
 ## 7.1.0-2
 
 * Security hardening release. **Upgrading promptly is recommended for all installations.**

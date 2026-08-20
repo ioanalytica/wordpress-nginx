@@ -94,7 +94,7 @@ Return the WordPress NGINX server block addition
 Return true if a configmap should be created for NGINX server block addition
 */}}
 {{- define "wordpress.nginx.createServerblockConfigmap" -}}
-{{- if and .Values.nginxConfiguration (not .Values.existingNginxConfigurationConfigMap) }}
+{{- if and .Values.nginxCustomServerBlockAddition (not .Values.existingCustomServerBlockAdditionConfigMap) }}
     {{- true -}}
 {{- end -}}
 {{- end -}}
