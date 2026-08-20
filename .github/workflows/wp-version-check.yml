@@ -50,28 +50,42 @@ jobs:
             exit 0
           fi
           echo "New WordPress release available: $current -> $latest"
+          # The chart version must be valid SemVer2 (MAJOR.MINOR.PATCH). WordPress
+          # reports x.y.0 releases as two-component (e.g. "7.1"), so normalize the
+          # chart/image version base to three components. WP_VERSION and appVersion
+          # keep the raw upstream string.
+          chart_base="$latest"
+          dots=$(printf '%s' "$latest" | tr -cd '.' | wc -c | tr -d ' ')
+          if [ "$dots" -eq 0 ]; then chart_base="${latest}.0.0"; fi
+          if [ "$dots" -eq 1 ]; then chart_base="${latest}.0"; fi
+          echo "chart_base=$chart_base" >> "$GITHUB_OUTPUT"
+          echo "chart_version=${chart_base}-1" >> "$GITHUB_OUTPUT"
           echo "update=true" >> "$GITHUB_OUTPUT"
 
       - name: Apply version bump
         if: steps.cmp.outputs.update == 'true'
         env:
           NEW: ${{ steps.wp.outputs.latest }}
+          CHART_BASE: ${{ steps.cmp.outputs.chart_base }}
         run: |
           set -euo pipefail
           # New WordPress version => reset the release suffix to -1.
+          # WP_VERSION/appVersion track the raw upstream string; the chart version
+          # and image tag use the SemVer-normalized base (CHART_BASE). appVersion is
+          # quoted so a numeric value like "7.1" stays a YAML string, not a float.
           sed -i "s/^ENV WP_VERSION=.*/ENV WP_VERSION=${NEW}/" docker/Dockerfile
-          sed -i "s/^version: .*/version: ${NEW}-1/" chart/Chart.yaml
-          sed -i "s/^appVersion: .*/appVersion: ${NEW}/" chart/Chart.yaml
-          sed -i "s/^  imageTag: .*/  imageTag: \"${NEW}-1\"/" chart/Chart.yaml
-          sed -i "s|^      image: ghcr.io/ioanalytica/wordpress-nginx:.*|      image: ghcr.io/ioanalytica/wordpress-nginx:${NEW}-1|" chart/Chart.yaml
+          sed -i "s/^version: .*/version: ${CHART_BASE}-1/" chart/Chart.yaml
+          sed -i "s/^appVersion: .*/appVersion: \"${NEW}\"/" chart/Chart.yaml
+          sed -i "s/^  imageTag: .*/  imageTag: \"${CHART_BASE}-1\"/" chart/Chart.yaml
+          sed -i "s|^      image: ghcr.io/ioanalytica/wordpress-nginx:.*|      image: ghcr.io/ioanalytica/wordpress-nginx:${CHART_BASE}-1|" chart/Chart.yaml
           # Prepend a CHANGELOG entry directly under the "# Changelog" header.
-          awk -v new="$NEW" '
+          awk -v ver="${CHART_BASE}-1" -v wp="$NEW" '
             NR==1 {
               print
               print ""
-              print "## " new "-1"
+              print "## " ver
               print ""
-              print "* Update to WordPress " new ". Review the [WordPress release notes](https://wordpress.org/news/) before upgrading."
+              print "* Update to WordPress " wp ". Review the [WordPress release notes](https://wordpress.org/news/) before upgrading."
               next
             }
             { print }
@@ -86,20 +100,20 @@ jobs:
         with:
           branch: wp-bump/${{ steps.wp.outputs.latest }}
           base: develop
-          commit-message: "Version ${{ steps.wp.outputs.latest }}-1"
-          title: "Bump WordPress to ${{ steps.wp.outputs.latest }} (${{ steps.wp.outputs.latest }}-1)"
+          commit-message: "Version ${{ steps.cmp.outputs.chart_version }}"
+          title: "Bump WordPress to ${{ steps.wp.outputs.latest }} (${{ steps.cmp.outputs.chart_version }})"
           body: |
             Automated version bump: upstream WordPress **${{ steps.wp.outputs.latest }}** is available (was `${{ steps.current.outputs.current }}`).
 
             Bumped:
             - `docker/Dockerfile` — `WP_VERSION=${{ steps.wp.outputs.latest }}`
-            - `chart/Chart.yaml` — `version` / `appVersion` / `imageTag` / `images` → `${{ steps.wp.outputs.latest }}-1`
+            - `chart/Chart.yaml` — `version` / `imageTag` / `images` → `${{ steps.cmp.outputs.chart_version }}`, `appVersion` → `${{ steps.wp.outputs.latest }}`
             - `chart/CHANGELOG.md` — new entry
 
             **After merge, set the tag manually** to trigger the build/push + release:
 
             ```
-            git tag ${{ steps.wp.outputs.latest }}-1 && git push origin ${{ steps.wp.outputs.latest }}-1
+            git tag ${{ steps.cmp.outputs.chart_version }} && git push origin ${{ steps.cmp.outputs.chart_version }}
             ```
 
             WordPress release notes: https://wordpress.org/news/
