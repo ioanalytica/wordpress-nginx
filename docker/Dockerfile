@@ -14,6 +14,9 @@ FROM shinsenter/php:${PHP_VERSION}-fpm-nginx-alpine
 
 ENV WP_VERSION=7.1
 
+# Links the GHCR package to this repository.
+LABEL org.opencontainers.image.source="https://github.com/ioanalytica/wordpress-nginx"
+
 # Enable SBOM attestations
 # See: https://docs.docker.com/build/attestations/sbom/
 ARG BUILDKIT_SBOM_SCAN_CONTEXT=true

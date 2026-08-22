@@ -22,13 +22,13 @@ done
 
 # The image tag follows the chart version, so both stay in lockstep.
 RAW="$(
-  grep -m1 -E '^version:[[:space:]]*' ../chart/Chart.yaml \
+  grep -m1 -E '^version:[[:space:]]*' ../../chart/Chart.yaml \
   | sed -E 's/^version:[[:space:]]*"?([^"#\r]+)"?.*/\1/' \
   | tr -d '\r'
 )"
 
 if [ -z "${RAW:-}" ]; then
-  echo "ERROR: could not read chart version from ../chart/Chart.yaml"
+  echo "ERROR: could not read chart version from ../../chart/Chart.yaml"
   exit 1
 fi
 
@@ -37,7 +37,12 @@ TAG="${RAW//+/-}"
 
 echo "Using tag: $TAG"
 
-PROD_IMAGE="ghcr.io/ioanalytica/wordpress-nginx:${TAG}"
+PROD_IMAGE="ghcr.io/ioanalytica/wordpress-nginx-wpscan:${TAG}"
+
+# NOTE: a GHCR package is created private on its first push, independently of the
+# source repository's visibility. Until it is switched to public once, in-cluster
+# pulls fail with "not found" (GHCR answers anonymous clients with 404, not 403):
+#   https://github.com/users/ioanalytica/packages/container/wordpress-nginx-wpscan/settings
 
 # Mode label: push builds multi-arch, local builds host-arch only (--load cannot
 # load a multi-arch manifest list into the local Docker daemon).

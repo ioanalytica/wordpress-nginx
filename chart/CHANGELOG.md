@@ -5,6 +5,8 @@
 * The `/healthz.php` readiness endpoint is now executed by PHP-FPM, so the probe genuinely verifies PHP-FPM, WordPress core and database connectivity. Previously NGINX served the file statically, and the readiness probe effectively only verified that NGINX itself was up.
 * **Behavior change to be aware of**: a pod whose PHP stack or database is unavailable now fails its readiness probe and is taken out of the Service endpoints until the dependency recovers. Liveness is unaffected (it remains a plain TCP check), so pods are not restarted during a database outage.
 * Extended the smoke test to assert that `/healthz.php` responses are rendered by PHP.
+* The published container images now carry an `org.opencontainers.image.source` label, linking the GHCR packages to this repository.
+* Added `docker/wpscan/`, a small Alpine image bundling WPScan for scanning self-hosted instances from inside the cluster (as an ephemeral debug container, so scans are not seen by an edge WAF). Both `docker-build.sh` scripts now take `--push`/`--no-push`, `-y` and `--cache`, lint the Dockerfile before building, and build multi-arch only when pushing — local builds produce a host-arch image loaded into the Docker daemon.
 
 ## 7.1.0-2
 
