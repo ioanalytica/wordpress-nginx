@@ -30,7 +30,11 @@
         "mode": {
           "type": "string",
           "title": "Mode",
-          "enum": ["enforce", "report", "off"],
+          "enum": [
+            "enforce",
+            "report",
+            "off"
+          ],
           "description": "enforce blocks non-allowlisted PHP requests with 403, report only logs them, off disables the allowlist"
         },
         "extraAllowedPaths": {
@@ -40,6 +44,30 @@
             "type": "string"
           },
           "description": "Additional NGINX map regex patterns allowed to execute PHP"
+        }
+      }
+    },
+    "restApiHardening": {
+      "type": "object",
+      "title": "REST API Hardening",
+      "properties": {
+        "mode": {
+          "type": "string",
+          "title": "Mode",
+          "enum": [
+            "enforce",
+            "report",
+            "off"
+          ],
+          "description": "enforce answers denied REST routes with 403, report only logs them, off disables the check"
+        },
+        "extraDeniedPaths": {
+          "type": "array",
+          "title": "Extra denied paths",
+          "items": {
+            "type": "string"
+          },
+          "description": "Additional NGINX map regex patterns denied on the REST API"
         }
       }
     },

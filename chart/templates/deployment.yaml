@@ -436,6 +436,18 @@ spec:
               subPath: 50-extra-allow.conf
               readOnly: true
             {{- end }}
+            {{- if ne .Values.restApiHardening.mode "enforce" }}
+            - name: nginx-rest-hardening
+              mountPath: /etc/nginx/custom.d/00-rest-hardening.conf
+              subPath: 00-rest-hardening.conf
+              readOnly: true
+            {{- end }}
+            {{- if .Values.restApiHardening.extraDeniedPaths }}
+            - name: nginx-rest-hardening
+              mountPath: /etc/nginx/rest-hardening.d/50-extra-deny.conf
+              subPath: 50-extra-deny.conf
+              readOnly: true
+            {{- end }}
             {{- if .Values.extraVolumeMounts }}
             {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumeMounts "context" $) | nindent 12 }}
             {{- end }}
@@ -605,6 +617,12 @@ spec:
         - name: nginx-php-allowlist
           configMap:
             name: {{ include "wordpress.nginx.phpAllowlistConfigmapName" . }}
+            defaultMode: 0644
+        {{- end }}
+        {{- if (include "wordpress.nginx.createRestHardeningConfigmap" .) }}
+        - name: nginx-rest-hardening
+          configMap:
+            name: {{ include "wordpress.nginx.restHardeningConfigmapName" . }}
             defaultMode: 0644
         {{- end }}
         - name: wordpress-data

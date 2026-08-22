@@ -1,10 +1,11 @@
 #!/bin/bash
-# Smoke test for the PHP execution allowlist in the wordpress-nginx image.
+# Smoke test for the NGINX hardening in the wordpress-nginx image: the PHP
+# execution allowlist and the REST API hardening.
 #
-# Verifies that PHP files are only executed from allowlisted entry points,
-# that the report and off modes behave as documented, and that extra allow
-# patterns in /etc/nginx/php-allowlist.d/ take effect. Run against a locally
-# built image:
+# Verifies that PHP files are only executed from allowlisted entry points, that
+# denied REST routes are refused through both of their spellings, that the
+# report and off modes behave as documented for both features, and that the
+# extra pattern directories take effect. Run against a locally built image:
 #
 #   ./smoke-test.sh ghcr.io/ioanalytica/wordpress-nginx:test
 
@@ -101,6 +102,37 @@ echo "=== Mode: off"
 cexec 'echo "# php allowlist disabled" > /etc/nginx/custom.d/00-php-allowlist.conf'
 reload_nginx
 assert "uploads PHP executes in off mode" 200 /wp-content/uploads/shell.php UPLOADS-EXECUTED
+
+echo "=== REST API hardening: enforce (image default)"
+assert "REST users route is blocked"          403 /wp-json/wp/v2/users
+assert "REST users subresource is blocked"    403 /wp-json/wp/v2/users/1
+assert "REST users via rest_route is blocked" 403 "/?rest_route=/wp/v2/users"
+assert "REST users trailing slash is blocked" 403 /wp-json/wp/v2/users/
+assert "other REST routes still pass"         200 /wp-json/wp/v2/posts INDEX-EXECUTED
+assert "unrelated rest_route still passes"    200 "/?rest_route=/wp/v2/posts" INDEX-EXECUTED
+
+echo "=== REST API hardening: extra deny pattern"
+cexec 'echo "\"~*^/wp-json/wp/v2/comments(/|\\?|\$)\" 1;" > /etc/nginx/rest-hardening.d/50-extra-deny.conf'
+reload_nginx
+assert "extra-denied REST route is blocked" 403 /wp-json/wp/v2/comments
+assert "posts route still passes"           200 /wp-json/wp/v2/posts INDEX-EXECUTED
+cexec 'rm /etc/nginx/rest-hardening.d/50-extra-deny.conf'
+
+echo "=== REST API hardening: report"
+cexec 'printf "%s\\n%s\\n" "if (\$wp_rest_denied) { set \$wp_rest_reported 1; }" "access_log /proc/1/fd/2 rest_hardening if=\$wp_rest_reported;" > /etc/nginx/custom.d/00-rest-hardening.conf'
+reload_nginx
+assert "REST users passes in report mode" 200 /wp-json/wp/v2/users INDEX-EXECUTED
+if docker logs "$NAME" 2>&1 | grep -q '\[rest-hardening\] 200 .*wp/v2/users'; then
+    echo "ok:   report mode logs the would-be block"
+else
+    echo "FAIL: report mode did not log '[rest-hardening] 200 ... wp/v2/users'"
+    FAILURES=$((FAILURES + 1))
+fi
+
+echo "=== REST API hardening: off"
+cexec 'echo "# rest hardening disabled" > /etc/nginx/custom.d/00-rest-hardening.conf'
+reload_nginx
+assert "REST users passes in off mode" 200 /wp-json/wp/v2/users INDEX-EXECUTED
 
 echo
 if [ "$FAILURES" -gt 0 ]; then

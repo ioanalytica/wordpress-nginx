@@ -157,6 +157,48 @@ that may need an allow entry up front:
 grep -rl "wp-load\.php" wp-content/plugins/ --include="*.php"
 ```
 
+### REST API Hardening
+
+Since **7.1.0-4** NGINX answers **403** for REST routes that expose information
+anonymous visitors do not need. Out of the box this covers `wp/v2/users`, which
+lets anyone list the site's account names — half of a credential pair, and the
+opening move of every automated login attack. WordPress exposes that route to
+unauthenticated callers by design.
+
+Both spellings of a route are matched: the pretty-permalink path
+`/wp-json/wp/v2/users` and the `/?rest_route=/wp/v2/users` fallback that works
+even with pretty permalinks off. Matching happens on the normalized path, so
+percent-encoding, duplicate slashes and `.` segments do not get around it.
+
+```yaml
+restApiHardening:
+  mode: enforce            # enforce | report | off
+  extraDeniedPaths:
+    - '~*^/wp-json/wp/v2/comments(/|\?|$)'
+```
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `restApiHardening.mode` | `enforce` answers denied REST routes with 403, `report` only logs them, `off` disables the check | `enforce` |
+| `restApiHardening.extraDeniedPaths` | Additional NGINX map regex patterns denied on the REST API, matched against `"$uri?$arg_rest_route"` | `[]` |
+
+The front end, the login flow and wp-admin are unaffected. The one thing that
+does change is the block editor's **author selector**, which reads the users
+route from the browser: editorial teams that reassign post authors in the
+editor will lose that dropdown. Validate with `mode: report` first and watch
+the container logs for `[rest-hardening]` lines — each one is a request that
+`enforce` would have refused:
+
+```bash
+kubectl logs deploy/<release>-wordpress-nginx | grep '\[rest-hardening\]'
+```
+
+Blocking at NGINX stops enumeration from outside; it does not change what
+WordPress itself would answer. If you need the route available to editors but
+closed to everyone else, that decision requires an authenticated check and
+belongs in PHP (a `rest_endpoints` filter requiring the `list_users`
+capability), not in the reverse proxy.
+
 ### Ingress
 
 ```yaml
@@ -261,6 +303,79 @@ chart upgrades.
 > on Traefik), and set `ingress.tlsWwwPrefix: true` separately when the
 > primary cert should also cover the `www.` variant.
 
+### Security Response Headers
+
+Security headers are **edge policy** and this chart deliberately does not set
+them on the pod. They belong on the ingress, next to TLS termination and any
+WAF: changing a header there needs no image rebuild and no pod restart, and
+`Strict-Transport-Security` can only be set meaningfully by whatever terminates
+TLS. The pod's own NGINX cannot serve as a single source of truth anyway —
+`add_header` is not inherited into a location that defines any `add_header` of
+its own, and the base image's asset locations do exactly that.
+
+Set them through `ingress.annotations`, which is passed through verbatim. A
+policy worth starting from:
+
+```
+Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'
+Referrer-Policy: strict-origin-when-cross-origin
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+```
+
+Those four CSP directives block clickjacking, `<base>` tag injection, form
+exfiltration and plugin-object abuse without touching script loading, so they
+do not break a normal WordPress site. Note what is missing: a `script-src`
+without `'unsafe-inline'` is the directive that actually contains XSS, and
+WordPress cannot satisfy it without nonces on every inline `<script>` — theme
+or mu-plugin work, not something the ingress can add. A CSP that keeps
+`'unsafe-inline'` looks like protection in a scanner report and provides none,
+so it is better to ship the four directives above honestly than a permissive
+`default-src` line.
+
+**Traefik** (`ingressClassName: traefik` or `nginx-traefik`) — a `Middleware`
+holding the headers, referenced from the Ingress. `customResponseHeaders`
+replaces a header rather than appending to it, so this also cleanly overrides
+the `Referrer-Policy` the base image emits:
+
+```yaml
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: wordpress-security-headers
+  namespace: my-namespace
+spec:
+  headers:
+    customResponseHeaders:
+      Content-Security-Policy: "frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+      Referrer-Policy: "strict-origin-when-cross-origin"
+    stsSeconds: 31536000
+    stsIncludeSubdomains: true
+```
+
+```yaml
+ingress:
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: my-namespace-wordpress-security-headers@kubernetescrd
+```
+
+**ingress-nginx** (`ingressClassName: nginx`) — a configuration snippet.
+`more_set_headers` replaces rather than appends, same as above:
+
+```yaml
+ingress:
+  annotations:
+    nginx.ingress.kubernetes.io/configuration-snippet: |
+      more_set_headers "Content-Security-Policy: frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'";
+      more_set_headers "Referrer-Policy: strict-origin-when-cross-origin";
+```
+
+This requires **`allow-snippet-annotations: true`** in the ingress-nginx
+controller ConfigMap. The controller has defaulted it to `false` since v1.9,
+and it is a cluster-wide setting owned by the controller, not by this chart —
+so on a hardened ingress-nginx the per-site route is closed and the only
+built-in alternative is the controller-global `add-headers` ConfigMap, which
+applies the same headers to every site behind that controller.
+
 ### Search Index (wordpress-idx)
 
 An optional FlexSearch-based full-text search sidecar:
@@ -344,6 +459,15 @@ containerSecurityContext:
 OpenShift compatibility is handled automatically via `global.compatibility.openshift.adaptSecurityContext`.
 
 ## Upgrading
+
+### To 7.1.0-4
+
+NGINX now refuses the `wp/v2/users` REST route with 403 by default
+(`restApiHardening.mode: enforce`). Anonymous username enumeration stops; the
+front end, login and wp-admin are unaffected. The block editor's author
+selector reads this route, so if your editors reassign post authors in the
+editor, either set `restApiHardening.mode: report` before upgrading and review
+the `[rest-hardening]` log lines, or set `mode: off`.
 
 Only releases that require operator action are documented here. For the full release history (including routine maintenance / CVE rebuilds), see [CHANGELOG.md](./CHANGELOG.md).
 

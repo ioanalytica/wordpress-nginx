@@ -198,6 +198,24 @@ existingCustomServerBlockAdditionConfigMap: ""
 phpExecutionAllowlist:
   mode: enforce
   extraAllowedPaths: []
+## REST API hardening: NGINX answers 403 for REST routes that expose
+## information anonymous visitors do not need. By default this covers
+## `wp/v2/users`, which lets anyone list the site's account names — half of a
+## credential pair, and the first step of every automated login attack.
+## Both spellings of a route are matched: `/wp-json/<route>` and the
+## `/?rest_route=/<route>` fallback used when pretty permalinks are off.
+## The check runs in the rewrite phase, independent of location matching order.
+##
+## Trade-off to be aware of: the block editor uses the users route for the
+## author selector, so editorial teams that reassign post authors in the editor
+## should validate with `report` mode before enforcing. wp-admin itself, the
+## login flow and the front end are unaffected.
+## @param restApiHardening.mode REST API hardening mode: `enforce` answers denied REST routes with 403, `report` only logs them (`[rest-hardening]` lines on container stderr), `off` disables the check
+## @param restApiHardening.extraDeniedPaths Additional NGINX map regex patterns denied on the REST API, matched against `"$uri?$arg_rest_route"`, e.g. `'~*^/wp-json/wp/v2/comments(/|\?|$)'`
+##
+restApiHardening:
+  mode: enforce
+  extraDeniedPaths: []
 ## @param customPostInitScripts Custom post-init.d user scripts
 ## NOTE: supported formats are `.sh`, `.sql` or `.php`
 ## NOTE: scripts are exclusively executed during the 1st boot of the container

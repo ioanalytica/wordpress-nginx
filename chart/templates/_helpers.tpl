@@ -116,6 +116,22 @@ Return true if a configmap should be created for PHP execution allowlist overrid
 {{- end -}}
 
 {{/*
+Return the name of the REST API hardening configmap
+*/}}
+{{- define "wordpress.nginx.restHardeningConfigmapName" -}}
+{{- printf "%s-nginx-rest-hardening" (include "common.names.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+Return true if a configmap should be created for REST API hardening overrides
+*/}}
+{{- define "wordpress.nginx.createRestHardeningConfigmap" -}}
+{{- if or (ne .Values.restApiHardening.mode "enforce") .Values.restApiHardening.extraDeniedPaths }}
+    {{- true -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return the MariaDB Hostname
 */}}
 {{- define "wordpress.databaseHost" -}}

@@ -1,5 +1,13 @@
 # Changelog
 
+## 7.1.0-4
+
+* Security hardening release. NGINX now answers **403** for the `wp/v2/users` REST route, which let anyone list the site's account names — half of a credential pair. Both spellings are covered: `/wp-json/wp/v2/users` and the `/?rest_route=/wp/v2/users` fallback. Matching runs on the normalized path, so percent-encoding, duplicate slashes and `.` segments do not get around it. Implemented as a `$uri` map plus a rewrite-phase guard, independent of location matching order — the same mechanism as the PHP execution allowlist.
+* New values: `restApiHardening.mode` (`enforce` [default] | `report` | `off`) and `restApiHardening.extraDeniedPaths` for denying further REST routes. `report` mode logs would-be blocks as `[rest-hardening]` lines on container stderr without blocking.
+* **Behavior change to be aware of**: the block editor's author selector reads the users route from the browser and stops working. The front end, the login flow and wp-admin are unaffected. Editorial teams that reassign post authors in the editor should validate with `report` mode first, or set `mode: off`.
+* Extended the smoke test to cover both REST route spellings, the extra-deny patterns and all three modes.
+* Documented how to set security response headers (CSP, `Referrer-Policy`, HSTS) on the ingress rather than on the pod, with recipes for Traefik and ingress-nginx. See the chart README — this is documentation only, the chart adds no values for it. On ingress-nginx the snippet route needs `allow-snippet-annotations: true` in the controller ConfigMap, which is a cluster-wide setting the chart does not own.
+
 ## 7.1.0-3
 
 * The `/healthz.php` readiness endpoint is now executed by PHP-FPM, so the probe genuinely verifies PHP-FPM, WordPress core and database connectivity. Previously NGINX served the file statically, and the readiness probe effectively only verified that NGINX itself was up.
