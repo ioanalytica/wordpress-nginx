@@ -17,6 +17,17 @@ set -euo pipefail
 CHART="${1:-$(dirname "$0")/..}"
 FAILURES=0
 
+# chart/charts/ is gitignored, so a fresh checkout has no dependencies and
+# every render would fail with the same message. Say so once, clearly.
+# The output is captured first: under `set -o pipefail` a pipeline from a
+# failing helm would carry its exit status, not grep's.
+preflight="$(helm template tst "$CHART" 2>&1 || true)"
+if printf '%s' "$preflight" | grep -q "missing in charts/ directory"; then
+    echo "ERROR: chart dependencies are missing. Run:"
+    echo "         helm dependency update $CHART"
+    exit 1
+fi
+
 check() {
     local desc="$1"; shift
     local out

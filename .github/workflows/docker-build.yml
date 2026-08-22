@@ -53,6 +53,11 @@ jobs:
       - name: Set up Helm
         uses: azure/setup-helm@v4
 
+      # chart/charts/ is gitignored, so the common dependency has to be
+      # resolved before the chart can be linted, rendered or packaged.
+      - name: Resolve chart dependencies
+        run: helm dependency update chart/
+
       - name: Lint chart
         run: helm lint chart/
 
@@ -72,9 +77,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Package Helm chart
-        run: |
-          helm dependency update chart/
-          helm package chart/
+        run: helm package chart/
 
       - name: Push Helm chart to OCI registry
         run: |
