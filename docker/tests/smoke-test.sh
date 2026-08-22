@@ -37,6 +37,24 @@ assert() {
     fi
 }
 
+# assert_auth <description> <expected-status> <url> [expected-body-substring]
+# Same as assert, but sends a WordPress session cookie.
+assert_auth() {
+    local desc="$1" want_status="$2" url="$3" want_body="${4:-}"
+    local status body
+    status="$(cexec "curl -s -o /tmp/smoke-body -w '%{http_code}' -A 'smoke-test' -b 'wordpress_logged_in_deadbeef=someuser%7C123%7Cabc' 'http://localhost$url'")"
+    body="$(cexec "cat /tmp/smoke-body")"
+    if [ "$status" != "$want_status" ]; then
+        echo "FAIL: $desc — expected HTTP $want_status, got $status ($url)"
+        FAILURES=$((FAILURES + 1))
+    elif [ -n "$want_body" ] && ! printf '%s' "$body" | grep -q "$want_body"; then
+        echo "FAIL: $desc — HTTP $status but body lacks '$want_body' ($url)"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   $desc ($url -> $status)"
+    fi
+}
+
 reload_nginx() {
     cexec 'kill -HUP "$(ps -o pid,args | grep "nginx: master" | grep -v grep | awk "{print \$1}")"'
     sleep 1
@@ -110,6 +128,17 @@ assert "REST users via rest_route is blocked" 403 "/?rest_route=/wp/v2/users"
 assert "REST users trailing slash is blocked" 403 /wp-json/wp/v2/users/
 assert "other REST routes still pass"         200 /wp-json/wp/v2/posts INDEX-EXECUTED
 assert "unrelated rest_route still passes"    200 "/?rest_route=/wp/v2/posts" INDEX-EXECUTED
+assert "author id enumeration is blocked"     403 "/?author=1"
+assert "author id with extra args is blocked" 403 "/?author=12&foo=bar"
+assert "author feed by id is blocked"         403 "/?feed=rss2&author=1"
+assert "pretty author archive still passes"   200 /author/jane/ INDEX-EXECUTED
+assert "non-numeric author arg passes"        200 "/?author=jane" INDEX-EXECUTED
+
+echo "=== REST API hardening: session cookie gate"
+assert_auth "REST users passes with session cookie"    200 /wp-json/wp/v2/users INDEX-EXECUTED
+assert_auth "rest_route users passes with cookie"      200 "/?rest_route=/wp/v2/users" INDEX-EXECUTED
+assert_auth "wp-admin author filter passes with cookie" 200 "/wp-admin/admin-ajax.php?author=5" AJAX-EXECUTED
+assert      "wp-admin author filter blocked anonymous"  403 "/wp-admin/admin-ajax.php?author=5"
 
 echo "=== REST API hardening: extra deny pattern"
 cexec 'echo "\"~*^/wp-json/wp/v2/comments(/|\\?|\$)\" 1;" > /etc/nginx/rest-hardening.d/50-extra-deny.conf'

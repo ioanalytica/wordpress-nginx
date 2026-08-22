@@ -198,20 +198,27 @@ existingCustomServerBlockAdditionConfigMap: ""
 phpExecutionAllowlist:
   mode: enforce
   extraAllowedPaths: []
-## REST API hardening: NGINX answers 403 for REST routes that expose
-## information anonymous visitors do not need. By default this covers
-## `wp/v2/users`, which lets anyone list the site's account names — half of a
-## credential pair, and the first step of every automated login attack.
-## Both spellings of a route are matched: `/wp-json/<route>` and the
-## `/?rest_route=/<route>` fallback used when pretty permalinks are off.
-## The check runs in the rewrite phase, independent of location matching order.
+## REST API and author enumeration hardening: NGINX answers 403 for anonymous
+## requests that would reveal the site's login names — half of a credential
+## pair, and the opening move of every automated login attack. WordPress
+## exposes all of these to unauthenticated callers by design:
+##   - the `wp/v2/users` REST route, in both of its spellings
+##     (`/wp-json/wp/v2/users` and `/?rest_route=/wp/v2/users`)
+##   - the author archive addressed by numeric id (`/?author=1`), which
+##     redirects to `/author/<login>/` and thereby maps an id to a name
+## Matching runs on the normalized path, so percent-encoding, duplicate slashes
+## and `.` segments do not get around it. The pretty author archive
+## `/author/<slug>/` is a legitimate public feature and stays reachable.
 ##
-## Trade-off to be aware of: the block editor uses the users route for the
-## author selector, so editorial teams that reassign post authors in the editor
-## should validate with `report` mode before enforcing. wp-admin itself, the
-## login flow and the front end are unaffected.
-## @param restApiHardening.mode REST API hardening mode: `enforce` answers denied REST routes with 403, `report` only logs them (`[rest-hardening]` lines on container stderr), `off` disables the check
-## @param restApiHardening.extraDeniedPaths Additional NGINX map regex patterns denied on the REST API, matched against `"$uri?$arg_rest_route"`, e.g. `'~*^/wp-json/wp/v2/comments(/|\?|$)'`
+## Requests carrying a WordPress session cookie are exempt, which keeps the
+## block editor's author selector and the wp-admin posts-list author filter
+## working. Note what this is and is not: the cookie is not validated, so
+## forging its name gets past the check. It is the line between an automated
+## scanner and a browser that has logged in — which is the threat these rules
+## address. Authorization that must hold against a targeted attacker belongs in
+## WordPress, not in the reverse proxy.
+## @param restApiHardening.mode REST API hardening mode: `enforce` answers denied requests from anonymous callers with 403, `report` only logs them (`[rest-hardening]` lines on container stderr), `off` disables the check
+## @param restApiHardening.extraDeniedPaths Additional NGINX map regex patterns to deny, matched against the synthetic key `"$uri?rest_route=$arg_rest_route&author=$arg_author"`, e.g. `'~*^/wp-json/wp/v2/comments(/|\?)'`
 ##
 restApiHardening:
   mode: enforce

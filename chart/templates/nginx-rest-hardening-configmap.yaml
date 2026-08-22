@@ -20,9 +20,9 @@ data:
     # REST API hardening in report-only mode (restApiHardening.mode).
     # Requests that enforce mode would block are logged to container stderr
     # with the [rest-hardening] marker, but still answered by WordPress.
-    # The decision is frozen with "set" because $wp_rest_denied re-evaluates
+    # The decision is frozen with "set" because $wp_rest_blocked re-evaluates
     # to 0 once try_files has rewritten $uri to /index.php.
-    if ($wp_rest_denied) { set $wp_rest_reported 1; }
+    if ($wp_rest_blocked) { set $wp_rest_reported 1; }
     access_log /proc/1/fd/2 rest_hardening if=$wp_rest_reported;
     {{- else }}
     # REST API hardening disabled (restApiHardening.mode: off).

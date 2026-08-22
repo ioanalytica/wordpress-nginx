@@ -49,7 +49,7 @@
     },
     "restApiHardening": {
       "type": "object",
-      "title": "REST API Hardening",
+      "title": "REST API and Author Enumeration Hardening",
       "properties": {
         "mode": {
           "type": "string",
@@ -59,7 +59,7 @@
             "report",
             "off"
           ],
-          "description": "enforce answers denied REST routes with 403, report only logs them, off disables the check"
+          "description": "enforce answers denied requests from anonymous callers with 403, report only logs them, off disables the check"
         },
         "extraDeniedPaths": {
           "type": "array",
@@ -67,7 +67,7 @@
           "items": {
             "type": "string"
           },
-          "description": "Additional NGINX map regex patterns denied on the REST API"
+          "description": "Additional NGINX map regex patterns to deny, matched against \"$uri?rest_route=$arg_rest_route&author=$arg_author\""
         }
       }
     },
