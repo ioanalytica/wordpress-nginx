@@ -55,6 +55,23 @@ assert_auth() {
     fi
 }
 
+# assert_not_executed <description> <url> <forbidden-body-substring>
+# Asserts that a request never reaches PHP, whatever status it ends up with.
+# Used for normalization variants, where pinning an exact status code would
+# cement today's behavior instead of the property that matters.
+assert_not_executed() {
+    local desc="$1" url="$2" forbidden="$3"
+    local body
+    cexec "curl -s -o /tmp/smoke-body -A 'smoke-test' 'http://localhost$url'" >/dev/null
+    body="$(cexec "cat /tmp/smoke-body")"
+    if printf '%s' "$body" | grep -q "$forbidden"; then
+        echo "FAIL: $desc — PHP was executed ($url)"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   $desc ($url)"
+    fi
+}
+
 reload_nginx() {
     cexec 'kill -HUP "$(ps -o pid,args | grep "nginx: master" | grep -v grep | awk "{print \$1}")"'
     sleep 1
@@ -97,6 +114,18 @@ assert "wp-login.php executes"            200 /wp-login.php LOGIN-EXECUTED
 assert "sitemap rewrite executes"         200 /sitemap.xml INDEX-EXECUTED
 assert "healthz executes for kube-probe"  200 /healthz.php EXECUTED-HEALTHZ kube-probe/1.0
 assert "healthz rejects other agents"     403 /healthz.php
+
+echo "=== PHP allowlist: normalization variants"
+# The guard matches on the normalized $uri. Every one of these resolves to the
+# same uploads path, so none of them may reach PHP.
+assert_not_executed "percent-encoded extension"   "/wp-content/uploads/shell.ph%70"     UPLOADS-EXECUTED
+assert_not_executed "percent-encoded dot"         "/wp-content/uploads/shell%2ephp"     UPLOADS-EXECUTED
+assert_not_executed "duplicate slash"             "/wp-content/uploads//shell.php"      UPLOADS-EXECUTED
+assert_not_executed "dot segment"                 "/wp-content/uploads/./shell.php"     UPLOADS-EXECUTED
+assert_not_executed "parent segment"              "/wp-content/uploads/x/../shell.php"  UPLOADS-EXECUTED
+assert_not_executed "dot segment in parent dir"   "/wp-content/./uploads/shell.php"     UPLOADS-EXECUTED
+assert_not_executed "uppercase extension"         "/wp-content/uploads/SHELL.PHP"       UPLOADS-EXECUTED
+assert_not_executed "trailing dot"                "/wp-content/uploads/shell.php."      UPLOADS-EXECUTED
 
 echo "=== Extra allow pattern"
 cexec 'echo "\"~*^/wp-content/plugins/testplugin/direct\\.php$\" 0;" > /etc/nginx/php-allowlist.d/50-extra-allow.conf'

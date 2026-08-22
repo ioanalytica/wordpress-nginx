@@ -196,7 +196,7 @@ existingCustomServerBlockAdditionConfigMap: ""
 ## @param phpExecutionAllowlist.extraAllowedPaths Additional NGINX map regex patterns allowed to execute PHP, e.g. `'~*^/wp-content/plugins/myplugin/callback\.php$'`
 ##
 phpExecutionAllowlist:
-  mode: "off"
+  mode: enforce
   extraAllowedPaths: []
 ## REST API and author enumeration hardening. **Opt-in, off by default.**
 ##

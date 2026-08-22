@@ -35,3 +35,18 @@ jobs:
 
       - name: Run smoke test
         run: ./docker/tests/smoke-test.sh wordpress-nginx:smoke-test
+
+  chart-template-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+
+      - name: Lint chart
+        run: helm lint chart/
+
+      - name: Run template test
+        run: ./chart/tests/template-test.sh
