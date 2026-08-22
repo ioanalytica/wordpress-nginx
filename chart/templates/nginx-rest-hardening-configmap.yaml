@@ -7,25 +7,23 @@ SPDX-License-Identifier: Apache-2.0
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: {{ include "wordpress.nginx.restHardeningConfigmapName" . }}
-  namespace: {{ .Release.Namespace | quote }}
-  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
-  {{- if .Values.commonAnnotations }}
-  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
-  {{- end }}
-data:
-  {{- if ne .Values.restApiHardening.mode "enforce" }}
+  {{- if ne .Values.restApiHardening.mode "off" }}
   00-rest-hardening.conf: |-
-    {{- if eq .Values.restApiHardening.mode "report" }}
-    # REST API hardening in report-only mode (restApiHardening.mode).
-    # Requests that enforce mode would block are logged to container stderr
-    # with the [rest-hardening] marker, but still answered by WordPress.
+    {{- if eq .Values.restApiHardening.mode "enforce" }}
+    # REST API and author enumeration hardening (restApiHardening.mode).
+    # Runs in the rewrite phase, before any location is chosen, so it cannot
+    # be outrun by location matching order.
+    if ($wp_rest_blocked) { return 403; }
+    access_log /proc/1/fd/2 rest_hardening if=$wp_rest_blocked;
+    {{- else }}
+    # REST API and author enumeration hardening in report-only mode
+    # (restApiHardening.mode). Requests that enforce mode would block are
+    # logged to container stderr with the [rest-hardening] marker, but still
+    # answered by WordPress.
     # The decision is frozen with "set" because $wp_rest_blocked re-evaluates
     # to 0 once try_files has rewritten $uri to /index.php.
     if ($wp_rest_blocked) { set $wp_rest_reported 1; }
     access_log /proc/1/fd/2 rest_hardening if=$wp_rest_reported;
-    {{- else }}
-    # REST API hardening disabled (restApiHardening.mode: off).
     {{- end }}
   {{- end }}
   {{- if .Values.restApiHardening.extraDeniedPaths }}

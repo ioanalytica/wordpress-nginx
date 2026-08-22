@@ -196,32 +196,38 @@ existingCustomServerBlockAdditionConfigMap: ""
 ## @param phpExecutionAllowlist.extraAllowedPaths Additional NGINX map regex patterns allowed to execute PHP, e.g. `'~*^/wp-content/plugins/myplugin/callback\.php$'`
 ##
 phpExecutionAllowlist:
-  mode: enforce
+  mode: "off"
   extraAllowedPaths: []
-## REST API and author enumeration hardening: NGINX answers 403 for anonymous
-## requests that would reveal the site's login names — half of a credential
-## pair, and the opening move of every automated login attack. WordPress
-## exposes all of these to unauthenticated callers by design:
-##   - the `wp/v2/users` REST route, in both of its spellings
-##     (`/wp-json/wp/v2/users` and `/?rest_route=/wp/v2/users`)
-##   - the author archive addressed by numeric id (`/?author=1`), which
-##     redirects to `/author/<login>/` and thereby maps an id to a name
-## Matching runs on the normalized path, so percent-encoding, duplicate slashes
-## and `.` segments do not get around it. The pretty author archive
-## `/author/<slug>/` is a legitimate public feature and stays reachable.
+## REST API and author enumeration hardening. **Opt-in, off by default.**
 ##
-## Requests carrying a WordPress session cookie are exempt, which keeps the
+## When enabled, NGINX answers 403 for anonymous requests that reveal the
+## site's login names: the `wp/v2/users` REST route in both of its spellings,
+## and the author archive addressed by numeric id (`/?author=1`). Requests
+## carrying a WordPress session cookie are exempt, which is required so the
 ## block editor's author selector and the wp-admin posts-list author filter
-## working. Note what this is and is not: the cookie is not validated, so
-## forging its name gets past the check. It is the line between an automated
-## scanner and a browser that has logged in — which is the threat these rules
-## address. Authorization that must hold against a targeted attacker belongs in
-## WordPress, not in the reverse proxy.
-## @param restApiHardening.mode REST API hardening mode: `enforce` answers denied requests from anonymous callers with 403, `report` only logs them (`[rest-hardening]` lines on container stderr), `off` disables the check
+## keep working. The pretty `/author/<slug>/` archive and ordinary REST author
+## filters (`/wp-json/wp/v2/posts?author=1`) stay reachable.
+##
+## Be clear about what this buys, because it is less than it looks. The
+## session cookie is checked for presence, not validated, so any forged
+## `wordpress_logged_in_` cookie gets past it. And the same login names remain
+## reachable through the pretty author archive and through oEmbed, neither of
+## which can be blocked without breaking legitimate public features. What this
+## reliably does is stop bulk automated enumeration; what it does not do is
+## keep a determined caller from learning the names. It is therefore off by
+## default: it would be a breaking change that mainly alters what a scanner
+## reports.
+##
+## The root-cause fix is elsewhere and costs nothing at runtime: author
+## archives expose `user_nicename`, which is a separate field from
+## `user_login` and only defaults to the same value. Setting them apart
+## (`wp-cli user update <id> --user_nicename=...`) means no channel exposes a
+## login name at all. See the chart README.
+## @param restApiHardening.mode REST API hardening mode: `off` (default) leaves every route reachable, `enforce` answers denied requests from anonymous callers with 403, `report` only logs them (`[rest-hardening]` lines on container stderr)
 ## @param restApiHardening.extraDeniedPaths Additional NGINX map regex patterns to deny, matched against the synthetic key `"$uri?rest_route=$arg_rest_route&author=$arg_author"`, e.g. `'~*^/wp-json/wp/v2/comments(/|\?)'`
 ##
 restApiHardening:
-  mode: enforce
+  mode: "off"
   extraDeniedPaths: []
 ## @param customPostInitScripts Custom post-init.d user scripts
 ## NOTE: supported formats are `.sh`, `.sql` or `.php`

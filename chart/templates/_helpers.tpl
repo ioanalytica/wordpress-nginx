@@ -126,7 +126,7 @@ Return the name of the REST API hardening configmap
 Return true if a configmap should be created for REST API hardening overrides
 */}}
 {{- define "wordpress.nginx.createRestHardeningConfigmap" -}}
-{{- if or (ne .Values.restApiHardening.mode "enforce") .Values.restApiHardening.extraDeniedPaths }}
+{{- if or (ne .Values.restApiHardening.mode "off") .Values.restApiHardening.extraDeniedPaths }}
     {{- true -}}
 {{- end -}}
 {{- end -}}

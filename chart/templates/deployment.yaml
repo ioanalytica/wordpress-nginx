@@ -436,7 +436,7 @@ spec:
               subPath: 50-extra-allow.conf
               readOnly: true
             {{- end }}
-            {{- if ne .Values.restApiHardening.mode "enforce" }}
+            {{- if ne .Values.restApiHardening.mode "off" }}
             - name: nginx-rest-hardening
               mountPath: /etc/nginx/custom.d/00-rest-hardening.conf
               subPath: 00-rest-hardening.conf

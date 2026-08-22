@@ -121,7 +121,13 @@ cexec 'echo "# php allowlist disabled" > /etc/nginx/custom.d/00-php-allowlist.co
 reload_nginx
 assert "uploads PHP executes in off mode" 200 /wp-content/uploads/shell.php UPLOADS-EXECUTED
 
-echo "=== REST API hardening: enforce (image default)"
+echo "=== REST API hardening: image default is inert"
+assert "REST users passes by default"   200 /wp-json/wp/v2/users INDEX-EXECUTED
+assert "author id passes by default"    200 "/?author=1" INDEX-EXECUTED
+
+echo "=== REST API hardening: enforce (opt-in, as the chart renders it)"
+cexec 'printf "%s\\n%s\\n" "if (\$wp_rest_blocked) { return 403; }" "access_log /proc/1/fd/2 rest_hardening if=\$wp_rest_blocked;" > /etc/nginx/custom.d/00-rest-hardening.conf'
+reload_nginx
 assert "REST users route is blocked"          403 /wp-json/wp/v2/users
 assert "REST users subresource is blocked"    403 /wp-json/wp/v2/users/1
 assert "REST users via rest_route is blocked" 403 "/?rest_route=/wp/v2/users"
@@ -133,6 +139,11 @@ assert "author id with extra args is blocked" 403 "/?author=12&foo=bar"
 assert "author feed by id is blocked"         403 "/?feed=rss2&author=1"
 assert "pretty author archive still passes"   200 /author/jane/ INDEX-EXECUTED
 assert "non-numeric author arg passes"        200 "/?author=jane" INDEX-EXECUTED
+# "author" is also an ordinary REST filter parameter. Denying it there would
+# break anonymous REST consumers, so these must stay reachable.
+assert "REST author filter passes"           200 "/wp-json/wp/v2/posts?author=1" INDEX-EXECUTED
+assert "REST media author filter passes"     200 "/wp-json/wp/v2/media?author=2" INDEX-EXECUTED
+assert "rest_route author filter passes"     200 "/?rest_route=/wp/v2/posts&author=1" INDEX-EXECUTED
 
 echo "=== REST API hardening: session cookie gate"
 assert_auth "REST users passes with session cookie"    200 /wp-json/wp/v2/users INDEX-EXECUTED
@@ -158,8 +169,8 @@ else
     FAILURES=$((FAILURES + 1))
 fi
 
-echo "=== REST API hardening: off"
-cexec 'echo "# rest hardening disabled" > /etc/nginx/custom.d/00-rest-hardening.conf'
+echo "=== REST API hardening: off (chart mounts nothing, image file stands)"
+cexec 'echo "# rest hardening inert" > /etc/nginx/custom.d/00-rest-hardening.conf'
 reload_nginx
 assert "REST users passes in off mode" 200 /wp-json/wp/v2/users INDEX-EXECUTED
 

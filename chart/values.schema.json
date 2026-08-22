@@ -55,11 +55,11 @@
           "type": "string",
           "title": "Mode",
           "enum": [
+            "off",
             "enforce",
-            "report",
-            "off"
+            "report"
           ],
-          "description": "enforce answers denied requests from anonymous callers with 403, report only logs them, off disables the check"
+          "description": "off (default) leaves every route reachable, enforce answers denied requests from anonymous callers with 403, report only logs them"
         },
         "extraDeniedPaths": {
           "type": "array",

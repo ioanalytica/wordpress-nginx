@@ -159,10 +159,10 @@ grep -rl "wp-load\.php" wp-content/plugins/ --include="*.php"
 
 ### REST API and Author Enumeration Hardening
 
-Since **7.1.0-4** NGINX answers **403** for anonymous requests that would reveal
-the site's login names — half of a credential pair, and the opening move of
-every automated login attack. WordPress exposes all of these to unauthenticated
-callers by design:
+**Opt-in, off by default.** Read the limitations below before enabling it.
+
+When enabled, NGINX answers **403** for anonymous requests that reveal the
+site's login names:
 
 - the `wp/v2/users` REST route, as `/wp-json/wp/v2/users` and as the
   `/?rest_route=/wp/v2/users` fallback that works with pretty permalinks off
@@ -170,38 +170,55 @@ callers by design:
   `/author/<login>/` and thereby maps an id to a name
 
 Matching runs on the normalized path, so percent-encoding, duplicate slashes and
-`.` segments do not get around it. The pretty author archive `/author/<slug>/`
-is a legitimate public feature and stays reachable.
+`.` segments do not get around it. Requests carrying a WordPress session cookie
+are exempt — without that, the block editor's author selector and the author
+filter in the wp-admin posts list would break, since both request these URLs
+from a logged-in browser. The pretty `/author/<slug>/` archive and ordinary REST
+author filters such as `/wp-json/wp/v2/posts?author=1` stay reachable.
 
 ```yaml
 restApiHardening:
-  mode: enforce            # enforce | report | off
+  mode: enforce            # off (default) | enforce | report
   extraDeniedPaths:
     - '~*^/wp-json/wp/v2/comments(/|\?)'
 ```
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `restApiHardening.mode` | `enforce` answers denied requests from anonymous callers with 403, `report` only logs them, `off` disables the check | `enforce` |
+| `restApiHardening.mode` | `off` leaves every route reachable, `enforce` answers denied requests from anonymous callers with 403, `report` only logs them | `off` |
 | `restApiHardening.extraDeniedPaths` | Additional NGINX map regex patterns to deny, matched against `"$uri?rest_route=$arg_rest_route&author=$arg_author"` | `[]` |
 
-**Requests carrying a WordPress session cookie are exempt.** Without that
-exemption the rules would also hit the block editor's author selector and the
-author filter in the wp-admin posts list, both of which request the very URLs
-the rules deny, from a logged-in browser. NGINX cannot tell those apart from a
-scanner any other way — validating a WordPress session is beyond what the
-reverse proxy can do.
+#### What this does not do
 
-Be clear about what the exemption is worth: the cookie is checked for presence,
-not validated, so sending a made-up `wordpress_logged_in_` cookie gets past it.
-It is the line between an automated scanner and a browser that has logged in,
-which is the threat this feature addresses. Authorization that must hold against
-a targeted attacker belongs in WordPress — a `rest_endpoints` filter requiring
-the `list_users` capability — not in the reverse proxy.
+It does not reliably prevent username disclosure, which is why it is not a
+default.
 
-To validate before enforcing, set `mode: report` and watch the container logs
-for `[rest-hardening]` lines; each one is a request that `enforce` would have
-refused:
+The session cookie is checked for presence, not validated — NGINX cannot verify
+a WordPress session — so sending a made-up `wordpress_logged_in_` cookie gets
+past the check. Beyond that, the same login names remain reachable through the
+pretty author archive and through the oEmbed endpoint, neither of which can be
+blocked without removing a legitimate public feature.
+
+What it reliably does is stop bulk automated enumeration: a scanner will report
+no users found. Treat that as noise reduction, not as a boundary — and be aware
+that the scanner's clean report is itself misleading.
+
+#### The fix that actually holds
+
+Author archives expose `user_nicename`, not `user_login`. These are separate
+fields; WordPress merely derives the first from the second at registration,
+which is why they usually match. Set them apart and no channel exposes a login
+name at all — no proxy rules, nothing to bypass, nothing to break:
+
+```bash
+wp user update 1 --user_nicename=redaktion
+```
+
+The author archive URL changes with it, so on an indexed site this is an SEO
+decision as much as a security one: set up redirects, or do it before launch.
+
+To see what enabling the NGINX rules would refuse before turning them on, set
+`mode: report` and watch the container logs:
 
 ```bash
 kubectl logs deploy/<release>-wordpress-nginx | grep '\[rest-hardening\]'
@@ -467,19 +484,6 @@ containerSecurityContext:
 OpenShift compatibility is handled automatically via `global.compatibility.openshift.adaptSecurityContext`.
 
 ## Upgrading
-
-### To 7.1.0-4
-
-NGINX now refuses the `wp/v2/users` REST route and numeric author archives
-(`/?author=N`) with 403 for anonymous callers
-(`restApiHardening.mode: enforce`). Username enumeration stops; the front end,
-the login flow, wp-admin and the pretty `/author/<slug>/` archives are
-unaffected, and requests carrying a WordPress session cookie are exempt so the
-block editor and the wp-admin author filter keep working.
-
-If your theme links author archives by numeric id rather than by slug, or a
-plugin reads `?author=N` anonymously, set `restApiHardening.mode: report`
-before upgrading and review the `[rest-hardening]` log lines.
 
 ### To 7.0.0-2
 
