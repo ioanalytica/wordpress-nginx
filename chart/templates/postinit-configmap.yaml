@@ -32,6 +32,14 @@ data:
     wp total-cache option set dbcache.enabled true --type=boolean
     wp total-cache option set objectcache.{{ $cacheType }}.servers {{ $cacheFullname }}:{{ $cachePort }} --type=string
     wp total-cache option set objectcache.enabled true --type=boolean
+
+    # Page cache. Needs WP_CACHE in wp-config.php to have any effect, which the
+    # chart defines (wordpressWpCache); enabling pgcache here without it would
+    # leave advanced-cache.php on disk and never loaded.
+    wp total-cache option set pgcache.engine {{ $cacheType }} --type=string
+    wp total-cache option set pgcache.{{ $cacheType }}.servers {{ $cacheFullname }}:{{ $cachePort }} --type=string
+    wp total-cache option set pgcache.enabled true --type=boolean
+
     wp total-cache flush all
 
   {{- end }}

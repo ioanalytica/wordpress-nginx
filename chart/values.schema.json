@@ -23,6 +23,14 @@
       "title": "Blog Name",
       "form": true
     },
+    "wordpressWpCache": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "title": "WP_CACHE",
+      "description": "Define WP_CACHE in wp-config.php. null follows wordpressConfigureCache; true/false set it explicitly"
+    },
     "phpExecutionAllowlist": {
       "type": "object",
       "title": "PHP Execution Allowlist",

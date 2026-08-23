@@ -265,6 +265,20 @@ Return and validate the cache type
 {{- end -}}
 
 {{/*
+Return the value for the WP_CACHE constant in wp-config.php.
+An unset wordpressWpCache follows wordpressConfigureCache; an explicit
+true/false wins. Note that "default" is unusable here - it would treat an
+explicit false as unset.
+*/}}
+{{- define "wordpress.wpCache" -}}
+{{- if kindIs "invalid" .Values.wordpressWpCache -}}
+{{- ternary "true" "false" .Values.wordpressConfigureCache -}}
+{{- else -}}
+{{- ternary "true" "false" .Values.wordpressWpCache -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return the WordPress Secret Name
 */}}
 {{- define "wordpress.secretName" -}}

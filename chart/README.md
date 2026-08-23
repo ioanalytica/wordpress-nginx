@@ -121,6 +121,31 @@ externalCache:
 wordpressConfigureCache: true
 ```
 
+#### Page cache and `WP_CACHE`
+
+WordPress only loads the page cache drop-in `wp-content/advanced-cache.php`
+when the `WP_CACHE` constant is true. Without it, every page cache plugin —
+W3 Total Cache, WP Rocket, LiteSpeed Cache — installs its drop-in and then
+silently never uses it.
+
+Those plugins normally write the constant into `wp-config.php` themselves.
+That does not hold here: the chart regenerates `wp-config.php` on every
+container start, so a plugin-written constant is gone after the next restart
+or rollout, and the page cache quietly stops working until someone touches the
+plugin's settings again. The chart therefore owns the constant:
+
+```yaml
+wordpressWpCache: true     # null (default) follows wordpressConfigureCache
+```
+
+Leave it unset when using the bundled `wordpressConfigureCache` integration —
+it follows along. Set it explicitly when running a different page cache plugin
+without that integration, or to force page caching off regardless.
+
+Note the same regeneration applies to any other constant a plugin writes into
+`wp-config.php`. If you depend on one, put it in `WORDPRESS_CONFIG_EXTRA`
+rather than relying on the plugin's edit to persist.
+
 ### PHP Execution Allowlist
 
 Since **7.1.0-2** NGINX only executes PHP for known WordPress entry points:

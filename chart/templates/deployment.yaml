@@ -166,6 +166,11 @@ spec:
               define( 'WP_DEBUG', false );
               define( 'FS_METHOD', 'direct' );
 
+              // Page cache drop-in loading. Set from the chart rather than left
+              // to the cache plugin, because this file is regenerated on every
+              // container start and a plugin-written constant would not survive.
+              define( 'WP_CACHE', {{ include "wordpress.wpCache" . }} );
+
               define( 'WP_HOME', getenv_docker('WORDPRESS_SCHEME', 'http') . '://' . $_SERVER['HTTP_HOST'] . '/' );
               define( 'WP_SITEURL', getenv_docker('WORDPRESS_SCHEME', 'http') . '://' . $_SERVER['HTTP_HOST'] . '/' );
               define( 'WP_AUTO_UPDATE_CORE', false );

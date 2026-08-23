@@ -159,6 +159,23 @@ existingWordPressConfigurationSecret: ""
 ## NOTE: useful if you deploy Memcached for caching database queries or you use an external cache server
 ##
 wordpressConfigureCache: false
+## WP_CACHE in wp-config.php. WordPress only loads the page cache drop-in
+## `wp-content/advanced-cache.php` when this constant is true, so without it
+## every page cache plugin (W3 Total Cache, WP Rocket, LiteSpeed Cache, ...)
+## silently degrades to no page caching at all.
+##
+## Those plugins normally write the constant into wp-config.php themselves.
+## That does not survive here: this chart regenerates wp-config.php on every
+## container start, so a plugin-written constant is gone after the next
+## restart or rollout. Setting it from the chart makes it durable.
+##
+## Leave unset (`null`) to follow `wordpressConfigureCache`, which is the right
+## default when the bundled W3 Total Cache integration configures the cache.
+## Set it explicitly when running a different page cache plugin without that
+## integration, or to force it off.
+## @param wordpressWpCache [nullable] Define `WP_CACHE` in wp-config.php. `null` follows `wordpressConfigureCache`; `true`/`false` set it explicitly
+##
+wordpressWpCache: ~
 ## @param wordpressPlugins Array of plugins to install and activate. Can be specified as `all` or `none`.
 ## NOTE: If set to all, only plugins that are already installed will be activated, and if set to none, no plugins will be activated
 ##

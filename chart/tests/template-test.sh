@@ -87,6 +87,20 @@ expect "report does not block"           absent  'if ($wp_php_denied) { return 4
 expect "off does not block"              absent  'if ($wp_php_denied) { return 403; }' --set phpExecutionAllowlist.mode=off
 expect "off does not log"                absent  "php_allowlist if="           --set phpExecutionAllowlist.mode=off
 
+echo "=== WP_CACHE follows the tri-state"
+expect "unset with cache off means false"  present "define( 'WP_CACHE', false )"
+expect "unset with cache on means true"    present "define( 'WP_CACHE', true )" \
+                                           --set wordpressConfigureCache=true --set memcached.enabled=true
+expect "explicit true wins on its own"     present "define( 'WP_CACHE', true )"  --set wordpressWpCache=true
+expect "explicit false beats cache on"     present "define( 'WP_CACHE', false )" \
+                                           --set wordpressConfigureCache=true --set memcached.enabled=true \
+                                           --set wordpressWpCache=false
+
+echo "=== W3 Total Cache configures every cache it claims to"
+expect "db cache configured"      present "option set dbcache.enabled true"     --set wordpressConfigureCache=true --set memcached.enabled=true
+expect "object cache configured"  present "option set objectcache.enabled true" --set wordpressConfigureCache=true --set memcached.enabled=true
+expect "page cache configured"    present "option set pgcache.enabled true"     --set wordpressConfigureCache=true --set memcached.enabled=true
+
 echo "=== REST hardening renders what it claims"
 expect "off creates nothing"             absent  "nginx-rest-hardening"
 expect "enforce blocks"                  present 'if ($wp_rest_blocked) { return 403; }' --set restApiHardening.mode=enforce
