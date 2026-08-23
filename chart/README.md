@@ -121,6 +121,30 @@ externalCache:
 wordpressConfigureCache: true
 ```
 
+#### Cache authentication
+
+The bundled Dragonfly always starts with `--requirepass`, and its password is
+handed to the cache plugin automatically — nothing to configure.
+
+An external cache needs the password spelled out. Redis with `requirepass`
+fails every cache operation without it:
+
+```yaml
+externalCache:
+  type: redis
+  host: redis.example.com
+  port: 6379
+  password: ""                       # or:
+  existingSecret: ""                 # name of a secret you manage
+  existingSecretPasswordKey: cache-password
+```
+
+The password reaches the plugin through an environment variable sourced from a
+Secret. It is deliberately never templated into the post-init ConfigMap: a
+ConfigMap is readable by anyone with read access to ConfigMaps in the
+namespace, and a password there is a disclosure that does not look like one in
+a diff. The chart's template test enforces this with a sentinel value.
+
 #### Page cache and `WP_CACHE`
 
 WordPress only loads the page cache drop-in `wp-content/advanced-cache.php`

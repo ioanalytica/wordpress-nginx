@@ -40,6 +40,15 @@ data:
     wp total-cache option set pgcache.{{ $cacheType }}.servers {{ $cacheFullname }}:{{ $cachePort }} --type=string
     wp total-cache option set pgcache.enabled true --type=boolean
 
+    # Authentication. The value comes from the environment, not from this
+    # ConfigMap. The internal Dragonfly always runs with --requirepass, so
+    # skipping this would leave every cache unable to connect.
+    if [ -n "${WORDPRESS_CACHE_PASSWORD:-}" ]; then
+      wp total-cache option set dbcache.{{ $cacheType }}.password "$WORDPRESS_CACHE_PASSWORD" --type=string
+      wp total-cache option set objectcache.{{ $cacheType }}.password "$WORDPRESS_CACHE_PASSWORD" --type=string
+      wp total-cache option set pgcache.{{ $cacheType }}.password "$WORDPRESS_CACHE_PASSWORD" --type=string
+    fi
+
     wp total-cache flush all
 
   {{- end }}

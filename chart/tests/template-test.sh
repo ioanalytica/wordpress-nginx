@@ -87,6 +87,33 @@ expect "report does not block"           absent  'if ($wp_php_denied) { return 4
 expect "off does not block"              absent  'if ($wp_php_denied) { return 403; }' --set phpExecutionAllowlist.mode=off
 expect "off does not log"                absent  "php_allowlist if="           --set phpExecutionAllowlist.mode=off
 
+echo "=== Cache password reaches the plugin, and only through a Secret"
+expect "no cache password, no env"        absent  "WORDPRESS_CACHE_PASSWORD"
+expect "internal cache exposes the env"   present "name: WORDPRESS_CACHE_PASSWORD" \
+                                          --set wordpressConfigureCache=true --set memcached.enabled=true
+expect "internal cache reads the key"     present "key: cache-password" \
+                                          --set wordpressConfigureCache=true --set memcached.enabled=true
+expect "external password exposes the env" present "name: WORDPRESS_CACHE_PASSWORD" \
+                                          --set externalCache.password=pw --set externalCache.host=r --set externalCache.port=6379
+expect "existingSecret is referenced"     present "name: my-cache-secret" \
+                                          --set externalCache.existingSecret=my-cache-secret \
+                                          --set externalCache.existingSecretPasswordKey=redis-pw \
+                                          --set externalCache.host=r --set externalCache.port=6379
+expect "existingSecret key is used"       present "key: redis-pw" \
+                                          --set externalCache.existingSecret=my-cache-secret \
+                                          --set externalCache.existingSecretPasswordKey=redis-pw \
+                                          --set externalCache.host=r --set externalCache.port=6379
+expect "plugin reads it from the env"     present 'WORDPRESS_CACHE_PASSWORD' \
+                                          --set wordpressConfigureCache=true --set memcached.enabled=true
+
+# The password must live in a Secret and nowhere else. MANIFEST_SENTINEL makes
+# the checker fail on any non-Secret document carrying the value.
+MANIFEST_SENTINEL=s3ntinelpw \
+  check "external password never leaves the Secret" \
+        --set wordpressConfigureCache=true --set externalCache.type=redis \
+        --set externalCache.host=r --set externalCache.port=6379 \
+        --set externalCache.password=s3ntinelpw
+
 echo "=== WP_CACHE follows the tri-state"
 expect "unset with cache off means false"  present "define( 'WP_CACHE', false )"
 expect "unset with cache on means true"    present "define( 'WP_CACHE', true )" \

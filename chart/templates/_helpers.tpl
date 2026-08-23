@@ -279,6 +279,50 @@ explicit false as unset.
 {{- end -}}
 
 {{/*
+Return true when a cache password is available to hand to the cache plugin.
+The internal Dragonfly always has one (it is generated when not provided and
+the server starts with --requirepass); an external cache only has one when
+configured.
+*/}}
+{{- define "wordpress.cacheHasPassword" -}}
+{{- if .Values.memcached.enabled -}}
+{{- true -}}
+{{- else if or .Values.externalCache.password .Values.externalCache.existingSecret -}}
+{{- true -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the name of the secret holding the cache password
+*/}}
+{{- define "wordpress.cacheSecretName" -}}
+{{- if .Values.memcached.enabled -}}
+    {{- if .Values.memcached.existingSecret -}}
+        {{- printf "%s" (tpl .Values.memcached.existingSecret $) -}}
+    {{- else -}}
+        {{- printf "%s" (include "common.names.fullname" .) -}}
+    {{- end -}}
+{{- else -}}
+    {{- if .Values.externalCache.existingSecret -}}
+        {{- printf "%s" (tpl .Values.externalCache.existingSecret $) -}}
+    {{- else -}}
+        {{- printf "%s" (include "common.names.fullname" .) -}}
+    {{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Return the secret key holding the cache password
+*/}}
+{{- define "wordpress.cacheSecretPasswordKey" -}}
+{{- if and (not .Values.memcached.enabled) .Values.externalCache.existingSecret -}}
+    {{- printf "%s" .Values.externalCache.existingSecretPasswordKey -}}
+{{- else -}}
+    {{- printf "cache-password" -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return the WordPress Secret Name
 */}}
 {{- define "wordpress.secretName" -}}

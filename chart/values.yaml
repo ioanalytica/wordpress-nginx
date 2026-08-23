@@ -1453,3 +1453,16 @@ externalCache:
   ## @param externalCache.port External cache server port
   ##
   port: 11211
+  ## Authentication for the external cache. Redis with `requirepass` needs
+  ## this; without it the cache plugin connects unauthenticated and every
+  ## cache operation fails. The password is passed to the container through an
+  ## environment variable sourced from a Secret - never rendered into the
+  ## post-init ConfigMap, which is world-readable to anyone who can read
+  ## ConfigMaps in the namespace.
+  ## @param externalCache.password External cache server password. Ignored when `externalCache.existingSecret` is set
+  ## @param externalCache.existingSecret Name of an existing secret holding the external cache password
+  ## @param externalCache.existingSecretPasswordKey Key in `externalCache.existingSecret` holding the password
+  ##
+  password: ""
+  existingSecret: ""
+  existingSecretPasswordKey: "cache-password"

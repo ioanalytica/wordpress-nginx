@@ -10,6 +10,7 @@ mount pointing at a resource the templates never create leaves the pod stuck
 in ContainerCreating.
 """
 
+import os
 import sys
 
 import yaml
@@ -27,7 +28,8 @@ def pod_specs(doc):
 
 def main():
     label = sys.argv[1] if len(sys.argv) > 1 else "manifests"
-    docs = [d for d in yaml.safe_load_all(sys.stdin.read()) if d]
+    raw = sys.stdin.read()
+    docs = [d for d in yaml.safe_load_all(raw) if d]
 
     problems = []
     configmaps = {}
@@ -86,6 +88,21 @@ def main():
                                 f"{sub!r} from ConfigMap {ref!r}, which has no "
                                 f"such key ({sorted(configmaps[ref]) or 'no keys'})"
                             )
+
+    # A sentinel value passed in as a secret must end up in a Secret and
+    # nowhere else. ConfigMaps are readable by anyone who can read ConfigMaps
+    # in the namespace, so a password templated into one is a disclosure even
+    # though it never looks like a mistake in the diff.
+    sentinel = os.environ.get("MANIFEST_SENTINEL")
+    if sentinel:
+        for doc in docs:
+            if doc.get("kind") == "Secret":
+                continue
+            if sentinel in yaml.safe_dump(doc):
+                problems.append(
+                    f"{doc.get('kind')}/{doc.get('metadata', {}).get('name', '?')}: "
+                    f"contains the secret value in plain text"
+                )
 
     if problems:
         print(f"FAIL: {label}")

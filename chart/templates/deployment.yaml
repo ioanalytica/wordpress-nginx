@@ -348,6 +348,17 @@ spec:
             - name: WORDPRESS_SMTP_FROM_NAME
               value: {{ .Values.smtpFromName | quote }}
             {{- end }}
+            {{- if (include "wordpress.cacheHasPassword" .) }}
+            # Read by the post-init cache configuration script. Kept in the
+            # environment rather than templated into the post-init ConfigMap,
+            # which would put the password in plain text into a resource that
+            # is not a Secret.
+            - name: WORDPRESS_CACHE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "wordpress.cacheSecretName" . }}
+                  key: {{ include "wordpress.cacheSecretPasswordKey" . }}
+            {{- end }}
             - name: NGINX_HTTP_PORT_NUMBER
               value: {{ .Values.containerPorts.http | quote }}
             - name: NGINX_HTTPS_PORT_NUMBER
