@@ -1,0 +1,162 @@
+name: Track pinned image versions
+
+on:
+  schedule:
+    - cron: '30 6 * * 1'  # Mondays at 06:30 UTC (after the Dragonfly check)
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+# Dragonfly is tracked by its own workflow: the chart passes flags to it that
+# upstream has swept for deprecation, so that bump is gated on a container
+# actually starting with them. These two need no such check.
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: nginx-prometheus-exporter
+            source: github-release
+            repo: nginx/nginx-prometheus-exporter
+            # The chart pins the tag without a leading v; releases carry one.
+            strip_v: 'true'
+            file: chart/values.yaml
+            # Anchored on the repository line, not on the indentation alone:
+            # a bare "^    tag:" would silently hit another image's tag the day
+            # one is added at the same nesting level.
+            read: 'sed -n "/repository: nginx\/nginx-prometheus-exporter/{n;s|^    tag: \(.*\)$|\1|p;}" chart/values.yaml'
+          - name: wordpress-idx
+            source: ghcr-tags
+            repo: ioanalytica/wordpress-idx
+            strip_v: 'false'
+            file: chart/Chart.yaml
+            read: 'sed -n "s|^  idxImageTag: \"\(.*\)\"$|\1|p" chart/Chart.yaml'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Get latest version
+        id: upstream
+        env:
+          SOURCE: ${{ matrix.source }}
+          REPO: ${{ matrix.repo }}
+          STRIP_V: ${{ matrix.strip_v }}
+        run: |
+          set -euo pipefail
+          case "$SOURCE" in
+            github-release)
+              latest=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" | jq -r '.tag_name')
+              ;;
+            ghcr-tags)
+              # Anonymous pull token; works for public packages.
+              token=$(curl -fsSL "https://ghcr.io/token?scope=repository:${REPO}:pull" | jq -r '.token')
+              latest=$(curl -fsSL -H "Authorization: Bearer ${token}" \
+                "https://ghcr.io/v2/${REPO}/tags/list" \
+                | jq -r '.tags[]' \
+                | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
+                | sed 's/^v//' | sort -V | tail -n1)
+              ;;
+            *) echo "Unknown source '$SOURCE'" >&2; exit 1 ;;
+          esac
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "Could not determine the latest version for ${REPO}" >&2
+            exit 1
+          fi
+          # Only track stable releases. A glob would not do: v[0-9]*.[0-9]*.[0-9]*
+          # also matches v1.2.3-rc1, because the trailing star swallows the suffix.
+          if ! printf '%s' "$latest" | grep -qE '^v?[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Latest version '$latest' is not a plain version tag; nothing to do"
+            exit 1
+          fi
+          [ "$STRIP_V" = "true" ] && latest="${latest#v}"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Read current version
+        id: current
+        run: |
+          set -euo pipefail
+          current=$(${{ matrix.read }})
+          if [ -z "$current" ]; then
+            echo "Could not read the pinned version from ${{ matrix.file }}" >&2
+            exit 1
+          fi
+          # More than one match means the anchor no longer identifies one image,
+          # and a bump would edit the wrong line. Fail rather than guess.
+          if [ "$(printf '%s\n' "$current" | wc -l | tr -d ' ')" != "1" ]; then
+            echo "Version anchor matched more than one line in ${{ matrix.file }}:" >&2
+            printf '%s\n' "$current" >&2
+            exit 1
+          fi
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+
+      - name: Compare versions
+        id: cmp
+        run: |
+          set -euo pipefail
+          latest="${{ steps.upstream.outputs.latest }}"
+          current="${{ steps.current.outputs.current }}"
+          if [ "$latest" = "$current" ]; then
+            echo "${{ matrix.name }} already up to date ($current)"
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          newest=$(printf '%s\n%s\n' "${current#v}" "${latest#v}" | sort -V | tail -n1)
+          if [ "$newest" != "${latest#v}" ]; then
+            echo "Current ($current) is newer than or equal to upstream ($latest); nothing to do"
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "New ${{ matrix.name }} release available: $current -> $latest"
+          echo "update=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the image exists before proposing it
+        if: steps.cmp.outputs.update == 'true'
+        env:
+          NAME: ${{ matrix.name }}
+          NEW: ${{ steps.upstream.outputs.latest }}
+        run: |
+          set -euo pipefail
+          case "$NAME" in
+            nginx-prometheus-exporter) image="docker.io/nginx/nginx-prometheus-exporter:${NEW}" ;;
+            wordpress-idx)             image="ghcr.io/ioanalytica/wordpress-idx:${NEW}" ;;
+          esac
+          # A release tag existing does not mean the image was published. Pulling
+          # here keeps a green PR from turning into ImagePullBackOff on merge.
+          docker pull -q "$image"
+
+      - name: Apply version bump
+        if: steps.cmp.outputs.update == 'true'
+        env:
+          NAME: ${{ matrix.name }}
+          NEW: ${{ steps.upstream.outputs.latest }}
+        run: |
+          set -euo pipefail
+          case "$NAME" in
+            nginx-prometheus-exporter)
+              sed -i "/repository: nginx\/nginx-prometheus-exporter/{n;s|^    tag: .*$|    tag: ${NEW}|;}" chart/values.yaml
+              grep -n -A1 'repository: nginx/nginx-prometheus-exporter' chart/values.yaml
+              ;;
+            wordpress-idx)
+              sed -i "s|^  idxImageTag: \".*\"$|  idxImageTag: \"${NEW}\"|" chart/Chart.yaml
+              grep -n '^  idxImageTag: ' chart/Chart.yaml
+              ;;
+          esac
+
+      - name: Create Pull Request
+        if: steps.cmp.outputs.update == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: image-bump/${{ matrix.name }}-${{ steps.upstream.outputs.latest }}
+          base: develop
+          commit-message: "Bump ${{ matrix.name }} to ${{ steps.upstream.outputs.latest }}"
+          title: "Bump ${{ matrix.name }} to ${{ steps.upstream.outputs.latest }}"
+          body: |
+            Automated image bump: **${{ matrix.name }} ${{ steps.upstream.outputs.latest }}** is available (was `${{ steps.current.outputs.current }}`).
+
+            Only the pinned tag in `${{ matrix.file }}` changed. The chart version is deliberately left alone — fold this into the next release rather than cutting one for it.
+
+            The image was pulled before this PR was opened, so the tag is known to exist in the registry and not only as a release tag.

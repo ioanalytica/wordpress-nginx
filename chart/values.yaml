@@ -1034,7 +1034,13 @@ metrics:
   ##
   enabled: false
   ## NGINX Prometheus Exporter image
-  ## ref: https://hub.docker.com/r/bitnami/nginx-exporter/tags/
+  ## ref: https://github.com/nginx/nginx-prometheus-exporter
+  ## NOTE: this is NGINX's own exporter image. It replaced bitnami/nginx-exporter,
+  ## whose versioned tags Bitnami withdrew from `bitnami/*` - only `latest`
+  ## remains there, so the pin this chart used could no longer be pulled. The
+  ## image is distroless, its entrypoint is the exporter binary itself, and it
+  ## runs as 1001:1001; the `--nginx.scrape-uri` and `--web.listen-address`
+  ## flags are the same upstream flags as before.
   ## @param metrics.image.registry [default: REGISTRY_NAME] NGINX Prometheus exporter image registry
   ## @param metrics.image.repository [default: REPOSITORY_NAME/nginx-exporter] NGINX Prometheus exporter image repository
   ## @skip metrics.image.tag NGINX Prometheus exporter image tag (immutable tags are recommended)
@@ -1044,8 +1050,8 @@ metrics:
   ##
   image:
     registry: docker.io
-    repository: bitnami/nginx-exporter
-    tag: 1.4.1-debian-12-r5
+    repository: nginx/nginx-prometheus-exporter
+    tag: 1.5.3
     digest: ""
     pullPolicy: IfNotPresent
     ## Optionally specify an array of imagePullSecrets.

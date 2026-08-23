@@ -477,8 +477,7 @@ spec:
           {{- else if .Values.diagnosticMode.enabled }}
           command: {{- include "common.tplvalues.render" (dict "value" .Values.diagnosticMode.command "context" $) | nindent 12 }}
           {{- else }}
-          command:
-            - exporter
+          # No command override: the image's entrypoint is the exporter binary.
           args:
             - --nginx.scrape-uri
             - {{ printf "http://127.0.0.1:%d/status" (int (default .Values.containerPorts.http .Values.metrics.port)) | quote }}
