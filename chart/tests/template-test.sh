@@ -60,6 +60,28 @@ expect() {
     fi
 }
 
+echo "=== Chart version and image tag agree"
+# The image tag is read from the Chart.yaml annotation, not from values. A
+# release that bumps version: but not imageTag ships a chart that deploys the
+# previous image - which happened in 7.1.0-4 and went unnoticed because the
+# feature that needed the new image was off by default.
+chart_version=$(sed -n 's/^version: *//p' "$CHART/Chart.yaml" | tr -d '"')
+image_tag=$(sed -n 's/^  imageTag: *"\(.*\)"$/\1/p' "$CHART/Chart.yaml")
+images_tag=$(sed -n 's|^      image: ghcr.io/ioanalytica/wordpress-nginx:||p' "$CHART/Chart.yaml")
+if [ "$chart_version" = "$image_tag" ] && [ "$chart_version" = "$images_tag" ]; then
+    echo "ok:   version, imageTag and images annotation all say $chart_version"
+else
+    echo "FAIL: version=$chart_version imageTag=$image_tag images=$images_tag - must be identical"
+    FAILURES=$((FAILURES + 1))
+fi
+rendered=$(helm template tst "$CHART" | sed -n 's|.*image: ghcr.io/ioanalytica/wordpress-nginx:||p' | head -1)
+if [ "$rendered" = "$chart_version" ]; then
+    echo "ok:   rendered image tag is $rendered"
+else
+    echo "FAIL: rendered image tag is '$rendered', chart version is $chart_version"
+    FAILURES=$((FAILURES + 1))
+fi
+
 echo "=== Structural invariants across the value matrix"
 check "defaults"
 check "php allowlist report"        --set phpExecutionAllowlist.mode=report
