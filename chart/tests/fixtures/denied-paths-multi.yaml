@@ -1,0 +1,17 @@
+# Several nginx.deniedPaths entries with the kind of reason text the init
+# container's .htaccess report suggests - including characters that look like
+# regex or markup. Mirrors a real site's values.
+nginx:
+  deniedPaths:
+    - path: /wp-content/ai1wm-backups
+      action: deny
+      reason: .htaccess found (<IfModule mod_mime.c>)
+    - path: /wp-content/backup-db
+      action: deny
+      reason: .htaccess found (<Files ~ ".*\..*">)
+    - path: /wp-content/cache/minify
+      action: deny
+      reason: .htaccess found (# BEGIN W3TC Minify core)
+    - path: ~* ^/wp-content/themes/config-1785900943/
+      action: honeypot
+      reason: incident 2026-08, removed backdoor

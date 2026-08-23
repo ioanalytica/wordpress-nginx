@@ -97,6 +97,10 @@ check "nginx configuration only"    --set 'nginxConfiguration=# test'
 check "persistence disabled"        --set persistence.enabled=false
 check "ingress enabled"             --set ingress.enabled=true --set ingress.hostname=example.com
 check "denied paths set"            --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x' --set 'nginx.deniedPaths[0].action=deny'
+# Several entries at once. The prefix list is interpolated into a shell
+# assignment inside a YAML block scalar, so this is where a newline in the
+# helper output breaks the manifest - a single entry renders fine regardless.
+check "denied paths, several entries" -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"
 check "everything at once"          --set phpExecutionAllowlist.mode=report \
                                     --set restApiHardening.mode=enforce \
                                     --set 'nginxCustomServerBlockAddition=# test' \
@@ -126,6 +130,10 @@ expect "init gets plain prefixes"          present 'DENIED_PREFIXES="/wp-content
         --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x'
 expect "init does not get regex entries"   present 'DENIED_PREFIXES=""' \
         --set 'nginx.deniedPaths[0].path=~* ^/wp-content/themes/evil/'
+expect "several prefixes stay on one line" present 'DENIED_PREFIXES="/wp-content/ai1wm-backups /wp-content/backup-db /wp-content/cache/minify"' \
+        -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"
+expect "reason with regex-like chars renders" present '# .htaccess found (<Files ~ ".*\..*">)' \
+        -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"
 expect "policy defaults to warn"           present 'HTACCESS_POLICY="warn"'
 expect "policy fail is rendered"           present 'HTACCESS_POLICY="fail"' --set nginx.htaccessPolicy=fail
 

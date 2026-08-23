@@ -310,18 +310,23 @@ Translate a deniedPaths action into the HTTP status NGINX answers with.
 {{- end -}}
 
 {{/*
-Plain directory prefixes from nginx.deniedPaths, one per line, for the init
-container's .htaccess coverage check. Regex entries are not listed: the init
-container does string-prefix matching, not regex evaluation, and a regex entry
-is therefore reported as "not covered" rather than guessed at.
+Plain directory prefixes from nginx.deniedPaths, space-separated on ONE line,
+for the init container's .htaccess coverage check. One line is not cosmetic:
+the value is interpolated into a shell assignment inside a YAML block scalar,
+and a newline in it ends the block and breaks the Deployment manifest.
+Regex entries are not listed: the init container does string-prefix matching,
+not regex evaluation, and a regex entry is therefore reported as "not covered"
+rather than guessed at.
 */}}
 {{- define "wordpress.nginx.deniedPathPrefixes" -}}
+{{- $prefixes := list -}}
 {{- range .Values.nginx.deniedPaths -}}
 {{- $p := trim .path -}}
 {{- if not (hasPrefix "~" $p) -}}
-{{ trimSuffix "/" $p }}
-{{ end -}}
+{{- $prefixes = append $prefixes (trimSuffix "/" $p) -}}
 {{- end -}}
+{{- end -}}
+{{- join " " $prefixes -}}
 {{- end -}}
 
 {{/*

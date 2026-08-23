@@ -227,7 +227,9 @@ spec:
               # only a regex entry covers is reported as uncovered. Declare it as
               # a plain path as well if the policy is "fail".
               HTACCESS_POLICY="{{ .Values.nginx.htaccessPolicy }}"
-              DENIED_PREFIXES="{{ include "wordpress.nginx.deniedPathPrefixes" . | trim }}"
+              # Space-separated, one line. A path containing whitespace cannot be
+              # expressed here; such a path is not a meaningful NGINX prefix anyway.
+              DENIED_PREFIXES="{{ include "wordpress.nginx.deniedPathPrefixes" . }}"
               uncovered=0
               found=0
               if [ -d /wordpress/wp-content ]; then
