@@ -1417,8 +1417,11 @@ memcached:
   ##
   enabled: false
   ## @param memcached.image Dragonfly container image
+  ## NOTE: docker.dragonflydb.io is the project's own registry (a vanity domain
+  ## in front of ghcr.io). Do not shorten this to `dragonflydb/dragonfly`: that
+  ## resolves to Docker Hub, where the project does not publish.
   ##
-  image: "dragonflydb/dragonfly:v1.26.0"
+  image: "docker.dragonflydb.io/dragonflydb/dragonfly:v1.40.1"
   ## @param memcached.password Dragonfly password
   ##
   password: ""

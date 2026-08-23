@@ -1,0 +1,124 @@
+name: Track upstream Dragonfly releases
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Mondays at 06:00 UTC (after the daily WordPress check)
+  workflow_dispatch:      # Allow manual trigger
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Get latest Dragonfly release
+        id: upstream
+        run: |
+          set -euo pipefail
+          latest=$(curl -fsSL https://api.github.com/repos/dragonflydb/dragonfly/releases/latest | jq -r '.tag_name')
+          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+            echo "Could not determine latest Dragonfly release" >&2
+            exit 1
+          fi
+          # Only track stable releases. A glob is not enough here: v[0-9]*.[0-9]*.[0-9]*
+          # also matches v1.41.0-rc1, because the trailing * swallows the suffix.
+          if ! printf '%s' "$latest" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Latest release '$latest' is not a plain version tag; nothing to do"
+            exit 1
+          fi
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+
+      - name: Read current version
+        id: current
+        run: |
+          set -euo pipefail
+          current=$(sed -n 's|^  image: "docker.dragonflydb.io/dragonflydb/dragonfly:\(.*\)"$|\1|p' chart/values.yaml)
+          if [ -z "$current" ]; then
+            echo "Could not read the pinned Dragonfly version from chart/values.yaml" >&2
+            exit 1
+          fi
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+
+      - name: Compare versions
+        id: cmp
+        run: |
+          set -euo pipefail
+          latest="${{ steps.upstream.outputs.latest }}"
+          current="${{ steps.current.outputs.current }}"
+          if [ "$latest" = "$current" ]; then
+            echo "Already up to date ($current)"
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Only proceed when upstream is strictly newer than what we ship.
+          newest=$(printf '%s\n%s\n' "${current#v}" "${latest#v}" | sort -V | tail -n1)
+          if [ "$newest" != "${latest#v}" ]; then
+            echo "Current ($current) is newer than or equal to upstream ($latest); nothing to do"
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "New Dragonfly release available: $current -> $latest"
+          echo "update=true" >> "$GITHUB_OUTPUT"
+
+      # The chart passes --requirepass and --memcached_port to Dragonfly. Both
+      # have been through deprecation sweeps upstream, so the bump is only
+      # proposed when the new image still accepts them and comes up on both
+      # ports. A PR that merely compiles is not worth opening here.
+      - name: Verify the new image still supports the flags the chart passes
+        if: steps.cmp.outputs.update == 'true'
+        env:
+          NEW: ${{ steps.upstream.outputs.latest }}
+        run: |
+          set -euo pipefail
+          image="docker.dragonflydb.io/dragonflydb/dragonfly:${NEW}"
+          docker pull -q "$image"
+          for flag in requirepass memcached_port; do
+            if ! docker run --rm "$image" --help 2>&1 | grep -q -- "--${flag}"; then
+              echo "::error::${image} no longer accepts --${flag}; bump needs manual review"
+              exit 1
+            fi
+          done
+          docker run -d --name dfcheck --ulimit memlock=-1 "$image" \
+            --requirepass=ci-check --memcached_port=11211 >/dev/null
+          for _ in $(seq 1 30); do
+            if docker logs dfcheck 2>&1 | grep -q "listening on 0.0.0.0:11211"; then ok=1; break; fi
+            sleep 1
+          done
+          docker logs dfcheck 2>&1 | tail -20
+          docker rm -f dfcheck >/dev/null
+          if [ "${ok:-0}" != "1" ]; then
+            echo "::error::${image} did not come up on the memcached port with the chart's flags"
+            exit 1
+          fi
+
+      - name: Apply version bump
+        if: steps.cmp.outputs.update == 'true'
+        env:
+          NEW: ${{ steps.upstream.outputs.latest }}
+          OLD: ${{ steps.current.outputs.current }}
+        run: |
+          set -euo pipefail
+          sed -i "s|^  image: \"docker.dragonflydb.io/dragonflydb/dragonfly:.*\"$|  image: \"docker.dragonflydb.io/dragonflydb/dragonfly:${NEW}\"|" chart/values.yaml
+          grep '^  image: "docker.dragonflydb.io' chart/values.yaml
+
+      - name: Create Pull Request
+        if: steps.cmp.outputs.update == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: dragonfly-bump/${{ steps.upstream.outputs.latest }}
+          base: develop
+          commit-message: "Bump Dragonfly to ${{ steps.upstream.outputs.latest }}"
+          title: "Bump Dragonfly to ${{ steps.upstream.outputs.latest }}"
+          body: |
+            Automated image bump: Dragonfly **${{ steps.upstream.outputs.latest }}** is available (was `${{ steps.current.outputs.current }}`).
+
+            Only `memcached.image` in `chart/values.yaml` changed. The chart version is deliberately left alone — fold this into the next release rather than cutting one for it.
+
+            Verified before opening this PR: the new image still accepts `--requirepass` and `--memcached_port`, and comes up listening on the memcached port with the flags the chart passes.
+
+            Release notes: https://github.com/dragonflydb/dragonfly/releases/tag/${{ steps.upstream.outputs.latest }}
