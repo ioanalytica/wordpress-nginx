@@ -246,6 +246,40 @@ phpExecutionAllowlist:
 restApiHardening:
   mode: "off"
   extraDeniedPaths: []
+## NGINX path rules owned by the chart, rendered into /etc/nginx/denied-paths.d/
+## and enforced in the rewrite phase - before any location is chosen and before
+## the PHP execution allowlist answers. Two things follow from that ordering:
+## a plain "location /dir { deny all; }" in the per-site nginx.conf is silently
+## bypassed for every extension the static-file location matches (a regex
+## location beats a prefix location), and a honeypot status on a .php path
+## would otherwise be swallowed by the allowlist's 403.
+##
+## Use this for directories a plugin expects to be protected. Plugins that
+## write a `.htaccess` with `deny from all` assume Apache; NGINX never reads
+## that file, so the directory stays open and nothing reports it. The init
+## container reports such files (see nginx.htaccessPolicy).
+##
+## path:   a plain directory path (prefix match on the directory, so
+##         /wp-content/uploads/x does not match /wp-content/uploads/xy) or,
+##         when it starts with "~", a complete NGINX regex taken verbatim.
+## action: deny (403) or honeypot (418). CrowdSec's http-teapot-ban scenario
+##         bans any source that receives a 418, so a honeypot makes probers of
+##         a known-removed backdoor ban themselves.
+## reason: free text, rendered as a comment above the rule.
+## @param nginx.deniedPaths [array] Paths NGINX refuses for every caller. Each entry: `path`, `action` (`deny` | `honeypot`), `reason`
+## @param nginx.htaccessPolicy What the init container does when it finds `.htaccess` files under wp-content: `warn` logs them and lists the directories that are not covered by `nginx.deniedPaths`; `fail` refuses to start the pod while any such directory is uncovered
+##
+nginx:
+  deniedPaths: []
+  ## e.g.:
+  ## deniedPaths:
+  ##   - path: /wp-content/uploads/dlm_uploads
+  ##     action: deny
+  ##     reason: Download Monitor - force downloads through the permission check
+  ##   - path: ~* ^/wp-content/themes/config-1785900943/
+  ##     action: honeypot
+  ##     reason: incident 2026-08, removed backdoor; probers ban themselves via 418
+  htaccessPolicy: warn
 ## @param customPostInitScripts Custom post-init.d user scripts
 ## NOTE: supported formats are `.sh`, `.sql` or `.php`
 ## NOTE: scripts are exclusively executed during the 1st boot of the container

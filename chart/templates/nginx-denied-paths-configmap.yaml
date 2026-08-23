@@ -1,0 +1,27 @@
+{{- /*
+Copyright IO ANALYTICA. All Rights Reserved.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+
+{{- if .Values.nginx.deniedPaths }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "wordpress.nginx.deniedPathsConfigmapName" . }}
+  namespace: {{ .Release.Namespace | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+data:
+  10-chart.conf: |-
+    # Denied paths declared in nginx.deniedPaths. Map entries for
+    # $wp_denied_status: a regex, then the status NGINX answers with.
+    {{- range .Values.nginx.deniedPaths }}
+    {{ "" }}
+    {{- if .reason }}
+    # {{ .reason }}
+    {{- end }}
+    "{{ include "wordpress.nginx.deniedPathRegex" . }}" {{ include "wordpress.nginx.deniedPathStatus" . }};
+    {{- end }}
+{{- end }}

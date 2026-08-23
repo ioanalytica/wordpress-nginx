@@ -279,6 +279,52 @@ explicit false as unset.
 {{- end -}}
 
 {{/*
+Return the name of the denied paths configmap
+*/}}
+{{- define "wordpress.nginx.deniedPathsConfigmapName" -}}
+{{- printf "%s-nginx-denied-paths" (include "common.names.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+Translate one nginx.deniedPaths entry into an NGINX map regex.
+A path starting with "~" is a regex and is taken verbatim (an optional "*"
+modifier and surrounding whitespace are normalized into the map's "~*" form).
+Anything else is a directory: metacharacters are escaped and the match is
+anchored to the directory, so /a/b matches /a/b and /a/b/... but not /a/bc.
+*/}}
+{{- define "wordpress.nginx.deniedPathRegex" -}}
+{{- $p := trim .path -}}
+{{- if hasPrefix "~" $p -}}
+{{- $p = trimPrefix "~" $p | trimPrefix "*" | trim -}}
+{{- printf "~*%s" $p -}}
+{{- else -}}
+{{- printf "~*^%s(/|$)" (regexQuoteMeta (trimSuffix "/" $p)) -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Translate a deniedPaths action into the HTTP status NGINX answers with.
+*/}}
+{{- define "wordpress.nginx.deniedPathStatus" -}}
+{{- if eq .action "honeypot" -}}418{{- else -}}403{{- end -}}
+{{- end -}}
+
+{{/*
+Plain directory prefixes from nginx.deniedPaths, one per line, for the init
+container's .htaccess coverage check. Regex entries are not listed: the init
+container does string-prefix matching, not regex evaluation, and a regex entry
+is therefore reported as "not covered" rather than guessed at.
+*/}}
+{{- define "wordpress.nginx.deniedPathPrefixes" -}}
+{{- range .Values.nginx.deniedPaths -}}
+{{- $p := trim .path -}}
+{{- if not (hasPrefix "~" $p) -}}
+{{ trimSuffix "/" $p }}
+{{ end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return true when a cache password is available to hand to the cache plugin.
 The internal Dragonfly always has one (it is generated when not provided and
 the server starts with --requirepass); an external cache only has one when

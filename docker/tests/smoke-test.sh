@@ -150,6 +150,37 @@ cexec 'echo "# php allowlist disabled" > /etc/nginx/custom.d/00-php-allowlist.co
 reload_nginx
 assert "uploads PHP executes in off mode" 200 /wp-content/uploads/shell.php UPLOADS-EXECUTED
 
+echo "=== Denied paths: image default is inert"
+cexec '
+mkdir -p /var/www/html/wp-content/uploads/dlm_uploads /var/www/html/wp-content/themes/config-1785900943/assets
+echo "ZIP-CONTENT" > /var/www/html/wp-content/uploads/dlm_uploads/report.zip
+echo "<?php echo \"BACKDOOR\";" > /var/www/html/wp-content/themes/config-1785900943/assets/custom-file-4-1785900944.php
+'
+assert "dlm_uploads served by default"   200 /wp-content/uploads/dlm_uploads/report.zip ZIP-CONTENT
+
+echo "=== Denied paths: as the chart renders them"
+cexec 'cat > /etc/nginx/denied-paths.d/10-chart.conf <<EOF
+"~*^/wp-content/uploads/dlm_uploads(/|\$)" 403;
+"~*^/wp-content/themes/config-1785900943/" 418;
+EOF'
+reload_nginx
+# The directory rule must hold for extensions the static-file location matches.
+# A plain prefix location would lose to that regex location and serve the zip.
+assert "denied dir: zip is refused"       403 /wp-content/uploads/dlm_uploads/report.zip
+assert "denied dir: directory itself"     403 /wp-content/uploads/dlm_uploads/
+assert "denied dir: no prefix overreach"  404 /wp-content/uploads/dlm_uploads_other/x.zip
+# The honeypot status must survive the PHP allowlist, which would answer 403
+# for this .php path if it ran first.
+assert "honeypot answers 418, not 403"    418 /wp-content/themes/config-1785900943/assets/custom-file-4-1785900944.php
+assert "unrelated uploads unaffected"     404 /wp-content/uploads/other.zip
+assert_not_executed "honeypot never reaches PHP" /wp-content/themes/config-1785900943/assets/custom-file-4-1785900944.php BACKDOOR
+assert_not_executed "denied dir: dot segment"      "/wp-content/uploads/dlm_uploads/../dlm_uploads/report.zip" ZIP-CONTENT
+assert_not_executed "denied dir: double slash"     "/wp-content//uploads/dlm_uploads/report.zip" ZIP-CONTENT
+assert_not_executed "denied dir: uppercase"        "/wp-content/uploads/DLM_UPLOADS/report.zip" ZIP-CONTENT
+assert_not_executed "denied dir: encoded underscore" "/wp-content/uploads/dlm%5fuploads/report.zip" ZIP-CONTENT
+cexec 'rm /etc/nginx/denied-paths.d/10-chart.conf'
+reload_nginx
+
 echo "=== REST API hardening: image default is inert"
 assert "REST users passes by default"   200 /wp-json/wp/v2/users INDEX-EXECUTED
 assert "author id passes by default"    200 "/?author=1" INDEX-EXECUTED

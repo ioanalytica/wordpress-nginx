@@ -214,6 +214,60 @@ spec:
               chown 1000:1000 /idx
               {{- end }}
 
+              echo "Checking wp-content for .htaccess files …"
+              # NGINX never reads .htaccess. A plugin that writes one with "deny
+              # from all" assumes Apache and believes the directory is protected;
+              # here it stays open and nothing says so. This check says so, and
+              # with nginx.htaccessPolicy=fail refuses to start until every such
+              # directory is covered by nginx.deniedPaths.
+              #
+              # Coverage is a string-prefix comparison against the plain directory
+              # entries of nginx.deniedPaths (rendered below). Regex entries are
+              # not evaluated here - this is busybox sh, not NGINX - so a directory
+              # only a regex entry covers is reported as uncovered. Declare it as
+              # a plain path as well if the policy is "fail".
+              HTACCESS_POLICY="{{ .Values.nginx.htaccessPolicy }}"
+              DENIED_PREFIXES="{{ include "wordpress.nginx.deniedPathPrefixes" . | trim }}"
+              uncovered=0
+              found=0
+              if [ -d /wordpress/wp-content ]; then
+                # -print, not -printf: busybox find has no -printf.
+                find /wordpress/wp-content -type f -name .htaccess -print 2>/dev/null | while IFS= read -r f; do
+                  dir="${f%/.htaccess}"
+                  rel="${dir#/wordpress}"
+                  # Only the first line; the file is plugin-written content and
+                  # goes into the log as data, not as anything to act on.
+                  first="$(head -n1 "$f" 2>/dev/null | tr -d '\r' | cut -c1-80)"
+                  covered=no
+                  for p in $DENIED_PREFIXES; do
+                    case "$rel" in
+                      "$p"|"$p"/*) covered=yes ;;
+                    esac
+                  done
+                  if [ "$covered" = yes ]; then
+                    echo "  covered:   $rel/.htaccess ($first) - in nginx.deniedPaths"
+                  else
+                    echo "  UNCOVERED: $rel/.htaccess ($first)"
+                    echo "    NGINX does not read this file; add to nginx.deniedPaths:"
+                    echo "      - path: $rel"
+                    echo "        action: deny"
+                    echo "        reason: .htaccess found ($first)"
+                    # Mark through the filesystem: the while loop runs in a
+                    # subshell, so variables set here are invisible outside it.
+                    touch /tmp/htaccess-uncovered
+                  fi
+                  touch /tmp/htaccess-found
+                done
+                [ -f /tmp/htaccess-found ] && found=1
+                [ -f /tmp/htaccess-uncovered ] && uncovered=1
+              fi
+              if [ "$found" = 0 ]; then
+                echo "  none found."
+              elif [ "$uncovered" = 1 ] && [ "$HTACCESS_POLICY" = "fail" ]; then
+                echo "ERROR: nginx.htaccessPolicy is 'fail' and at least one .htaccess directory"
+                echo "       is not covered by nginx.deniedPaths. Refusing to start."
+                exit 1
+              fi
               echo "Checks completed."
           volumeMounts:
             - name: wordpress-data
@@ -464,6 +518,12 @@ spec:
               subPath: 50-extra-deny.conf
               readOnly: true
             {{- end }}
+            {{- if .Values.nginx.deniedPaths }}
+            - name: nginx-denied-paths
+              mountPath: /etc/nginx/denied-paths.d/10-chart.conf
+              subPath: 10-chart.conf
+              readOnly: true
+            {{- end }}
             {{- if .Values.extraVolumeMounts }}
             {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumeMounts "context" $) | nindent 12 }}
             {{- end }}
@@ -638,6 +698,12 @@ spec:
         - name: nginx-rest-hardening
           configMap:
             name: {{ include "wordpress.nginx.restHardeningConfigmapName" . }}
+            defaultMode: 0644
+        {{- end }}
+        {{- if .Values.nginx.deniedPaths }}
+        - name: nginx-denied-paths
+          configMap:
+            name: {{ include "wordpress.nginx.deniedPathsConfigmapName" . }}
             defaultMode: 0644
         {{- end }}
         - name: wordpress-data

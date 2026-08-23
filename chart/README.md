@@ -273,6 +273,95 @@ To see what enabling the NGINX rules would refuse before turning them on, set
 kubectl logs deploy/<release>-wordpress-nginx | grep '\[rest-hardening\]'
 ```
 
+### Denied Paths and `.htaccess`
+
+`nginx.deniedPaths` declares directories or URL patterns NGINX refuses for
+every caller. Rules render into a ConfigMap mounted at
+`/etc/nginx/denied-paths.d/10-chart.conf` and are enforced in the rewrite
+phase — before any `location` is chosen and before the PHP execution allowlist
+answers. They are versioned with your values, not written onto the volume.
+
+```yaml
+nginx:
+  deniedPaths:
+    - path: /wp-content/uploads/dlm_uploads
+      action: deny              # 403 (default)
+      reason: Download Monitor - force downloads through the permission check
+    - path: ~* ^/wp-content/themes/config-1785900943/
+      action: honeypot          # 418
+      reason: incident 2026-08, removed backdoor
+  htaccessPolicy: warn          # warn (default) | fail
+```
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `nginx.deniedPaths[].path` | Directory path (prefix match on the directory — `/a/b` does not match `/a/bc`) or, starting with `~`, a verbatim NGINX regex | — |
+| `nginx.deniedPaths[].action` | `deny` answers 403, `honeypot` answers 418 | `deny` |
+| `nginx.deniedPaths[].reason` | Rendered as a comment above the rule | — |
+| `nginx.htaccessPolicy` | `warn` logs `.htaccess` directories not covered by `deniedPaths`; `fail` refuses to start the pod while any is uncovered | `warn` |
+
+Rendered, the example above becomes:
+
+```nginx
+# Download Monitor - force downloads through the permission check
+"~*^/wp-content/uploads/dlm_uploads(/|$)" 403;
+
+# incident 2026-08, removed backdoor
+"~*^/wp-content/themes/config-1785900943/" 418;
+```
+
+#### Why not a `location` in the per-site `nginx.conf`
+
+The obvious rule — `location /wp-content/uploads/dlm_uploads { deny all; }` —
+does not do what it looks like it does. A plain prefix location loses to any
+matching regex location, and the image has one for static files covering
+`zip|doc|xls|ppt|tar|…`. So that rule refuses a `.pdf` (not in the list) and
+serves a `.zip` (in the list), which is precisely backwards for a download
+plugin. It takes `location ^~` to win, and even that cannot produce a honeypot
+status on a `.php` path, because the PHP allowlist has already answered 403 in
+the rewrite phase. `deniedPaths` runs in that same phase, ahead of the
+allowlist, and never enters location matching at all.
+
+#### Why `honeypot`
+
+A 418 is a deliberate signal, not an error. If your edge runs a CrowdSec
+scenario that bans any source receiving a 418 (`http-teapot-ban` or similar),
+a honeypot rule on a known-removed backdoor path makes probers ban themselves,
+whatever throwaway IP they use next — no per-IP rules to maintain. Without such
+a scenario, `honeypot` is just a more conspicuous `deny`.
+
+#### `.htaccess` files: the plugin thinks it is protected
+
+Plugins that write a `.htaccess` with `deny from all` into their directory
+assume Apache. NGINX never reads the file, so the directory stays open, the
+plugin reports nothing wrong, and nothing else does either. The init container
+looks for such files under `wp-content` on every start and reports them, with
+the values entry that would close the directory:
+
+```
+Checking wp-content for .htaccess files …
+  UNCOVERED: /wp-content/uploads/dlm_uploads/.htaccess (deny from all)
+    NGINX does not read this file; add to nginx.deniedPaths:
+      - path: /wp-content/uploads/dlm_uploads
+        action: deny
+        reason: .htaccess found (deny from all)
+```
+
+With `htaccessPolicy: fail` the pod refuses to start while any such directory
+is uncovered. That is the strict reading — a site should not come up with a
+protection its plugin explicitly asked for silently missing — but it is an
+opt-in: the `.htaccess` typically appears at runtime, on a plugin update, and a
+start-time check only sees it on the next rollout, possibly weeks later.
+Failing an unrelated deploy then protects nothing that was not already exposed.
+Enable `fail` for new sites, quarantined sites, or where a compliance rule
+demands it.
+
+Coverage is a string-prefix comparison against the plain directory entries.
+Regex entries are not evaluated — the init container is busybox, not NGINX —
+so a directory only a regex covers is reported as uncovered; declare it as a
+plain path as well if you use `fail`. The check reads the first line of each
+file into the log as data only; nothing in a `.htaccess` is ever interpreted.
+
 ### Ingress
 
 ```yaml

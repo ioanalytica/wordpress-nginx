@@ -51,7 +51,7 @@ expect() {
     out="$(helm template tst "$CHART" "$@" 2>&1)" || {
         echo "FAIL: $desc — helm template failed"; FAILURES=$((FAILURES + 1)); return
     }
-    if printf '%s' "$out" | grep -q -- "$needle"; then
+    if printf '%s' "$out" | grep -qF -- "$needle"; then
         if [ "$mode" = "present" ]; then echo "ok:   $desc"
         else echo "FAIL: $desc — found '$needle' but expected it absent"; FAILURES=$((FAILURES + 1)); fi
     else
@@ -74,6 +74,7 @@ check "server block addition only"  --set 'nginxCustomServerBlockAddition=# test
 check "nginx configuration only"    --set 'nginxConfiguration=# test'
 check "persistence disabled"        --set persistence.enabled=false
 check "ingress enabled"             --set ingress.enabled=true --set ingress.hostname=example.com
+check "denied paths set"            --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x' --set 'nginx.deniedPaths[0].action=deny'
 check "everything at once"          --set phpExecutionAllowlist.mode=report \
                                     --set restApiHardening.mode=enforce \
                                     --set 'nginxCustomServerBlockAddition=# test' \
@@ -86,6 +87,25 @@ expect "report keeps logging"            present "php_allowlist if="           -
 expect "report does not block"           absent  'if ($wp_php_denied) { return 403; }' --set phpExecutionAllowlist.mode=report
 expect "off does not block"              absent  'if ($wp_php_denied) { return 403; }' --set phpExecutionAllowlist.mode=off
 expect "off does not log"                absent  "php_allowlist if="           --set phpExecutionAllowlist.mode=off
+
+echo "=== Denied paths render what they claim"
+expect "empty list renders nothing"        absent  "nginx-denied-paths"
+expect "directory becomes anchored regex"  present '"~*^/wp-content/uploads/dlm\.uploads(/|$)" 403;' \
+        --set 'nginx.deniedPaths[0].path=/wp-content/uploads/dlm.uploads' --set 'nginx.deniedPaths[0].action=deny'
+expect "trailing slash is normalized"      present '"~*^/wp-content/uploads/x(/|$)" 403;' \
+        --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x/' --set 'nginx.deniedPaths[0].action=deny'
+expect "regex entry is taken verbatim"     present '"~*^/wp-content/themes/evil/" 418;' \
+        --set 'nginx.deniedPaths[0].path=~* ^/wp-content/themes/evil/' --set 'nginx.deniedPaths[0].action=honeypot'
+expect "action defaults to deny"           present '" 403;' \
+        --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x'
+expect "reason becomes a comment"          present '# Download Monitor' \
+        --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x' --set 'nginx.deniedPaths[0].reason=Download Monitor'
+expect "init gets plain prefixes"          present 'DENIED_PREFIXES="/wp-content/uploads/x"' \
+        --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x'
+expect "init does not get regex entries"   present 'DENIED_PREFIXES=""' \
+        --set 'nginx.deniedPaths[0].path=~* ^/wp-content/themes/evil/'
+expect "policy defaults to warn"           present 'HTACCESS_POLICY="warn"'
+expect "policy fail is rendered"           present 'HTACCESS_POLICY="fail"' --set nginx.htaccessPolicy=fail
 
 echo "=== Cache password reaches the plugin, and only through a Secret"
 expect "no cache password, no env"        absent  "WORDPRESS_CACHE_PASSWORD"

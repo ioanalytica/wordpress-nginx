@@ -79,6 +79,52 @@
         }
       }
     },
+    "nginx": {
+      "type": "object",
+      "title": "NGINX path rules",
+      "properties": {
+        "deniedPaths": {
+          "type": "array",
+          "title": "Denied paths",
+          "description": "Paths NGINX refuses for every caller, enforced in the rewrite phase",
+          "items": {
+            "type": "object",
+            "required": [
+              "path"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Directory path (prefix match) or, starting with ~, a verbatim NGINX regex"
+              },
+              "action": {
+                "type": "string",
+                "enum": [
+                  "deny",
+                  "honeypot"
+                ],
+                "default": "deny",
+                "description": "deny answers 403, honeypot answers 418"
+              },
+              "reason": {
+                "type": "string",
+                "description": "Rendered as a comment above the rule"
+              }
+            }
+          }
+        },
+        "htaccessPolicy": {
+          "type": "string",
+          "enum": [
+            "warn",
+            "fail"
+          ],
+          "description": "warn logs .htaccess directories not covered by deniedPaths; fail refuses to start while any is uncovered"
+        }
+      }
+    },
     "persistence": {
       "type": "object",
       "properties": {
