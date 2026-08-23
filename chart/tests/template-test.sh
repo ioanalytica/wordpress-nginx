@@ -134,6 +134,14 @@ expect "several prefixes stay on one line" present 'DENIED_PREFIXES="/wp-content
         -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"
 expect "reason with regex-like chars renders" present '# .htaccess found (<Files ~ ".*\..*">)' \
         -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"
+# The init script classifies .htaccess content. These assert the classifier's
+# branches are present in the rendered script, so a template edit cannot drop
+# one silently; behaviour itself is exercised in docker/tests/htaccess-test.sh.
+expect "classifier: deny branch"           present 'class=deny'
+expect "classifier: partial branch"        present 'class=partial'
+expect "classifier: allow branch"          present 'class=allow'
+expect "classifier: plugin-managed check"  present '/wordpress/nginx.conf'
+expect "classifier: fail only on blanket deny" present 'htaccess-blocking'
 expect "policy defaults to warn"           present 'HTACCESS_POLICY="warn"'
 expect "policy fail is rendered"           present 'HTACCESS_POLICY="fail"' --set nginx.htaccessPolicy=fail
 

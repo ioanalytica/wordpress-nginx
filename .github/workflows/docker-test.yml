@@ -55,3 +55,6 @@ jobs:
 
       - name: Run template test
         run: ./chart/tests/template-test.sh
+
+      - name: Run .htaccess classifier test
+        run: ./docker/tests/htaccess-test.sh

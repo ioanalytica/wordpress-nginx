@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.1.0-6
+
+* The init container's `.htaccess` report now classifies files by content instead of proposing `deny` for every one. The first version did that, and on a real site three of seven proposals were wrong: W3 Total Cache's `pub/.htaccess` guards PHP execution and wants its admin assets served (a directory deny broke the W3TC admin UI), Contact Form 7's captcha directory denies everything except its images (a directory deny breaks the captcha), and an `.htaccess` that says `allow from all` for `.php` in an upload directory is not a protection at all — it is the usual companion of a webshell, and is now flagged **SUSPICIOUS** rather than covered up by a deny. Directories that already have a `location` or `rewrite` in the site's `/wordpress/nginx.conf` — W3 Total Cache writes its own NGINX rules there — are reported as plugin-managed; a `deniedPaths` entry would override those rules. Under `htaccessPolicy: fail` only an uncovered blanket deny blocks the start. Listing a deny-with-exceptions directory in `deniedPaths` now produces a warning.
+* Added `docker/tests/htaccess-test.sh`, wired into CI: it runs the check in busybox against a `wp-content` tree rebuilt from the real files found on that site.
+
 ## 7.1.0-5
 
 * **Fix: the chart now deploys its own image.** 7.1.0-4 bumped the chart `version` but not the `imageTag` annotation in `Chart.yaml`, which is the single source for the image tag — so the 7.1.0-4 chart deployed the 7.1.0-3 image. In the default configuration nothing was visibly wrong; with `restApiHardening.mode` set to `enforce` or `report`, the mounted configuration referenced an NGINX variable that only the 7.1.0-4 image defines, and NGINX would have refused to start. If you are on 7.1.0-4 and enabled REST hardening, upgrade. The chart template test now fails when `version`, `imageTag` and the `images` annotation disagree, or when the rendered image tag differs from the chart version.

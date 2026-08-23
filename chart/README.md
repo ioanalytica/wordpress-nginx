@@ -332,35 +332,51 @@ a scenario, `honeypot` is just a more conspicuous `deny`.
 
 #### `.htaccess` files: the plugin thinks it is protected
 
-Plugins that write a `.htaccess` with `deny from all` into their directory
-assume Apache. NGINX never reads the file, so the directory stays open, the
+Plugins that write a `.htaccess` into their directory assume Apache. NGINX
+never reads the file, so whatever it was meant to do is not in effect, the
 plugin reports nothing wrong, and nothing else does either. The init container
-looks for such files under `wp-content` on every start and reports them, with
-the values entry that would close the directory:
+looks for such files under `wp-content` on every start and reports each one —
+classified by content, because "an `.htaccess` means deny the directory" is
+wrong often enough to do damage:
+
+| class | what the file says | what the report does |
+|-------|--------------------|----------------------|
+| `deny` | blanket `deny from all` / `Require all denied`, no exceptions | proposes a `deniedPaths` entry; the only class that can block the start under `fail` |
+| `partial` | deny plus `<Files>` allow exceptions (e.g. Contact Form 7's captcha directory, which must serve its images) | reports it; a directory deny would break the exception, so nothing is proposed — and if you list it anyway, the report warns |
+| `allow` | `allow from all` / `Require all granted`, in particular for `.php` in an upload directory | flags it as **SUSPICIOUS**: that is not a protection but the usual companion of a webshell. NGINX ignores it; find out who wrote it and when |
+| `other` | rewrites, headers, mime, `Options` | informational |
+| plugin-managed | the directory already has a `location` or `rewrite` in the site's `/wordpress/nginx.conf` | reported as such, whatever the class — W3 Total Cache writes its NGINX rules there itself, and a `deniedPaths` entry would run first and override them |
 
 ```
 Checking wp-content for .htaccess files …
-  UNCOVERED: /wp-content/uploads/dlm_uploads/.htaccess (deny from all)
-    NGINX does not read this file; add to nginx.deniedPaths:
-      - path: /wp-content/uploads/dlm_uploads
+  plugin-managed: /wp-content/plugins/w3-total-cache/pub/.htaccess - translated in the site's nginx.conf
+  SUSPICIOUS:     /wp-content/uploads/2014/05/.htaccess (<Files .*>)
+                  This file ALLOWS access - PHP or dotfiles - rather than denying it.
+                  In an upload directory that is the usual companion of a webshell.
+                  NGINX ignores it, but find out who wrote it and when.
+  partial:        /wp-content/uploads/wpcf7_captcha/.htaccess (Order deny,allow) - deny with exceptions; not a candidate for deniedPaths
+  UNCOVERED:      /wp-content/ai1wm-backups/.htaccess (deny from all)
+    NGINX does not read this file; the directory is open. To close it:
+      - path: /wp-content/ai1wm-backups
         action: deny
         reason: .htaccess found (deny from all)
 ```
 
-With `htaccessPolicy: fail` the pod refuses to start while any such directory
-is uncovered. That is the strict reading — a site should not come up with a
-protection its plugin explicitly asked for silently missing — but it is an
-opt-in: the `.htaccess` typically appears at runtime, on a plugin update, and a
-start-time check only sees it on the next rollout, possibly weeks later.
+With `htaccessPolicy: fail` the pod refuses to start while a `deny`-class
+directory is uncovered. That is the strict reading — a site should not come up
+with a protection its plugin explicitly asked for silently missing — but it is
+an opt-in: the `.htaccess` typically appears at runtime, on a plugin update,
+and a start-time check only sees it on the next rollout, possibly weeks later.
 Failing an unrelated deploy then protects nothing that was not already exposed.
 Enable `fail` for new sites, quarantined sites, or where a compliance rule
-demands it.
+demands it. `partial`, `allow` and `other` never block, because there is
+nothing a `deniedPaths` entry could correctly add for them.
 
 Coverage is a string-prefix comparison against the plain directory entries.
 Regex entries are not evaluated — the init container is busybox, not NGINX —
 so a directory only a regex covers is reported as uncovered; declare it as a
-plain path as well if you use `fail`. The check reads the first line of each
-file into the log as data only; nothing in a `.htaccess` is ever interpreted.
+plain path as well if you use `fail`. The check matches file content, never
+evaluates it; the first directive line goes into the log as data.
 
 ### Ingress
 

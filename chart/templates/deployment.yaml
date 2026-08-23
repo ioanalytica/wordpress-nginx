@@ -217,57 +217,125 @@ spec:
               echo "Checking wp-content for .htaccess files …"
               # NGINX never reads .htaccess. A plugin that writes one with "deny
               # from all" assumes Apache and believes the directory is protected;
-              # here it stays open and nothing says so. This check says so, and
-              # with nginx.htaccessPolicy=fail refuses to start until every such
-              # directory is covered by nginx.deniedPaths.
+              # here it stays open and nothing says so. This check says so.
+              #
+              # It classifies each file by content, because the obvious reading -
+              # "an .htaccess means deny the directory" - is wrong often enough to
+              # do damage: W3 Total Cache's pub/.htaccess guards PHP execution and
+              # wants its static assets served, Contact Form 7's captcha directory
+              # denies everything except the captcha images, and an .htaccess that
+              # says "allow from all" for .php in an upload directory is not a
+              # protection at all but the classic companion of a webshell.
+              #
+              #   deny     - blanket deny with no allow exception: propose deny
+              #   partial  - deny plus <Files>/<FilesMatch> allow exceptions: report,
+              #              no proposal; a directory deny would break the exception
+              #   allow    - allow from all / Require all granted, or PHP allowed in
+              #              uploads: flag as SUSPICIOUS, never propose anything
+              #   other    - rewrites, headers, mime, options: report as informational
+              #
+              # Plugins that do think of NGINX write their rules into the per-site
+              # /wordpress/nginx.conf (W3 Total Cache does). A directory that has a
+              # location or rewrite there is reported as "plugin-managed", not as
+              # uncovered - a deniedPaths entry would run first and override it.
               #
               # Coverage is a string-prefix comparison against the plain directory
-              # entries of nginx.deniedPaths (rendered below). Regex entries are
-              # not evaluated here - this is busybox sh, not NGINX - so a directory
-              # only a regex entry covers is reported as uncovered. Declare it as
-              # a plain path as well if the policy is "fail".
+              # entries of nginx.deniedPaths. Regex entries are not evaluated - this
+              # is busybox sh, not NGINX - so a directory only a regex entry covers
+              # is reported as uncovered. With policy=fail, only an uncovered "deny"
+              # class file blocks the start; partial, allow and other never do, since
+              # there is nothing a deniedPaths entry could correctly add for them.
               HTACCESS_POLICY="{{ .Values.nginx.htaccessPolicy }}"
               # Space-separated, one line. A path containing whitespace cannot be
               # expressed here; such a path is not a meaningful NGINX prefix anyway.
               DENIED_PREFIXES="{{ include "wordpress.nginx.deniedPathPrefixes" . }}"
-              uncovered=0
-              found=0
+              rm -f /tmp/htaccess-found /tmp/htaccess-blocking
               if [ -d /wordpress/wp-content ]; then
                 # -print, not -printf: busybox find has no -printf.
                 find /wordpress/wp-content -type f -name .htaccess -print 2>/dev/null | while IFS= read -r f; do
+                  touch /tmp/htaccess-found
                   dir="${f%/.htaccess}"
                   rel="${dir#/wordpress}"
-                  # Only the first line; the file is plugin-written content and
-                  # goes into the log as data, not as anything to act on.
-                  first="$(head -n1 "$f" 2>/dev/null | tr -d '\r' | cut -c1-80)"
+                  # Directives only - comments and blank lines dropped, CRLF
+                  # stripped. The file is plugin-written content: it is matched,
+                  # never evaluated.
+                  body="$(tr -d '\r' < "$f" 2>/dev/null | grep -vE '^[[:space:]]*(#|$)')"
+                  has_deny=0; has_allow=0; php_allow=0
+                  printf '%s' "$body" | grep -qiE '(deny[[:space:]]+from[[:space:]]+all|require[[:space:]]+all[[:space:]]+denied)' && has_deny=1
+                  printf '%s' "$body" | grep -qiE '(allow[[:space:]]+from[[:space:]]+all|require[[:space:]]+all[[:space:]]+granted)' && has_allow=1
+                  # "allow from all" inside a <Files> block that names .php, in an
+                  # upload tree, is the webshell-enabling pattern.
+                  case "$rel" in /wp-content/uploads/*)
+                    printf '%s' "$body" | grep -qiE '<Files[^>]*\.?\(?php' && [ "$has_allow" = 1 ] && php_allow=1 ;;
+                  esac
+                  # A <Files> block only makes a deny "partial" when it carries an
+                  # allow; a <FilesMatch "^."> that denies dotfiles on top of a
+                  # blanket deny is still a blanket deny.
+                  if [ "$php_allow" = 1 ]; then class=allow
+                  elif [ "$has_allow" = 1 ] && [ "$has_deny" = 0 ]; then class=allow
+                  elif [ "$has_deny" = 1 ] && [ "$has_allow" = 1 ]; then class=partial
+                  elif [ "$has_deny" = 1 ]; then class=deny
+                  else class=other
+                  fi
+                  # Per-site nginx.conf: a plugin may already have translated this
+                  # directory into an NGINX rule. Match on the directory's last two
+                  # path segments, which is how W3TC writes its locations.
+                  plugin_managed=0
+                  if [ -s /wordpress/nginx.conf ]; then
+                    tail2="$(printf '%s' "$rel" | awk -F/ '{print $(NF-1)"/"$NF}')"
+                    # ".*", not "[^\n]*": busybox grep has no \n escape inside a bracket
+                    # expression - it would exclude the letter n and miss "minify".
+                    grep -qE "(location|rewrite).*${tail2}" /wordpress/nginx.conf 2>/dev/null && plugin_managed=1
+                  fi
                   covered=no
                   for p in $DENIED_PREFIXES; do
-                    case "$rel" in
-                      "$p"|"$p"/*) covered=yes ;;
-                    esac
+                    case "$rel" in "$p"|"$p"/*) covered=yes ;; esac
                   done
-                  if [ "$covered" = yes ]; then
-                    echo "  covered:   $rel/.htaccess ($first) - in nginx.deniedPaths"
-                  else
-                    echo "  UNCOVERED: $rel/.htaccess ($first)"
-                    echo "    NGINX does not read this file; add to nginx.deniedPaths:"
-                    echo "      - path: $rel"
-                    echo "        action: deny"
-                    echo "        reason: .htaccess found ($first)"
-                    # Mark through the filesystem: the while loop runs in a
-                    # subshell, so variables set here are invisible outside it.
-                    touch /tmp/htaccess-uncovered
-                  fi
-                  touch /tmp/htaccess-found
+                  first="$(printf '%s' "$body" | head -n1 | cut -c1-70)"
+                  case "$class" in
+                    deny)
+                      if [ "$covered" = yes ]; then
+                        echo "  covered:        $rel/.htaccess ($first)"
+                      elif [ "$plugin_managed" = 1 ]; then
+                        echo "  plugin-managed: $rel/.htaccess - a rule for this directory exists in the site's nginx.conf"
+                      else
+                        echo "  UNCOVERED:      $rel/.htaccess ($first)"
+                        echo "    NGINX does not read this file; the directory is open. To close it:"
+                        echo "      - path: $rel"
+                        echo "        action: deny"
+                        echo "        reason: .htaccess found ($first)"
+                        touch /tmp/htaccess-blocking
+                      fi ;;
+                    partial)
+                      if [ "$covered" = yes ]; then
+                        echo "  WARNING:        $rel is in nginx.deniedPaths, but its .htaccess has allow exceptions"
+                        echo "                  ($first). A directory deny breaks whatever the exception served."
+                      else
+                        echo "  partial:        $rel/.htaccess ($first) - deny with exceptions; not a candidate for deniedPaths"
+                      fi ;;
+                    allow)
+                      echo "  SUSPICIOUS:     $rel/.htaccess ($first)"
+                      echo "                  This file ALLOWS access - PHP or dotfiles - rather than denying it."
+                      echo "                  In an upload directory that is the usual companion of a webshell."
+                      echo "                  NGINX ignores it, but find out who wrote it and when."
+                      if [ "$covered" = yes ]; then
+                        echo "                  (it is also listed in nginx.deniedPaths - that entry denies the directory,"
+                        echo "                   which is fine, but does not make this file less worth a look)"
+                      fi ;;
+                    *)
+                      if [ "$plugin_managed" = 1 ]; then
+                        echo "  plugin-managed: $rel/.htaccess ($first) - translated in the site's nginx.conf"
+                      else
+                        echo "  info:           $rel/.htaccess ($first) - rewrite/header/mime rules, not an access control"
+                      fi ;;
+                  esac
                 done
-                [ -f /tmp/htaccess-found ] && found=1
-                [ -f /tmp/htaccess-uncovered ] && uncovered=1
               fi
-              if [ "$found" = 0 ]; then
+              if [ ! -f /tmp/htaccess-found ]; then
                 echo "  none found."
-              elif [ "$uncovered" = 1 ] && [ "$HTACCESS_POLICY" = "fail" ]; then
-                echo "ERROR: nginx.htaccessPolicy is 'fail' and at least one .htaccess directory"
-                echo "       is not covered by nginx.deniedPaths. Refusing to start."
+              elif [ -f /tmp/htaccess-blocking ] && [ "$HTACCESS_POLICY" = "fail" ]; then
+                echo "ERROR: nginx.htaccessPolicy is 'fail' and at least one directory with a blanket-deny"
+                echo "       .htaccess is not covered by nginx.deniedPaths. Refusing to start."
                 exit 1
               fi
               echo "Checks completed."
