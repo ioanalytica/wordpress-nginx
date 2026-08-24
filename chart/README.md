@@ -273,6 +273,22 @@ To see what enabling the NGINX rules would refuse before turning them on, set
 kubectl logs deploy/<release>-wordpress-nginx | grep '\[rest-hardening\]'
 ```
 
+### Applying NGINX configuration changes
+
+`nginxConfiguration`, `nginxCustomServerBlockAddition`, `phpExecutionAllowlist`,
+`restApiHardening` and `nginx.deniedPaths` all render into ConfigMaps that are
+mounted with `subPath`. Such a mount never receives ConfigMap updates — the
+kubelet projects the file once when the container starts. Since **7.1.0-7** the
+pod template carries a checksum annotation for each of them, so changing any of
+these values rolls the pods automatically; leaving them unchanged keeps the
+checksum stable and restarts nothing.
+
+On 7.1.0-6 and earlier this did not happen: the ConfigMap was updated, the
+Deployment spec stayed byte-identical, no rollout was triggered, and running
+pods kept the previous configuration indefinitely. If you are on such a version
+and a configuration change appears to have no effect, `kubectl rollout restart`
+the deployment.
+
 ### Denied Paths and `.htaccess`
 
 `nginx.deniedPaths` declares directories or URL patterns NGINX refuses for

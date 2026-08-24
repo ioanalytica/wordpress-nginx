@@ -25,7 +25,7 @@ spec:
   template:
     metadata:
       labels: {{- include "common.labels.standard" ( dict "customLabels" $podLabels "context" $ ) | nindent 8 }}
-      {{- if or .Values.podAnnotations .Values.metrics.enabled (include "wordpress.createConfigSecret" .) }}
+      {{- if or .Values.podAnnotations .Values.metrics.enabled (include "wordpress.createConfigSecret" .) (include "wordpress.nginx.createServerblockConfigmap" .) (include "wordpress.nginx.createConfigmap" .) (include "wordpress.nginx.createPhpAllowlistConfigmap" .) (include "wordpress.nginx.createRestHardeningConfigmap" .) .Values.nginx.deniedPaths }}
       annotations:
         {{- if .Values.podAnnotations }}
         {{- include "common.tplvalues.render" (dict "value" .Values.podAnnotations "context" $) | nindent 8 }}
@@ -35,6 +35,29 @@ spec:
         {{- end }}
         {{- if (include "wordpress.createConfigSecret" .) }}
         checksum/config-secret: {{ include (print $.Template.BasePath "/config-secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- /*
+        NGINX configuration is mounted from ConfigMaps with subPath, and a
+        subPath mount never receives ConfigMap updates - the kubelet projects
+        the file once at container start. Without these checksums a values
+        change renders new ConfigMap content while the Deployment spec stays
+        byte-identical, so no rollout happens and running pods keep serving the
+        old configuration indefinitely, with nothing to indicate it.
+        */}}
+        {{- if (include "wordpress.nginx.createServerblockConfigmap" .) }}
+        checksum/nginx-serverblock: {{ include (print $.Template.BasePath "/nginx-serverblock-configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if (include "wordpress.nginx.createConfigmap" .) }}
+        checksum/nginx-config: {{ include (print $.Template.BasePath "/nginx-config-configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if (include "wordpress.nginx.createPhpAllowlistConfigmap" .) }}
+        checksum/nginx-php-allowlist: {{ include (print $.Template.BasePath "/nginx-php-allowlist-configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if (include "wordpress.nginx.createRestHardeningConfigmap" .) }}
+        checksum/nginx-rest-hardening: {{ include (print $.Template.BasePath "/nginx-rest-hardening-configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if .Values.nginx.deniedPaths }}
+        checksum/nginx-denied-paths: {{ include (print $.Template.BasePath "/nginx-denied-paths-configmap.yaml") . | sha256sum }}
         {{- end }}
       {{- end }}
     spec:
@@ -259,7 +282,11 @@ spec:
                   # Directives only - comments and blank lines dropped, CRLF
                   # stripped. The file is plugin-written content: it is matched,
                   # never evaluated.
-                  body="$(tr -d '\r' < "$f" 2>/dev/null | grep -vE '^[[:space:]]*(#|$)')"
+                  # "|| true": grep exits 1 when a file holds nothing but comments
+                  # or is empty, and under "set -e" a failing command substitution
+                  # in an assignment aborts the script - which would stop the init
+                  # container and keep the pod from ever starting.
+                  body="$(tr -d '\r' < "$f" 2>/dev/null | grep -vE '^[[:space:]]*(#|$)' || true)"
                   has_deny=0; has_allow=0; php_allow=0
                   printf '%s' "$body" | grep -qiE '(deny[[:space:]]+from[[:space:]]+all|require[[:space:]]+all[[:space:]]+denied)' && has_deny=1
                   printf '%s' "$body" | grep -qiE '(allow[[:space:]]+from[[:space:]]+all|require[[:space:]]+all[[:space:]]+granted)' && has_allow=1
@@ -271,7 +298,8 @@ spec:
                   # A <Files> block only makes a deny "partial" when it carries an
                   # allow; a <FilesMatch "^."> that denies dotfiles on top of a
                   # blanket deny is still a blanket deny.
-                  if [ "$php_allow" = 1 ]; then class=allow
+                  if [ -z "$body" ]; then class=empty
+                  elif [ "$php_allow" = 1 ]; then class=allow
                   elif [ "$has_allow" = 1 ] && [ "$has_deny" = 0 ]; then class=allow
                   elif [ "$has_deny" = 1 ] && [ "$has_allow" = 1 ]; then class=partial
                   elif [ "$has_deny" = 1 ]; then class=deny
@@ -322,6 +350,8 @@ spec:
                         echo "                  (it is also listed in nginx.deniedPaths - that entry denies the directory,"
                         echo "                   which is fine, but does not make this file less worth a look)"
                       fi ;;
+                    empty)
+                      echo "  info:           $rel/.htaccess is empty or only comments - no access control at all" ;;
                     *)
                       if [ "$plugin_managed" = 1 ]; then
                         echo "  plugin-managed: $rel/.htaccess ($first) - translated in the site's nginx.conf"

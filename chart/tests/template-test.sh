@@ -114,6 +114,26 @@ expect "report does not block"           absent  'if ($wp_php_denied) { return 4
 expect "off does not block"              absent  'if ($wp_php_denied) { return 403; }' --set phpExecutionAllowlist.mode=off
 expect "off does not log"                absent  "php_allowlist if="           --set phpExecutionAllowlist.mode=off
 
+echo "=== subPath-mounted config triggers a rollout"
+# A subPath mount never receives ConfigMap updates - the kubelet projects the
+# file once at container start. Without a checksum annotation the Deployment
+# spec stays byte-identical when only ConfigMap content changes, no rollout
+# happens, and running pods keep the old configuration with nothing to show it.
+expect "serverblock has a checksum"    present "checksum/nginx-serverblock" --set 'nginxCustomServerBlockAddition=# x'
+expect "denied paths has a checksum"   present "checksum/nginx-denied-paths" \
+        --set 'nginx.deniedPaths[0].path=/a' --set 'nginx.deniedPaths[0].action=deny'
+expect "rest hardening has a checksum" present "checksum/nginx-rest-hardening" --set restApiHardening.mode=enforce
+expect "php allowlist has a checksum"  present "checksum/nginx-php-allowlist" --set phpExecutionAllowlist.mode=report
+expect "no checksums without config"   absent  "checksum/nginx-"
+
+sb_x=$(helm template tst "$CHART" --set 'nginxCustomServerBlockAddition=# x' | grep 'checksum/nginx-serverblock' | head -1)
+sb_y=$(helm template tst "$CHART" --set 'nginxCustomServerBlockAddition=# y' | grep 'checksum/nginx-serverblock' | head -1)
+sb_x2=$(helm template tst "$CHART" --set 'nginxCustomServerBlockAddition=# x' | grep 'checksum/nginx-serverblock' | head -1)
+if [ "$sb_x" != "$sb_y" ]; then echo "ok:   a changed value changes the checksum"
+else echo "FAIL: checksum unchanged across different values - no rollout would happen"; FAILURES=$((FAILURES + 1)); fi
+if [ "$sb_x" = "$sb_x2" ]; then echo "ok:   an unchanged value keeps the checksum stable"
+else echo "FAIL: checksum unstable for identical values - every render would roll pods"; FAILURES=$((FAILURES + 1)); fi
+
 echo "=== Denied paths render what they claim"
 expect "empty list renders nothing"        absent  "nginx-denied-paths"
 expect "directory becomes anchored regex"  present '"~*^/wp-content/uploads/dlm\.uploads(/|$)" 403;' \

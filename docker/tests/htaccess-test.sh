@@ -103,6 +103,26 @@ echo "=== Edge cases, blanket deny covered, rest uncovered"
 run fail "/wp-content/r" "$WORK/edge.sh"
 expect_rc   "partial/allow/other never block fail mode"   0
 
+cat > "$WORK/empty.sh" <<'SETUP'
+W=/wordpress/wp-content
+mkdir -p $W/empty $W/comments $W/real
+: > $W/empty/.htaccess
+printf '# BEGIN W3TC something\n#\n\n' > $W/comments/.htaccess
+printf 'deny from all\n' > $W/real/.htaccess
+SETUP
+# grep exits 1 on a file with no directives. Under "set -e" - which the init
+# container runs with - a failing command substitution in an assignment aborts
+# the script, and the pod never starts. Any plugin leaving an empty or
+# comments-only .htaccess behind would have taken the site down on next roll.
+echo "=== Empty and comments-only .htaccess must not stop the init container"
+run warn "" "$WORK/empty.sh"
+expect_line "empty file reported as no access control"   'info: +/wp-content/empty/.htaccess is empty or only comments'
+expect_line "comments-only reported the same way"        'info: +/wp-content/comments/.htaccess is empty or only comments'
+expect_line "the real deny is still found"               'UNCOVERED: +/wp-content/real/'
+expect_rc   "warn mode completes"                        0
+run fail "/wp-content/real" "$WORK/empty.sh"
+expect_rc   "fail mode is not tripped by empty files"    0
+
 echo
 if [ "$FAILURES" -gt 0 ]; then echo "=== $FAILURES assertion(s) FAILED"; exit 1; fi
 echo "=== All assertions passed"
