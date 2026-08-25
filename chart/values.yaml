@@ -937,7 +937,8 @@ secondaryIngress:
 ##                       Drops request path (nginx-ingress limitation).
 ##   - "nginx-traefik" / "traefik":
 ##                       kind:Middleware (RedirectRegex with capture group)
-##                       + kind:IngressRoute. Path-preserving (308).
+##                       + kind:IngressRoute. Path-preserving
+##                       (301 on GET, 308 on other methods).
 ##                       cert-manager's ingress-shim doesn't watch
 ##                       IngressRoute → if redirect.annotations contains
 ##                       cert-manager.io/cluster-issuer, a standalone

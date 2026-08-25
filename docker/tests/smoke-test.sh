@@ -72,6 +72,25 @@ assert_not_executed() {
     fi
 }
 
+# await_log <description> <grep-pattern>
+# Asserts that a line matching the pattern reaches the container log. The
+# line travels nginx -> s6 -> docker log driver, and on a loaded runner it
+# can arrive a moment after curl has returned - a single-shot grep loses
+# that race (observed in CI: the same commit passed in one workflow and
+# failed in the parallel one on exactly this check). Poll briefly instead.
+await_log() {
+    local desc="$1" pattern="$2" i
+    for i in $(seq 1 10); do
+        if docker logs "$NAME" 2>&1 | grep -q "$pattern"; then
+            echo "ok:   $desc"
+            return
+        fi
+        sleep 0.5
+    done
+    echo "FAIL: $desc — no log line matching '$pattern'"
+    FAILURES=$((FAILURES + 1))
+}
+
 # assert_gone <description> <expected-status> <host> <url> <user-agent> [expected-location]
 # Sends the request with an explicit Host header; verifies the status and,
 # when given, the Location target of a redirect. An empty user-agent argument
@@ -159,12 +178,7 @@ echo "=== Mode: report"
 cexec 'echo "access_log /proc/1/fd/2 php_allowlist if=\$wp_php_denied;" > /etc/nginx/custom.d/00-php-allowlist.conf'
 reload_nginx
 assert "uploads PHP executes in report mode" 200 /wp-content/uploads/shell.php UPLOADS-EXECUTED
-if docker logs "$NAME" 2>&1 | grep -q '\[php-allowlist\] 200 .*shell\.php'; then
-    echo "ok:   report mode logs the would-be block"
-else
-    echo "FAIL: report mode did not log '[php-allowlist] 200 ... shell.php'"
-    FAILURES=$((FAILURES + 1))
-fi
+await_log "report mode logs the would-be block" '\[php-allowlist\] 200 .*shell\.php'
 
 echo "=== Mode: off"
 cexec 'echo "# php allowlist disabled" > /etc/nginx/custom.d/00-php-allowlist.conf'
@@ -280,12 +294,7 @@ echo "=== REST API hardening: report"
 cexec 'printf "%s\\n%s\\n" "if (\$wp_rest_denied) { set \$wp_rest_reported 1; }" "access_log /proc/1/fd/2 rest_hardening if=\$wp_rest_reported;" > /etc/nginx/custom.d/00-rest-hardening.conf'
 reload_nginx
 assert "REST users passes in report mode" 200 /wp-json/wp/v2/users INDEX-EXECUTED
-if docker logs "$NAME" 2>&1 | grep -q '\[rest-hardening\] 200 .*wp/v2/users'; then
-    echo "ok:   report mode logs the would-be block"
-else
-    echo "FAIL: report mode did not log '[rest-hardening] 200 ... wp/v2/users'"
-    FAILURES=$((FAILURES + 1))
-fi
+await_log "report mode logs the would-be block" '\[rest-hardening\] 200 .*wp/v2/users'
 
 echo "=== REST API hardening: off (chart mounts nothing, image file stands)"
 cexec 'echo "# rest hardening inert" > /etc/nginx/custom.d/00-rest-hardening.conf'

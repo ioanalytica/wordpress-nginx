@@ -15,8 +15,8 @@ Emits:
     path and query string)
   - kind:IngressRoute (host match across all .Values.redirect.hosts,
     references the middleware, uses Traefik's built-in noop@internal
-    service since RedirectRegex terminates with 308 before any backend
-    lookup)
+    service since RedirectRegex terminates with a permanent redirect
+    before any backend lookup)
 
 TLS cert: see certificate-redirect.yaml. cert-manager's ingress-shim does
 NOT watch IngressRoute, so when the redirect needs a cert-manager-issued
@@ -24,7 +24,7 @@ cert, an explicit kind:Certificate is emitted alongside.
 
 Source-verified against Traefik v3.7:
   - noop@internal is a built-in handler returning HTTP 418 (never reached
-    because RedirectRegex 308 terminates first).
+    because RedirectRegex terminates first).
   - crossProviderNamespaces defaults to nil → noop@internal references
     are allowed from any namespace.
   - spec.ingressClassName is the canonical form since v3.7 (replaces the
@@ -51,7 +51,9 @@ spec:
   redirectRegex:
     regex: "^https?://[^/]+(/.*)?$"
     replacement: "{{ .Values.redirect.targetUrl }}${1}"
-    permanent: true   ## → 308 (RFC 7538), preserves HTTP method
+    permanent: true   ## → 301 on GET, 308 (RFC 7538) on other methods,
+                      ## so non-GET requests keep their method. Verified
+                      ## against the live middleware (GET answers 301).
 ---
 apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
