@@ -1,5 +1,13 @@
 # Changelog
 
+## 7.1.0-8
+
+* New `redirect.goneHosts`: retired hostnames whose content no longer exists anywhere. Crawlers (matched by User-Agent keywords, including an empty User-Agent) are answered **410 Gone on every path** of such a host — the signal to drop the URLs and stop recrawling — while browsers get a courtesy 301 to `targetUrl`'s root (deliberately not path-preserving: the old paths do not exist at the target). This complements `redirect.hosts`, which stays the right choice for aliases whose content lives on at `targetUrl` — there, everyone including crawlers should follow the redirect so search engines consolidate onto the canonical name.
+* Gone hosts are routed to the backend through the primary Ingress (with an automatic ingress-shim TLS entry when the Ingress carries a cert-manager issuer annotation) instead of through the controller-level redirect resources, and NGINX answers in the rewrite phase — **ahead of the PHP execution allowlist**. This matters: a host-based `return 410` in `nginxCustomServerBlockAddition` never fires for `.php` paths, because the allowlist answers 403 first — exactly the URLs a crawler replaying a dead site keeps requesting, and a 403 reads as "temporarily forbidden", so it never stops. `deniedPaths` still ranks first, so a `honeypot` path keeps answering 418 on a retired host.
+* `redirect.enabled` with an empty `redirect.hosts` list is now valid as long as `redirect.goneHosts` has an entry; no controller-level redirect resources are emitted in that case.
+* Extended the image smoke test (crawler/browser/empty-UA matrix, allowlist and honeypot precedence, `hostnames` suffix entries) and the chart template test (map rendering, checksum, primary-Ingress routing, no leakage into the redirect resources).
+* Bump `idxImageTag` to `1.3.1` (wordpress-idx sidecar). Image availability on GHCR verified before the bump.
+
 ## 7.1.0-7
 
 * **Fix: an empty or comments-only `.htaccess` under `wp-content` stopped the pod from starting.** The init container runs with `set -e`, and the filter that strips comments from a `.htaccess` exits non-zero when nothing is left — aborting the init script whatever `nginx.htaccessPolicy` is set to. Any plugin leaving such a file behind would have taken the site down on the next roll. Such files are now reported as "empty or only comments — no access control at all". Affects 7.1.0-6 only; upgrade if you are on it.

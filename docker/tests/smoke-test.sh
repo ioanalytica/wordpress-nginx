@@ -72,6 +72,27 @@ assert_not_executed() {
     fi
 }
 
+# assert_gone <description> <expected-status> <host> <url> <user-agent> [expected-location]
+# Sends the request with an explicit Host header; verifies the status and,
+# when given, the Location target of a redirect. An empty user-agent argument
+# sends no User-Agent header at all.
+assert_gone() {
+    local desc="$1" want_status="$2" host="$3" url="$4" ua="$5" want_loc="${6:-}"
+    local out status loc
+    out="$(cexec "curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -A '$ua' -H 'Host: $host' 'http://localhost$url'")"
+    status="${out%% *}"
+    loc="${out#* }"
+    if [ "$status" != "$want_status" ]; then
+        echo "FAIL: $desc — expected HTTP $want_status, got $status ($host$url)"
+        FAILURES=$((FAILURES + 1))
+    elif [ -n "$want_loc" ] && [ "$loc" != "$want_loc" ]; then
+        echo "FAIL: $desc — HTTP $status but Location is '$loc', expected '$want_loc' ($host$url)"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   $desc ($host$url -> $status)"
+    fi
+}
+
 reload_nginx() {
     cexec 'kill -HUP "$(ps -o pid,args | grep "nginx: master" | grep -v grep | awk "{print \$1}")"'
     sleep 1
@@ -180,6 +201,43 @@ assert_not_executed "denied dir: uppercase"        "/wp-content/uploads/DLM_UPLO
 assert_not_executed "denied dir: encoded underscore" "/wp-content/uploads/dlm%5fuploads/report.zip" ZIP-CONTENT
 cexec 'rm /etc/nginx/denied-paths.d/10-chart.conf'
 reload_nginx
+
+echo "=== Gone hosts: image default is inert"
+assert_gone "unknown host serves normally" 200 forum.example.com / 'Mozilla/5.0 (compatible; PetalBot;+https://webmaster.petalsearch.com/site/petalbot)'
+
+echo "=== Gone hosts: as the chart renders them"
+# Restore the allowlist to its enforcing image default first: the point of
+# the custom.d file ordering is that a crawler's 410 wins over the
+# allowlist's 403 for .php paths.
+cexec 'printf "%s\n%s\n" "if (\$wp_php_denied) { return 403; }" "access_log /proc/1/fd/2 php_allowlist if=\$wp_php_denied;" > /etc/nginx/custom.d/00-php-allowlist.conf'
+cexec 'cat > /etc/nginx/gone-hosts.d/10-chart.conf <<EOF
+"forum.example.com" "https://example.com/";
+".old.example.net" "https://example.com/";
+EOF'
+reload_nginx
+CRAWLER='Mozilla/5.0 (compatible; PetalBot;+https://webmaster.petalsearch.com/site/petalbot)'
+BROWSER='Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36'
+assert_gone "crawler: front page is gone"          410 forum.example.com / "$CRAWLER"
+assert_gone "crawler: robots.txt is gone"          410 forum.example.com /robots.txt "$CRAWLER"
+assert_gone "crawler: 410 beats the allowlist 403" 410 forum.example.com /viewtopic.php "$CRAWLER"
+assert_gone "crawler: deep path is gone"           410 forum.example.com /some/old/page "$CRAWLER"
+assert_gone "no user agent counts as crawler"      410 forum.example.com / ""
+assert_gone "hostnames suffix covers subdomains"   410 www.old.example.net / "$CRAWLER"
+assert_gone "browser: 301 to the target root"      301 forum.example.com / "$BROWSER" https://example.com/
+assert_gone "browser: path is not preserved"       301 forum.example.com /viewtopic.php "$BROWSER" https://example.com/
+assert_gone "canonical host: crawler unaffected"   200 localhost / "$CRAWLER"
+assert "canonical host: allowlist still enforces"  403 /wp-content/uploads/shell.php
+# The honeypot must keep answering 418 on a retired host: probers of a
+# removed backdoor ban themselves whatever hostname they use.
+cexec 'cat > /etc/nginx/denied-paths.d/10-chart.conf <<EOF
+"~*^/wp-content/themes/config-1785900943/" 418;
+EOF'
+reload_nginx
+assert_gone "honeypot outranks gone on a retired host" 418 forum.example.com /wp-content/themes/config-1785900943/assets/custom-file-4-1785900944.php "$CRAWLER"
+cexec 'rm /etc/nginx/denied-paths.d/10-chart.conf /etc/nginx/gone-hosts.d/10-chart.conf'
+cexec 'echo "# php allowlist disabled" > /etc/nginx/custom.d/00-php-allowlist.conf'
+reload_nginx
+assert_gone "cleanup: retired host serves again"   200 forum.example.com / "$CRAWLER"
 
 echo "=== REST API hardening: image default is inert"
 assert "REST users passes by default"   200 /wp-json/wp/v2/users INDEX-EXECUTED

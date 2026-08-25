@@ -17,6 +17,8 @@ chart-emitted.
 
 Skipped if:
   - redirect is disabled
+  - redirect.hosts is empty (goneHosts alone need no redirect cert: they
+    ride the primary Ingress, whose ingress-shim request covers them)
   - ingress.ingressClassName is "nginx" (the nginx form has its own
     cert-shim-driven Ingress in ingress-redirect.yaml)
   - no cert-manager.io/cluster-issuer annotation is set (user is expected
@@ -24,7 +26,7 @@ Skipped if:
   - redirect.tls is empty (no secret to target)
 */}}
 {{- $issuer := include "wordpress.redirect.clusterIssuer" . -}}
-{{- if and .Values.redirect.enabled (or (eq .Values.ingress.ingressClassName "nginx-traefik") (eq .Values.ingress.ingressClassName "traefik")) $issuer (gt (len .Values.redirect.tls) 0) }}
+{{- if and .Values.redirect.enabled .Values.redirect.hosts (or (eq .Values.ingress.ingressClassName "nginx-traefik") (eq .Values.ingress.ingressClassName "traefik")) $issuer (gt (len .Values.redirect.tls) 0) }}
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:

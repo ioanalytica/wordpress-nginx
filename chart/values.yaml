@@ -943,10 +943,24 @@ secondaryIngress:
 ##                       cert-manager.io/cluster-issuer, a standalone
 ##                       kind:Certificate is also emitted.
 ##
+## Retired hostnames (goneHosts) are the other kind of secondary domain: the
+## content does not exist anywhere any more (a shut-down forum, a dropped
+## subproject). Redirecting a crawler there only keeps dead URLs alive in the
+## index, so these hosts are NOT wired to the controller-level redirect.
+## Instead the chart routes them to the backend via the primary Ingress
+## (requires ingress.enabled; TLS comes from the primary Ingress'
+## cert-manager annotation), and NGINX in the pod answers per client:
+## crawlers get 410 Gone on every path - the signal to drop the URLs and
+## stop recrawling - while browsers get a courtesy 301 to targetUrl's root
+## (not path-preserving: the old paths do not exist at the target).
+## Use redirect.hosts for aliases whose content lives on at targetUrl under
+## the same path; use redirect.goneHosts for domains that are simply over.
+##
 ## @param redirect.enabled Render redirect resources
 ## @param redirect.targetUrl URL to redirect to (must include scheme; path is preserved on traefik paths)
 ## @param redirect.annotations Annotations for the redirect resource (Ingress on nginx path, optionally cert-manager.io/cluster-issuer used by Certificate on traefik path)
 ## @param redirect.hosts List of source hostnames that should redirect to targetUrl
+## @param redirect.goneHosts List of retired hostnames: crawlers are answered 410 on every path, browsers 301 to targetUrl's root
 ## @param redirect.tls TLS configuration. Single-entry list with secretName drives both Ingress.tls and IngressRoute.tls.secretName + Certificate.spec.secretName
 ##
 redirect:
@@ -954,6 +968,7 @@ redirect:
   targetUrl: ""
   annotations: {}
   hosts: []
+  goneHosts: []
   tls: []
 ## Example:
 ## redirect:
@@ -964,6 +979,8 @@ redirect:
 ##   hosts:
 ##     - www.example.com
 ##     - example.net
+##   goneHosts:
+##     - forum.example.com    # phpBB retired years ago; crawlers still replay old links
 ##   tls:
 ##     - hosts:
 ##         - www.example.com

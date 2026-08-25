@@ -30,12 +30,13 @@ Source-verified against Traefik v3.7:
   - spec.ingressClassName is the canonical form since v3.7 (replaces the
     deprecated kubernetes.io/ingress.class annotation).
 */}}
-{{- if and .Values.redirect.enabled (or (eq .Values.ingress.ingressClassName "nginx-traefik") (eq .Values.ingress.ingressClassName "traefik")) }}
+{{- /* goneHosts are NOT redirected here: they route to the backend via the
+primary Ingress, where NGINX answers crawlers 410 and browsers 301. Only
+alias hosts get the controller-level redirect; with alias hosts empty,
+no redirect resources are emitted at all. */}}
+{{- if and .Values.redirect.enabled .Values.redirect.hosts (or (eq .Values.ingress.ingressClassName "nginx-traefik") (eq .Values.ingress.ingressClassName "traefik")) }}
 {{- if not .Values.redirect.targetUrl }}
 {{- fail "redirect.targetUrl is required when redirect.enabled is true" }}
-{{- end }}
-{{- if not .Values.redirect.hosts }}
-{{- fail "redirect.hosts must not be empty when redirect.enabled is true" }}
 {{- end }}
 apiVersion: traefik.io/v1alpha1
 kind: Middleware

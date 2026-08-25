@@ -21,10 +21,13 @@ nginx-ingress.
 {{- if not .Values.redirect.targetUrl }}
 {{- fail "redirect.targetUrl is required when redirect.enabled is true" }}
 {{- end }}
-{{- if not .Values.redirect.hosts }}
-{{- fail "redirect.hosts must not be empty when redirect.enabled is true" }}
+{{- if and (not .Values.redirect.hosts) (not .Values.redirect.goneHosts) }}
+{{- fail "redirect.enabled is true but neither redirect.hosts nor redirect.goneHosts has an entry" }}
 {{- end }}
-{{- if eq .Values.ingress.ingressClassName "nginx" }}
+{{- /* goneHosts are NOT redirected here: they route to the backend via the
+primary Ingress, where NGINX answers crawlers 410 and browsers 301. Only
+alias hosts get the controller-level redirect. */}}
+{{- if and (eq .Values.ingress.ingressClassName "nginx") .Values.redirect.hosts }}
 apiVersion: {{ include "common.capabilities.ingress.apiVersion" . }}
 kind: Ingress
 metadata:

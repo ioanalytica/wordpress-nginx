@@ -276,8 +276,8 @@ kubectl logs deploy/<release>-wordpress-nginx | grep '\[rest-hardening\]'
 ### Applying NGINX configuration changes
 
 `nginxConfiguration`, `nginxCustomServerBlockAddition`, `phpExecutionAllowlist`,
-`restApiHardening` and `nginx.deniedPaths` all render into ConfigMaps that are
-mounted with `subPath`. Such a mount never receives ConfigMap updates — the
+`restApiHardening`, `nginx.deniedPaths` and `redirect.goneHosts` all render
+into ConfigMaps that are mounted with `subPath`. Such a mount never receives ConfigMap updates — the
 kubelet projects the file once when the container starts. Since **7.1.0-7** the
 pod template carries a checksum annotation for each of them, so changing any of
 these values rolls the pods automatically; leaving them unchanged keeps the
@@ -497,6 +497,65 @@ chart upgrades.
 > (works on every class, supports arbitrary host lists, path-preserving
 > on Traefik), and set `ingress.tlsWwwPrefix: true` separately when the
 > primary cert should also cover the `www.` variant.
+
+#### Retired domains (`redirect.goneHosts`)
+
+`redirect.hosts` is for aliases: the content lives on at `targetUrl` under
+the same path, so everyone — crawlers included — should follow a permanent
+redirect, and search engines consolidate onto the canonical name.
+
+A retired domain is the opposite case: the content does not exist anywhere
+any more (a shut-down forum, a dropped subproject), only the hostname still
+resolves. Redirecting a crawler there keeps the dead URLs alive in its
+index and in its crawl queue indefinitely — some crawlers replay a
+years-old link graph and never stop. What actually ends this is a **410
+Gone** on every path of the host.
+
+```yaml
+redirect:
+  enabled: true
+  targetUrl: https://example.com
+  hosts:
+    - www.example.com          # alias: everyone is redirected
+  goneHosts:
+    - forum.example.com        # retired: crawlers 410, browsers 301
+```
+
+A `goneHosts` entry behaves per client:
+
+* **Crawlers** (matched by User-Agent keywords — `bot`, `crawl`, `spider`,
+  `curl`, `python`, an empty User-Agent, …) are answered `410 Gone` on
+  **every** path of the host, including `.php` paths — the response is made
+  in the rewrite phase ahead of the PHP execution allowlist, which would
+  otherwise answer 403 for exactly the URLs a crawler keeps replaying.
+  `deniedPaths` still ranks first, so a `honeypot` path answers 418 on a
+  retired host too.
+* **Browsers** get a courtesy `301` to `targetUrl`'s **root**. Deliberately
+  not path-preserving: the old paths do not exist at the target, and a
+  preserved path would only trade the 410 for a 403/404 there.
+* A hostname starting with a dot (`.old.example.com`) also covers every
+  subdomain of it (NGINX `hostnames` map semantics).
+
+Mechanically, `goneHosts` are **not** wired to the controller-level
+redirect resources at all — a redirect answered at the ingress would keep
+NGINX from ever making the 410 call. Instead the chart routes them to the
+backend through the **primary Ingress** (so `ingress.enabled` is required)
+and renders the host list into a ConfigMap mounted at
+`/etc/nginx/gone-hosts.d/10-chart.conf`. When the primary Ingress carries a
+cert-manager issuer annotation, the chart adds a TLS entry
+(`<fullname>-gone-tls`) so the retired hostnames get a certificate through
+ingress-shim — a 410 served over a broken certificate convinces nobody.
+
+Verifying after deployment (crawlers and browsers see different answers,
+so test both):
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' -A 'Mozilla/5.0 (compatible; PetalBot)' https://forum.example.com/viewtopic.php   # 410
+curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -A 'Mozilla/5.0 (X11; Linux x86_64) Chrome/126.0' https://forum.example.com/anything   # 301 https://example.com/
+```
+
+Once the crawl volume has died down, delete the DNS record and remove the
+entry.
 
 ### Security Response Headers
 

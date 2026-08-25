@@ -286,6 +286,33 @@ Return the name of the denied paths configmap
 {{- end -}}
 
 {{/*
+Return the name of the gone hosts configmap
+*/}}
+{{- define "wordpress.nginx.goneHostsConfigmapName" -}}
+{{- printf "%s-nginx-gone-hosts" (include "common.names.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/*
+True when retired hostnames are declared: redirect.goneHosts is only acted
+on while the redirect feature is enabled, because the browser redirect
+reuses redirect.targetUrl.
+*/}}
+{{- define "wordpress.redirect.hasGoneHosts" -}}
+{{- if and .Values.redirect.enabled .Values.redirect.goneHosts -}}
+{{- true -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The URL browsers are sent to from a retired host: redirect.targetUrl
+normalized to its root with a trailing slash. Deliberately not
+path-preserving - the paths of a retired host do not exist at the target.
+*/}}
+{{- define "wordpress.redirect.goneTarget" -}}
+{{- printf "%s/" (trimSuffix "/" .Values.redirect.targetUrl) -}}
+{{- end -}}
+
+{{/*
 Translate one nginx.deniedPaths entry into an NGINX map regex.
 A path starting with "~" is a regex and is taken verbatim (an optional "*"
 modifier and surrounding whitespace are normalized into the map's "~*" form).

@@ -101,6 +101,12 @@ check "denied paths set"            --set 'nginx.deniedPaths[0].path=/wp-content
 # assignment inside a YAML block scalar, so this is where a newline in the
 # helper output breaks the manifest - a single entry renders fine regardless.
 check "denied paths, several entries" -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"
+check "gone hosts set"              --set ingress.enabled=true \
+                                    --set ingress.ingressClassName=traefik \
+                                    --set redirect.enabled=true \
+                                    --set redirect.targetUrl=https://example.com \
+                                    --set 'redirect.hosts={www.example.com}' \
+                                    --set 'redirect.goneHosts={forum.example.com}'
 check "everything at once"          --set phpExecutionAllowlist.mode=report \
                                     --set restApiHardening.mode=enforce \
                                     --set 'nginxCustomServerBlockAddition=# test' \
@@ -164,6 +170,37 @@ expect "classifier: plugin-managed check"  present '/wordpress/nginx.conf'
 expect "classifier: fail only on blanket deny" present 'htaccess-blocking'
 expect "policy defaults to warn"           present 'HTACCESS_POLICY="warn"'
 expect "policy fail is rendered"           present 'HTACCESS_POLICY="fail"' --set nginx.htaccessPolicy=fail
+
+echo "=== Gone hosts render what they claim"
+# Shared argument sets. GONE declares one retired host next to one alias
+# host; GONE_ONLY has no alias host at all, which must also be valid.
+# redirect.enabled requires a valid ingressClassName, hence traefik here.
+GONE=(--set ingress.ingressClassName=traefik
+      --set redirect.enabled=true --set redirect.targetUrl=https://example.com
+      --set 'redirect.hosts={www.example.com}'
+      --set 'redirect.goneHosts={forum.example.com}')
+GONE_ONLY=(--set ingress.ingressClassName=traefik
+           --set redirect.enabled=true --set redirect.targetUrl=https://example.com
+           --set 'redirect.goneHosts={forum.example.com}')
+expect "no goneHosts renders no configmap"   absent  "nginx-gone-hosts"
+expect "goneHosts without redirect is inert" absent  "nginx-gone-hosts" \
+        --set 'redirect.goneHosts={forum.example.com}'
+expect "gone host becomes a map entry"       present '"forum.example.com" "https://example.com/";' "${GONE[@]}"
+expect "target is normalized to one slash"   present '"forum.example.com" "https://example.com/";' \
+        "${GONE_ONLY[@]}" --set redirect.targetUrl=https://example.com/
+expect "gone hosts have a checksum"          present "checksum/nginx-gone-hosts" "${GONE[@]}"
+expect "gone host rides the primary ingress" present 'host: "forum.example.com"' \
+        --set ingress.enabled=true "${GONE[@]}"
+expect "gone host gets a shim TLS entry"     present "gone-tls" \
+        --set ingress.enabled=true \
+        --set-string 'ingress.annotations.cert-manager\.io/cluster-issuer=letsencrypt-prod' \
+        "${GONE[@]}"
+# The controller-level redirect must never see a gone host: a redirect
+# answered at the ingress would keep NGINX from ever making the 410 call.
+expect "gone host not in the IngressRoute"   absent  'Host(`forum.example.com`)' "${GONE[@]}"
+expect "alias host still in the IngressRoute" present 'Host(`www.example.com`)' "${GONE[@]}"
+expect "goneHosts alone emit no redirect"    absent  "redirectRegex" "${GONE_ONLY[@]}"
+expect "goneHosts alone still map"           present '"forum.example.com" "https://example.com/";' "${GONE_ONLY[@]}"
 
 echo "=== Cache password reaches the plugin, and only through a Secret"
 expect "no cache password, no env"        absent  "WORDPRESS_CACHE_PASSWORD"

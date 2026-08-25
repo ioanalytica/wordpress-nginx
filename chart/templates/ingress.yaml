@@ -49,18 +49,45 @@ spec:
             {{- end }}
             backend: {{- include "common.ingress.backend" (dict "serviceName" (include "common.names.fullname" $) "servicePort" "http" "context" $) | nindent 14 }}
     {{- end }}
+    {{- /*
+    Retired hostnames are routed to the backend like ordinary hosts - the
+    crawler/browser decision (410 vs. courtesy redirect) is made by NGINX in
+    the pod, not by the ingress controller. They deliberately do NOT go
+    through the redirect resources: a controller-level redirect would answer
+    before NGINX ever sees the request.
+    */}}
+    {{- if (include "wordpress.redirect.hasGoneHosts" .) }}
+    {{- range .Values.redirect.goneHosts }}
+    - host: {{ tpl . $ | quote }}
+      http:
+        paths:
+          - path: /
+            {{- if eq "true" (include "common.ingress.supportsPathType" $) }}
+            pathType: Prefix
+            {{- end }}
+            backend: {{- include "common.ingress.backend" (dict "serviceName" (include "common.names.fullname" $) "servicePort" "http" "context" $) | nindent 14 }}
+    {{- end }}
+    {{- end }}
     {{- if .Values.ingress.extraRules }}
     {{- include "common.tplvalues.render" (dict "value" .Values.ingress.extraRules "context" $) | nindent 4 }}
     {{- end }}
-  {{- if or (and .Values.ingress.tls (or (include "common.ingress.certManagerRequest" ( dict "annotations" .Values.ingress.annotations )) .Values.ingress.selfSigned)) .Values.ingress.extraTls }}
+  {{- $certManaged := or (include "common.ingress.certManagerRequest" ( dict "annotations" .Values.ingress.annotations )) .Values.ingress.selfSigned }}
+  {{- if or (and .Values.ingress.tls $certManaged) .Values.ingress.extraTls (and (include "wordpress.redirect.hasGoneHosts" .) $certManaged) }}
   tls:
-    {{- if and .Values.ingress.tls (or (include "common.ingress.certManagerRequest" ( dict "annotations" .Values.ingress.annotations )) .Values.ingress.selfSigned) }}
+    {{- if and .Values.ingress.tls $certManaged }}
     - hosts:
         - {{ tpl .Values.ingress.hostname $ | quote }}
         {{- if and .Values.ingress.tlsWwwPrefix (not (contains "www." .Values.ingress.hostname))  }}
         - {{ printf "www.%s" (tpl .Values.ingress.hostname $) | quote }}
         {{- end }}
       secretName: {{ printf "%s-tls" (tpl .Values.ingress.hostname $) }}
+    {{- end }}
+    {{- if and (include "wordpress.redirect.hasGoneHosts" .) $certManaged }}
+    - hosts:
+        {{- range .Values.redirect.goneHosts }}
+        - {{ tpl . $ | quote }}
+        {{- end }}
+      secretName: {{ printf "%s-gone-tls" (include "common.names.fullname" .) }}
     {{- end }}
     {{- if .Values.ingress.extraTls }}
     {{- include "common.tplvalues.render" (dict "value" .Values.ingress.extraTls "context" $) | nindent 4 }}

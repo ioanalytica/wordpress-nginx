@@ -25,7 +25,7 @@ spec:
   template:
     metadata:
       labels: {{- include "common.labels.standard" ( dict "customLabels" $podLabels "context" $ ) | nindent 8 }}
-      {{- if or .Values.podAnnotations .Values.metrics.enabled (include "wordpress.createConfigSecret" .) (include "wordpress.nginx.createServerblockConfigmap" .) (include "wordpress.nginx.createConfigmap" .) (include "wordpress.nginx.createPhpAllowlistConfigmap" .) (include "wordpress.nginx.createRestHardeningConfigmap" .) .Values.nginx.deniedPaths }}
+      {{- if or .Values.podAnnotations .Values.metrics.enabled (include "wordpress.createConfigSecret" .) (include "wordpress.nginx.createServerblockConfigmap" .) (include "wordpress.nginx.createConfigmap" .) (include "wordpress.nginx.createPhpAllowlistConfigmap" .) (include "wordpress.nginx.createRestHardeningConfigmap" .) .Values.nginx.deniedPaths (include "wordpress.redirect.hasGoneHosts" .) }}
       annotations:
         {{- if .Values.podAnnotations }}
         {{- include "common.tplvalues.render" (dict "value" .Values.podAnnotations "context" $) | nindent 8 }}
@@ -58,6 +58,9 @@ spec:
         {{- end }}
         {{- if .Values.nginx.deniedPaths }}
         checksum/nginx-denied-paths: {{ include (print $.Template.BasePath "/nginx-denied-paths-configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if (include "wordpress.redirect.hasGoneHosts" .) }}
+        checksum/nginx-gone-hosts: {{ include (print $.Template.BasePath "/nginx-gone-hosts-configmap.yaml") . | sha256sum }}
         {{- end }}
       {{- end }}
     spec:
@@ -624,6 +627,12 @@ spec:
               subPath: 10-chart.conf
               readOnly: true
             {{- end }}
+            {{- if (include "wordpress.redirect.hasGoneHosts" .) }}
+            - name: nginx-gone-hosts
+              mountPath: /etc/nginx/gone-hosts.d/10-chart.conf
+              subPath: 10-chart.conf
+              readOnly: true
+            {{- end }}
             {{- if .Values.extraVolumeMounts }}
             {{- include "common.tplvalues.render" (dict "value" .Values.extraVolumeMounts "context" $) | nindent 12 }}
             {{- end }}
@@ -804,6 +813,12 @@ spec:
         - name: nginx-denied-paths
           configMap:
             name: {{ include "wordpress.nginx.deniedPathsConfigmapName" . }}
+            defaultMode: 0644
+        {{- end }}
+        {{- if (include "wordpress.redirect.hasGoneHosts" .) }}
+        - name: nginx-gone-hosts
+          configMap:
+            name: {{ include "wordpress.nginx.goneHostsConfigmapName" . }}
             defaultMode: 0644
         {{- end }}
         - name: wordpress-data
