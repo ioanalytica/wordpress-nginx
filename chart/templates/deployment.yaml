@@ -826,7 +826,6 @@ spec:
             # exec bit here the scripts are mounted and never run. The hook
             # runs as root during init, so no bits for "other": 0750.
             defaultMode: 0750
-            defaultMode: 0755
         {{- end }}
         {{- if (include "wordpress.nginx.createPhpAllowlistConfigmap" .) }}
         - name: nginx-php-allowlist

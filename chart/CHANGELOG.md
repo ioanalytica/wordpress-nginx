@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.1.0-10
+
+* **Fix: 7.1.0-9 broke every HelmRelease upgrade — do not use 7.1.0-9.** The post-init volume carried two `defaultMode` keys (the 7.1.0-9 edit added `0750` without removing the pre-existing `0755` on the following line). `helm template`, `helm lint` and PyYAML all accept duplicate mapping keys silently (last wins), but the strict YAML parser in Flux's post-renderer refuses the manifest: `mapping key "defaultMode" already defined`. Flux keeps serving the last successful release, so affected sites silently stayed on their previous chart/image. The template test's manifest checker now parses with a duplicate-key-rejecting loader, so this class of edit fails CI instead of the fleet.
+* Bump `idxImageTag` to `1.3.2` (wordpress-idx sidecar). Image availability on GHCR verified before the bump.
+
 ## 7.1.0-9
 
 * **Fix: post-init scripts never executed.** The Deployment mounted the post-init ConfigMap as a directory at `/etc/hook/application/…`, while the image's hook runner executes `/etc/hooks/<hook>` (plural) — and its `run-parts` invocation neither descends into subdirectories nor runs non-executable files, so even the correct path would not have executed a directory mount. `customPostInitScripts` and the `wordpressConfigureCache` W3 Total Cache configuration (introduced in 7.1.0-5) have therefore never run. Scripts are now mounted as single files (`/etc/hooks/application/zz-<name>`, mode 0750 — the hook runs as root, nothing else needs the bits) with a `checksum/postinit` rollout annotation; the smoke test pins the image-side execution contract and the template test pins the mount shape. **After upgrading, the first rollout executes these scripts for the first time** — the next two items define what that means.

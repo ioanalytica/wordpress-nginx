@@ -8,6 +8,12 @@ Verifies that what the workload mounts actually exists and matches:
 These are the failures that `helm lint` accepts and Kubernetes does not: a
 mount pointing at a resource the templates never create leaves the pod stuck
 in ContainerCreating.
+
+Documents are parsed with a duplicate-key-rejecting loader. PyYAML silently
+keeps the last value for a duplicated mapping key, but the strict YAML
+parser in Flux's post-renderer refuses the manifest - a template edit that
+introduces a second `defaultMode:` renders fine, passes helm lint, and
+breaks every HelmRelease upgrade (seen with chart 7.1.0-9).
 """
 
 import os
@@ -16,6 +22,22 @@ import sys
 import yaml
 
 WORKLOADS = {"Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob"}
+
+
+class StrictLoader(yaml.SafeLoader):
+    """SafeLoader that fails on duplicate mapping keys instead of last-wins."""
+
+    def construct_mapping(self, node, deep=False):
+        seen = set()
+        for key_node, _ in node.value:
+            key = self.construct_object(key_node, deep=True)
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    None, None,
+                    f"duplicate mapping key {key!r}", key_node.start_mark
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep)
 
 
 def pod_specs(doc):
@@ -29,7 +51,12 @@ def pod_specs(doc):
 def main():
     label = sys.argv[1] if len(sys.argv) > 1 else "manifests"
     raw = sys.stdin.read()
-    docs = [d for d in yaml.safe_load_all(raw) if d]
+    try:
+        docs = [d for d in yaml.load_all(raw, Loader=StrictLoader) if d]
+    except yaml.YAMLError as err:
+        print(f"FAIL: {label}")
+        print(f"      rendered manifests are not strict YAML: {err}")
+        return 1
 
     problems = []
     configmaps = {}
