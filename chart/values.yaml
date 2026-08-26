@@ -280,9 +280,22 @@ nginx:
   ##     action: honeypot
   ##     reason: incident 2026-08, removed backdoor; probers ban themselves via 418
   htaccessPolicy: warn
-## @param customPostInitScripts Custom post-init.d user scripts
-## NOTE: supported formats are `.sh`, `.sql` or `.php`
-## NOTE: scripts are exclusively executed during the 1st boot of the container
+## @param wordpressPreinstallPlugins [array] Plugins installed, activated and set to auto-update on every container start. Each entry: `name` (wordpress.org slug), `activate` (default true), `autoUpdate` (default true)
+## The install step needs egress to wordpress.org; without it the step is
+## logged and skipped, never fatal. Activation of the default `two-factor`
+## makes two-factor authentication AVAILABLE per user - it does not enforce
+## it. Set to [] to disable. Note for W3 Total Cache: declaring it here is
+## the supported way to activate it - wordpressConfigureCache only
+## configures an ALREADY ACTIVE W3TC and never installs or activates it,
+## so sites running a different caching plugin stay untouched.
+wordpressPreinstallPlugins:
+  - name: two-factor
+    activate: true
+    autoUpdate: true
+## @param customPostInitScripts Custom application-hook scripts (`.sh` only)
+## NOTE: executed by the image's application hook on EVERY container start,
+## in lexical key order after the chart's own scripts - write them
+## idempotent. (`.sql`/`.php` files are not executed by this image.)
 ## e.g:
 ## customPostInitScripts:
 ##   enable-multisite.sh: |

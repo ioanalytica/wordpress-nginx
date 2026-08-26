@@ -253,6 +253,22 @@ cexec 'echo "# php allowlist disabled" > /etc/nginx/custom.d/00-php-allowlist.co
 reload_nginx
 assert_gone "cleanup: retired host serves again"   200 forum.example.com / "$CRAWLER"
 
+echo "=== Application hook: single files in /etc/hooks/application execute"
+# The chart mounts post-init scripts as single executable files into this
+# directory. Pin the image-side contract the chart depends on: run-parts
+# executes plain executable files there, in lexical order after the
+# image's init-wordpress. (A directory mount is NOT traversed - that is
+# why the pre-7.1.0-9 chart executed nothing.)
+cexec 'printf "#!/bin/sh\necho POSTINIT-MARKER-RAN\n" > /etc/hooks/application/zz-99-smoke-marker.sh && chmod 0755 /etc/hooks/application/zz-99-smoke-marker.sh'
+hook_out="$(cexec 'hook application 2>&1' || true)"
+if printf '%s' "$hook_out" | grep -q POSTINIT-MARKER-RAN; then
+    echo "ok:   application hook executes a mounted single file"
+else
+    echo "FAIL: application hook did not execute zz-99-smoke-marker.sh"
+    FAILURES=$((FAILURES + 1))
+fi
+cexec 'rm /etc/hooks/application/zz-99-smoke-marker.sh'
+
 echo "=== REST API hardening: image default is inert"
 assert "REST users passes by default"   200 /wp-json/wp/v2/users INDEX-EXECUTED
 assert "author id passes by default"    200 "/?author=1" INDEX-EXECUTED

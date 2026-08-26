@@ -31,6 +31,35 @@
       "title": "WP_CACHE",
       "description": "Define WP_CACHE in wp-config.php. null follows wordpressConfigureCache; true/false set it explicitly"
     },
+    "wordpressPreinstallPlugins": {
+      "type": "array",
+      "title": "Preinstalled plugins",
+      "description": "Plugins installed, activated and set to auto-update by the application hook on every container start",
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Plugin slug on wordpress.org"
+          },
+          "activate": {
+            "type": "boolean",
+            "default": true,
+            "description": "Activate the plugin when it is inactive"
+          },
+          "autoUpdate": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable WordPress auto-updates for the plugin"
+          }
+        }
+      }
+    },
     "phpExecutionAllowlist": {
       "type": "object",
       "title": "PHP Execution Allowlist",

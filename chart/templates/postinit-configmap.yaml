@@ -1,9 +1,31 @@
 {{- /*
 Copyright IO ANALYTICA. All Rights Reserved.
 SPDX-License-Identifier: Apache-2.0
+
+Scripts for the image's "application" hook. The deployment mounts every
+data key as a single file at /etc/hooks/application/zz-<key> (subPath,
+mode 0750): the hook runner executes plain executable files in that
+directory via run-parts, which neither descends into subdirectories nor
+runs non-executable files - mounting the ConfigMap as a directory, or
+without the exec bit, silently runs nothing.
+
+The hook runs on EVERY container start, so every script here must be
+idempotent, and must not fail the boot: a missing network egress or an
+absent plugin is logged and skipped, never fatal.
+
+Key names are ordering (run-parts sorts lexically, after the image's
+init-wordpress since everything is mounted with a zz- prefix):
+  00-preinstall-plugins.sh        first, so a preinstalled cache plugin
+  10-configure-w3-total-cache.sh  is already active when this runs
+  <customPostInitScripts keys>    letters sort after the digit prefixes
 */}}
 
-{{- if or .Values.customPostInitScripts .Values.wordpressConfigureCache }}
+{{- range $name, $_ := .Values.customPostInitScripts }}
+{{- if not (hasSuffix ".sh" $name) }}
+{{- fail (printf "customPostInitScripts: %q - the application hook executes .sh scripts only" $name) }}
+{{- end }}
+{{- end }}
+{{- if (include "wordpress.createPostinitConfigmap" .) }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -14,15 +36,53 @@ metadata:
   annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
   {{- end }}
 data:
+  {{- if .Values.wordpressPreinstallPlugins }}
+  00-preinstall-plugins.sh: |-
+    #!/bin/bash
+
+    # Plugins declared in wordpressPreinstallPlugins. Idempotent: installs
+    # only what is missing, activates only what is inactive. The install
+    # needs egress to wordpress.org; without it the step is logged and
+    # skipped - an unreachable mirror must not keep the pod from starting.
+    {{- range .Values.wordpressPreinstallPlugins }}
+
+    if ! wp plugin is-installed {{ .name | quote }} 2>/dev/null; then
+      wp plugin install {{ .name | quote }} \
+        || echo "[preinstall-plugins] could not install {{ .name }} (no egress to wordpress.org?) - continuing"
+    fi
+    {{- if or (not (hasKey . "activate")) .activate }}
+    if wp plugin is-installed {{ .name | quote }} 2>/dev/null \
+        && ! wp plugin is-active {{ .name | quote }} 2>/dev/null; then
+      wp plugin activate {{ .name | quote }} \
+        || echo "[preinstall-plugins] could not activate {{ .name }} - continuing"
+    fi
+    {{- end }}
+    {{- if or (not (hasKey . "autoUpdate")) .autoUpdate }}
+    if wp plugin is-installed {{ .name | quote }} 2>/dev/null; then
+      # Errors when auto-updates are already on; that is the desired state.
+      wp plugin auto-updates enable {{ .name | quote }} >/dev/null 2>&1 || true
+    fi
+    {{- end }}
+    {{- end }}
+  {{- end }}
   {{- if .Values.wordpressConfigureCache }}
   {{- $cacheFullname := include "wordpress.cacheHost" . }}
   {{- $cachePort := include "wordpress.cachePort" . | int }}
   {{- $cacheType := include "wordpress.cacheType" . }}
-  00-configure-w3-total-cache.sh: |-
+  10-configure-w3-total-cache.sh: |-
     #!/bin/bash
 
-    # Activate W3 Total Cache pairs
-    wp plugin activate w3-total-cache
+    # Configure W3 Total Cache - only when it is the active caching plugin.
+    # Deliberately no install or activate here: sites that run a different
+    # caching plugin set wordpressConfigureCache too, and activating a
+    # second page cache would fight over the drop-ins
+    # (advanced-cache.php, object-cache.php). Declare w3-total-cache in
+    # wordpressPreinstallPlugins to install and activate it declaratively.
+    if ! wp plugin is-active w3-total-cache 2>/dev/null; then
+      echo "[configure-cache] w3-total-cache is not active - leaving caching untouched"
+      exit 0
+    fi
+
     wp total-cache fix_environment
 
     wp total-cache option set dbcache.engine {{ $cacheType }} --type=string

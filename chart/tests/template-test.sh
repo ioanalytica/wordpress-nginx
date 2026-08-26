@@ -202,6 +202,28 @@ expect "alias host still in the IngressRoute" present 'Host(`www.example.com`)' 
 expect "goneHosts alone emit no redirect"    absent  "redirectRegex" "${GONE_ONLY[@]}"
 expect "goneHosts alone still map"           present '"forum.example.com" "https://example.com/";' "${GONE_ONLY[@]}"
 
+echo "=== Post-init scripts reach the application hook"
+# The image's hook runner executes plain executable files in
+# /etc/hooks/application via run-parts: no subdirectories, no
+# non-executable files. These pin the mount shape that makes the scripts
+# actually run - the previous directory mount at /etc/hook/ (singular)
+# silently executed nothing.
+expect "preinstall renders by default"      present 'wp plugin install "two-factor"'
+expect "preinstall mounts as a single file" present 'mountPath: /etc/hooks/application/zz-00-preinstall-plugins.sh'
+expect "scripts are mounted executable"     present 'defaultMode: 0750'
+expect "postinit has a checksum"            present 'checksum/postinit'
+expect "the dead singular path is gone"     absent  '/etc/hook/application'
+expect "no preinstall when emptied"         absent  'preinstall-plugins' \
+        --set-json 'wordpressPreinstallPlugins=[]'
+expect "cache config guards on active W3TC" present 'if ! wp plugin is-active w3-total-cache' \
+        --set wordpressConfigureCache=true --set memcached.enabled=true
+expect "cache config never activates W3TC"  absent  'wp plugin activate w3-total-cache' \
+        --set wordpressConfigureCache=true --set memcached.enabled=true
+expect "custom script mounts with zz prefix" present 'mountPath: /etc/hooks/application/zz-my-task.sh' \
+        --set 'customPostInitScripts.my-task\.sh=echo hi'
+check "postinit set" --set wordpressConfigureCache=true --set memcached.enabled=true \
+        --set 'customPostInitScripts.my-task\.sh=echo hi'
+
 echo "=== Cache password reaches the plugin, and only through a Secret"
 expect "no cache password, no env"        absent  "WORDPRESS_CACHE_PASSWORD"
 expect "internal cache exposes the env"   present "name: WORDPRESS_CACHE_PASSWORD" \

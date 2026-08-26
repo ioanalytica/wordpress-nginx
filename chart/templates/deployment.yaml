@@ -25,7 +25,7 @@ spec:
   template:
     metadata:
       labels: {{- include "common.labels.standard" ( dict "customLabels" $podLabels "context" $ ) | nindent 8 }}
-      {{- if or .Values.podAnnotations .Values.metrics.enabled (include "wordpress.createConfigSecret" .) (include "wordpress.nginx.createServerblockConfigmap" .) (include "wordpress.nginx.createConfigmap" .) (include "wordpress.nginx.createPhpAllowlistConfigmap" .) (include "wordpress.nginx.createRestHardeningConfigmap" .) .Values.nginx.deniedPaths (include "wordpress.redirect.hasGoneHosts" .) }}
+      {{- if or .Values.podAnnotations .Values.metrics.enabled (include "wordpress.createConfigSecret" .) (include "wordpress.nginx.createServerblockConfigmap" .) (include "wordpress.nginx.createConfigmap" .) (include "wordpress.nginx.createPhpAllowlistConfigmap" .) (include "wordpress.nginx.createRestHardeningConfigmap" .) .Values.nginx.deniedPaths (include "wordpress.redirect.hasGoneHosts" .) (include "wordpress.createPostinitConfigmap" .) }}
       annotations:
         {{- if .Values.podAnnotations }}
         {{- include "common.tplvalues.render" (dict "value" .Values.podAnnotations "context" $) | nindent 8 }}
@@ -61,6 +61,9 @@ spec:
         {{- end }}
         {{- if (include "wordpress.redirect.hasGoneHosts" .) }}
         checksum/nginx-gone-hosts: {{ include (print $.Template.BasePath "/nginx-gone-hosts-configmap.yaml") . | sha256sum }}
+        {{- end }}
+        {{- if (include "wordpress.createPostinitConfigmap" .) }}
+        checksum/postinit: {{ include (print $.Template.BasePath "/postinit-configmap.yaml") . | sha256sum }}
         {{- end }}
       {{- end }}
     spec:
@@ -587,9 +590,32 @@ spec:
               mountPath: /var/www/html/salts.php
               subPath: wordpress/salts.php
             {{- end }}
-            {{- if or .Values.customPostInitScripts .Values.wordpressConfigureCache }}
-            - mountPath: /etc/hook/application/zz-custom-postinit
-              name: custom-postinit
+            {{- /*
+            Post-init scripts are mounted as SINGLE FILES into the image's
+            hook directory: the hook runner executes plain executable files
+            in /etc/hooks/application via run-parts, which neither descends
+            into subdirectories nor runs non-executable files. The previous
+            directory mount (at /etc/hook/, which the runner never reads)
+            silently executed nothing. The zz- prefix keeps every chart
+            script after the image's own init-wordpress.
+            */}}
+            {{- if .Values.wordpressPreinstallPlugins }}
+            - name: custom-postinit
+              mountPath: /etc/hooks/application/zz-00-preinstall-plugins.sh
+              subPath: 00-preinstall-plugins.sh
+              readOnly: true
+            {{- end }}
+            {{- if .Values.wordpressConfigureCache }}
+            - name: custom-postinit
+              mountPath: /etc/hooks/application/zz-10-configure-w3-total-cache.sh
+              subPath: 10-configure-w3-total-cache.sh
+              readOnly: true
+            {{- end }}
+            {{- range $name, $_ := .Values.customPostInitScripts }}
+            - name: custom-postinit
+              mountPath: /etc/hooks/application/zz-{{ $name }}
+              subPath: {{ $name }}
+              readOnly: true
             {{- end }}
             {{- if or .Values.nginxCustomServerBlockAddition .Values.existingCustomServerBlockAdditionConfigMap }}
             - name: nginx-serverblock-addition
@@ -791,10 +817,15 @@ spec:
             name: {{ include "wordpress.nginx.serverblockConfigmapName" . }}
             defaultMode: 0644
         {{- end }}
-        {{- if or .Values.customPostInitScripts .Values.wordpressConfigureCache }}
+        {{- if (include "wordpress.createPostinitConfigmap" .) }}
         - name: custom-postinit
           configMap:
             name: {{ printf "%s-postinit" (include "common.names.fullname" .) }}
+            # run-parts skips non-executable files, and a readOnly subPath
+            # mount cannot be chmod'd inside the container - without the
+            # exec bit here the scripts are mounted and never run. The hook
+            # runs as root during init, so no bits for "other": 0750.
+            defaultMode: 0750
             defaultMode: 0755
         {{- end }}
         {{- if (include "wordpress.nginx.createPhpAllowlistConfigmap" .) }}

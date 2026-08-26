@@ -91,6 +91,14 @@ externalDatabase:
 
 The chart can deploy an internal [Dragonfly](https://www.dragonflydb.io/) instance (which serves both Redis and Memcached protocols simultaneously) or connect to an external cache server.
 
+> **`wordpressConfigureCache` configures, it does not install.** Since
+> 7.1.0-9 the cache configuration script only runs when W3 Total Cache is
+> the **active** caching plugin; on sites running a different caching
+> plugin it logs and exits, touching nothing — activating a second page
+> cache would fight over the `advanced-cache.php`/`object-cache.php`
+> drop-ins. To install and activate W3TC declaratively, list it in
+> `wordpressPreinstallPlugins`.
+
 #### Internal Cache
 
 ```yaml
@@ -169,6 +177,39 @@ without that integration, or to force page caching off regardless.
 Note the same regeneration applies to any other constant a plugin writes into
 `wp-config.php`. If you depend on one, put it in `WORDPRESS_CONFIG_EXTRA`
 rather than relying on the plugin's edit to persist.
+
+### Preinstalled plugins
+
+`wordpressPreinstallPlugins` declares plugins the pod installs, activates
+and sets to auto-update. The default preinstalls
+[two-factor](https://wordpress.org/plugins/two-factor/): given the constant
+credential-stuffing against WordPress accounts, every site should at least
+have two-factor authentication *available*.
+
+```yaml
+wordpressPreinstallPlugins:
+  - name: two-factor      # wordpress.org slug
+    activate: true        # default
+    autoUpdate: true      # default
+```
+
+Semantics worth knowing:
+
+* The script runs in the image's application hook on **every container
+  start** and is idempotent: it installs only what is missing and
+  activates only what is inactive. An existing installation therefore
+  picks the plugin up on the first rollout after upgrading the chart — no
+  manual step per site.
+* Activating `two-factor` makes 2FA **available** per user (profile
+  settings); it does not enforce it. Enforcement (e.g. for
+  administrators) is a deliberate second step via the plugin's
+  `two_factor_*` filters in an mu-plugin, not something a chart default
+  should impose silently.
+* The install downloads from wordpress.org, so the pod needs egress to
+  `downloads.wordpress.org`/`api.wordpress.org` (the same egress WordPress
+  auto-updates need anyway). Without it the step logs a warning and the
+  pod starts normally.
+* Set `wordpressPreinstallPlugins: []` to disable.
 
 ### PHP Execution Allowlist
 
@@ -277,7 +318,10 @@ kubectl logs deploy/<release>-wordpress-nginx | grep '\[rest-hardening\]'
 
 `nginxConfiguration`, `nginxCustomServerBlockAddition`, `phpExecutionAllowlist`,
 `restApiHardening`, `nginx.deniedPaths` and `redirect.goneHosts` all render
-into ConfigMaps that are mounted with `subPath`. Such a mount never receives ConfigMap updates — the
+into ConfigMaps that are mounted with `subPath`; the post-init scripts
+(`wordpressPreinstallPlugins`, `wordpressConfigureCache`,
+`customPostInitScripts`) are mounted the same way and carry their own
+`checksum/postinit` annotation. Such a mount never receives ConfigMap updates — the
 kubelet projects the file once when the container starts. Since **7.1.0-7** the
 pod template carries a checksum annotation for each of them, so changing any of
 these values rolls the pods automatically; leaving them unchanged keeps the

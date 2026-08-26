@@ -286,6 +286,16 @@ Return the name of the denied paths configmap
 {{- end -}}
 
 {{/*
+True when the post-init ConfigMap is rendered: any of the three features
+that ship scripts for the application hook is in use.
+*/}}
+{{- define "wordpress.createPostinitConfigmap" -}}
+{{- if or .Values.customPostInitScripts .Values.wordpressConfigureCache .Values.wordpressPreinstallPlugins -}}
+{{- true -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return the name of the gone hosts configmap
 */}}
 {{- define "wordpress.nginx.goneHostsConfigmapName" -}}
