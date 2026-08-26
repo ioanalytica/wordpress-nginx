@@ -200,8 +200,22 @@ spec:
               // container start and a plugin-written constant would not survive.
               define( 'WP_CACHE', {{ include "wordpress.wpCache" . }} );
 
-              define( 'WP_HOME', getenv_docker('WORDPRESS_SCHEME', 'http') . '://' . $_SERVER['HTTP_HOST'] . '/' );
-              define( 'WP_SITEURL', getenv_docker('WORDPRESS_SCHEME', 'http') . '://' . $_SERVER['HTTP_HOST'] . '/' );
+              if (isset($_SERVER['HTTP_HOST'])) {
+                  define( 'WP_HOME', getenv_docker('WORDPRESS_SCHEME', 'http') . '://' . $_SERVER['HTTP_HOST'] . '/' );
+                  define( 'WP_SITEURL', getenv_docker('WORDPRESS_SCHEME', 'http') . '://' . $_SERVER['HTTP_HOST'] . '/' );
+              } elseif ($host = getenv_docker('WORDPRESS_HOSTNAME', '')) {
+                  // wp-cli/cron: no request context. The canonical hostname
+                  // reaches the site through the ingress, so the public
+                  // scheme stays valid from inside the pod.
+                  define( 'WP_HOME', getenv_docker('WORDPRESS_SCHEME', 'http') . '://' . $host . '/' );
+                  define( 'WP_SITEURL', getenv_docker('WORDPRESS_SCHEME', 'http') . '://' . $host . '/' );
+              } else {
+                  // No request, no hostname. TLS terminates at the ingress,
+                  // so a loopback URL must stay plain http on the container
+                  // port.
+                  define( 'WP_HOME', 'http://localhost:' . getenv_docker('NGINX_HTTP_PORT_NUMBER', '80') . '/' );
+                  define( 'WP_SITEURL', 'http://localhost:' . getenv_docker('NGINX_HTTP_PORT_NUMBER', '80') . '/' );
+              }
               define( 'WP_AUTO_UPDATE_CORE', false );
 
               if (isset($_SERVER['HTTP_X_FORWARDED_PROTO']) && strpos($_SERVER['HTTP_X_FORWARDED_PROTO'], 'https') !== false) {
@@ -452,6 +466,13 @@ spec:
               value: {{ .Values.wordpressTablePrefix | quote }}
             - name: WORDPRESS_SCHEME
               value: {{ .Values.wordpressScheme | quote }}
+            {{- if .Values.ingress.hostname }}
+            # Canonical hostname for CLI contexts: wp-cli has no HTTP_HOST,
+            # and the generated wp-config.php falls back to this for
+            # WP_HOME/WP_SITEURL (see the branch there for why).
+            - name: WORDPRESS_HOSTNAME
+              value: {{ tpl .Values.ingress.hostname $ | quote }}
+            {{- end }}
             - name: WORDPRESS_EXTRA_WP_CONFIG_CONTENT
               value: {{ .Values.wordpressExtraConfigContent | quote }}
             - name: WORDPRESS_PLUGINS

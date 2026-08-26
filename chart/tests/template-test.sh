@@ -224,6 +224,15 @@ expect "custom script mounts with zz prefix" present 'mountPath: /etc/hooks/appl
 check "postinit set" --set wordpressConfigureCache=true --set memcached.enabled=true \
         --set 'customPostInitScripts.my-task\.sh=echo hi'
 
+echo "=== wp-config site URL falls back sanely without a request"
+expect "requests keep using HTTP_HOST"       present "isset(\$_SERVER['HTTP_HOST'])"
+expect "CLI falls back to the canonical host" present "getenv_docker('WORDPRESS_HOSTNAME', '')"
+expect "last resort is plain-http loopback"  present "'http://localhost:' . getenv_docker('NGINX_HTTP_PORT_NUMBER', '80')"
+expect "hostname env comes from the ingress" present 'name: WORDPRESS_HOSTNAME' \
+        --set ingress.hostname=example.com
+expect "no hostname value, no env"           absent  'name: WORDPRESS_HOSTNAME' \
+        --set ingress.hostname=""
+
 echo "=== Cache password reaches the plugin, and only through a Secret"
 expect "no cache password, no env"        absent  "WORDPRESS_CACHE_PASSWORD"
 expect "internal cache exposes the env"   present "name: WORDPRESS_CACHE_PASSWORD" \

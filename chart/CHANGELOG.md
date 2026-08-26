@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.1.0-11
+
+* **`WP_HOME`/`WP_SITEURL` now resolve under wp-cli.** The generated `wp-config.php` derived both from `$_SERVER['HTTP_HOST']` unconditionally; under wp-cli there is no request, so every CLI invocation logged two PHP warnings (`Undefined array key "HTTP_HOST"`) and the site URL degenerated to `scheme:///` — visible at every container start since 7.1.0-9's post-init scripts run wp-cli. The fallback chain is now: `HTTP_HOST` (requests, unchanged) → the new `WORDPRESS_HOSTNAME` environment variable, fed from `ingress.hostname` (the canonical name reaches the site through the ingress, so the public scheme stays valid from inside the pod — a `https://localhost` would not, TLS terminates at the ingress) → `http://localhost:<container port>` as the last resort without an ingress hostname.
+* **Note for file-integrity monitoring:** the content of the generated `wp-config.php` changes with this release (first pod start on 7.1.0-11). Refresh content-hash baselines accordingly; the file remains identical across sites with identical cache values, so the new hash can be computed from the rendered template ahead of the rollout.
+
 ## 7.1.0-10
 
 * **Fix: 7.1.0-9 broke every HelmRelease upgrade — do not use 7.1.0-9.** The post-init volume carried two `defaultMode` keys (the 7.1.0-9 edit added `0750` without removing the pre-existing `0755` on the following line). `helm template`, `helm lint` and PyYAML all accept duplicate mapping keys silently (last wins), but the strict YAML parser in Flux's post-renderer refuses the manifest: `mapping key "defaultMode" already defined`. Flux keeps serving the last successful release, so affected sites silently stayed on their previous chart/image. The template test's manifest checker now parses with a duplicate-key-rejecting loader, so this class of edit fails CI instead of the fleet.
