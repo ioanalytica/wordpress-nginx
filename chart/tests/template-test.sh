@@ -51,7 +51,11 @@ expect() {
     out="$(helm template tst "$CHART" "$@" 2>&1)" || {
         echo "FAIL: $desc — helm template failed"; FAILURES=$((FAILURES + 1)); return
     }
-    if printf '%s' "$out" | grep -qF -- "$needle"; then
+    # Herestring, NOT a pipe: grep -q exits on the first match, and a
+    # printf still writing into the closed pipe then fails with EPIPE.
+    # Under `pipefail` that makes a FOUND needle report as not found -
+    # GitHub's runner ignores SIGPIPE, so this fired in CI only.
+    if grep -qF -- "$needle" <<<"$out"; then
         if [ "$mode" = "present" ]; then echo "ok:   $desc"
         else echo "FAIL: $desc — found '$needle' but expected it absent"; FAILURES=$((FAILURES + 1)); fi
     else
