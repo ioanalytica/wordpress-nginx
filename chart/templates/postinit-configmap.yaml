@@ -83,6 +83,15 @@ data:
       exit 0
     fi
 
+    # W3TC cannot detect the web server under wp-cli - a CLI request has no
+    # SERVER_SOFTWARE - and falls back to managing Apache .htaccess rules.
+    # The WordPress root is immutable here, so that fails on every boot with
+    # W3TC's misleading "FTP credentials" error. Declared as nginx (PHP CLI
+    # surfaces the variable into $_SERVER), fix_environment maintains its
+    # rules in the plugin-managed nginx.conf instead - writable, and already
+    # classified as plugin-managed by the .htaccess report.
+    export SERVER_SOFTWARE=nginx
+
     wp total-cache fix_environment
 
     wp total-cache option set dbcache.engine {{ $cacheType }} --type=string

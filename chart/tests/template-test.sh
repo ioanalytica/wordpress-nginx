@@ -219,6 +219,8 @@ expect "cache config guards on active W3TC" present 'if ! wp plugin is-active w3
         --set wordpressConfigureCache=true --set memcached.enabled=true
 expect "cache config never activates W3TC"  absent  'wp plugin activate w3-total-cache' \
         --set wordpressConfigureCache=true --set memcached.enabled=true
+expect "cache config declares the server"   present 'export SERVER_SOFTWARE=nginx' \
+        --set wordpressConfigureCache=true --set memcached.enabled=true
 expect "custom script mounts with zz prefix" present 'mountPath: /etc/hooks/application/zz-my-task.sh' \
         --set 'customPostInitScripts.my-task\.sh=echo hi'
 check "postinit set" --set wordpressConfigureCache=true --set memcached.enabled=true \
