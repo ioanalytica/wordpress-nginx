@@ -317,6 +317,55 @@ cexec 'echo "# rest hardening inert" > /etc/nginx/custom.d/00-rest-hardening.con
 reload_nginx
 assert "REST users passes in off mode" 200 /wp-json/wp/v2/users INDEX-EXECUTED
 
+echo "=== SMTP sendmail wrapper composes msmtp options from the env"
+# The chart's SMTP values become environment variables; the wrapper turns them
+# into an msmtp command line. Hermetic: a stub msmtp earlier in PATH captures
+# that command line - no network, no real msmtp. docker exec does not inherit
+# the entrypoint's .env exports, so SMTP_* is unset here unless an assertion
+# sets it - exactly like a pod deployed without the chart's SMTP values.
+cexec 'mkdir -p /tmp/stub \
+  && printf "%s\n" "#!/bin/sh" "echo \"\$@\" > /tmp/msmtp-args" "cat > /dev/null" > /tmp/stub/msmtp \
+  && chmod 0755 /tmp/stub/msmtp'
+
+# assert_args <description> <"present"|"absent"> <needle> <env-prefix>
+# Sends a minimal message through the wrapper with the given SMTP_* variables
+# and asserts on the msmtp arguments the wrapper composed.
+assert_args() {
+    local desc="$1" mode="$2" needle="$3" env="$4" args
+    cexec 'rm -f /tmp/msmtp-args'
+    args="$(docker exec "$NAME" sh -c "printf 'From: a@example.com\nTo: b@example.com\nSubject: t\n\nx\n' | PATH=/tmp/stub:\$PATH $env /usr/local/utils/sendmail -t >/dev/null 2>&1; cat /tmp/msmtp-args 2>/dev/null")"
+    if printf '%s' "$args" | grep -qF -- "$needle"; then
+        if [ "$mode" = present ]; then echo "ok:   $desc"
+        else echo "FAIL: $desc — found '$needle' in: $args"; FAILURES=$((FAILURES + 1)); fi
+    else
+        if [ "$mode" = absent ]; then echo "ok:   $desc"
+        else echo "FAIL: $desc — expected '$needle', wrapper composed: $args"; FAILURES=$((FAILURES + 1)); fi
+    fi
+}
+
+assert_args "host reaches msmtp"                    present "--host=relay"       'SMTP_HOST=relay'
+assert_args "port reaches msmtp"                    present "--port=587"         'SMTP_HOST=relay SMTP_PORT=587'
+assert_args "TLS on requests STARTTLS"              present "--tls=on"           'SMTP_HOST=relay SMTP_TLS=on'
+assert_args "TLS on leaves the STARTTLS default"    absent  "--tls-starttls"     'SMTP_HOST=relay SMTP_TLS=on'
+assert_args "implicit TLS disables STARTTLS"        present "--tls-starttls=off" 'SMTP_HOST=relay SMTP_TLS=on SMTP_STARTTLS=off'
+assert_args "user switches auth on"                 present "--auth=on"          'SMTP_HOST=relay SMTP_USER=u'
+assert_args "from email sets the envelope sender"   present "--from=news@example.com" 'SMTP_HOST=relay SMTP_FROM=news@example.com'
+assert_args "no from falls back to the message"     present "--read-envelope-from" 'SMTP_HOST=relay'
+assert_args "password goes through passwordeval"    present "--passwordeval="    'SMTP_HOST=relay SMTP_PASSWORD=s3cretpw'
+assert_args "password itself never lands in argv"   absent  "s3cretpw"           'SMTP_HOST=relay SMTP_PASSWORD=s3cretpw'
+
+# Without SMTP_HOST the wrapper must refuse loudly (pinned since 7.1.0-12),
+# not resolve a nonexistent default host and fail silently.
+nohost_out="$(docker exec "$NAME" sh -c "printf 'x\n' | PATH=/tmp/stub:\$PATH /usr/local/utils/sendmail -t 2>&1; echo rc=\$?")"
+if printf '%s' "$nohost_out" | grep -q 'SMTP_HOST is not defined' \
+        && printf '%s' "$nohost_out" | grep -q 'rc=1'; then
+    echo "ok:   missing SMTP_HOST refuses loudly"
+else
+    echo "FAIL: missing SMTP_HOST did not refuse loudly: $nohost_out"
+    FAILURES=$((FAILURES + 1))
+fi
+cexec 'rm -rf /tmp/stub /tmp/msmtp-args'
+
 echo
 if [ "$FAILURES" -gt 0 ]; then
     echo "=== $FAILURES assertion(s) FAILED"

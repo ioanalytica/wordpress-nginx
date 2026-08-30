@@ -518,16 +518,24 @@ spec:
                   key: smtp-password
             {{- end }}
             {{- if .Values.smtpProtocol }}
-            - name: SMTP_PROTOCOL
-              value: {{ .Values.smtpProtocol | quote }}
+            {{- if not (has .Values.smtpProtocol (list "tls" "ssl")) }}
+            {{- fail (printf "smtpProtocol: %q - must be \"tls\" (STARTTLS, usually port 587), \"ssl\" (implicit TLS, port 465) or empty (unencrypted)" .Values.smtpProtocol) }}
+            {{- end }}
+            - name: SMTP_TLS
+              value: "on"
+            {{- if eq .Values.smtpProtocol "ssl" }}
+            # msmtp defaults to upgrading via STARTTLS; implicit TLS (smtps)
+            # expects the handshake from the first byte instead.
+            - name: SMTP_STARTTLS
+              value: "off"
+            {{- end }}
             {{- end }}
             {{- if .Values.smtpFromEmail }}
-            - name: WORDPRESS_SMTP_FROM_EMAIL
+            - name: SMTP_FROM
               value: {{ .Values.smtpFromEmail | quote }}
             {{- end }}
             {{- if .Values.smtpFromName }}
-            - name: WORDPRESS_SMTP_FROM_NAME
-              value: {{ .Values.smtpFromName | quote }}
+            {{- fail "smtpFromName was removed: the chart configures mail transport only and does not touch the wp_mail() From header. Set the display name in WordPress (wp_mail_from_name filter)." }}
             {{- end }}
             {{- if (include "wordpress.cacheHasPassword" .) }}
             # Read by the post-init cache configuration script. Kept in the

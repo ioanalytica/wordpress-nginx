@@ -304,15 +304,17 @@ wordpressPreinstallPlugins:
 ##     ...
 ##
 customPostInitScripts: {}
-## SMTP mail delivery configuration
-## SMTP mail delivery configuration
-## @param smtpHost SMTP server host
-## @param smtpPort SMTP server port
-## @param smtpUser SMTP username
+## SMTP mail delivery for PHP mail() and wp_mail(), no mail plugin required:
+## the image routes PHP's sendmail through msmtp, configured entirely from
+## these values via environment variables. Nothing is written to the database.
+## Without smtpHost, every send fails loudly in the container log
+## ("[mail error] SMTP_HOST is not defined").
+## @param smtpHost SMTP relay host
+## @param smtpPort SMTP relay port (empty: msmtp's default, 25)
+## @param smtpUser SMTP username. Authentication switches on as soon as a user or password is set
 ## @param smtpPassword SMTP user password
-## @param smtpProtocol SMTP protocol
-## @param smtpFromEmail SMTP from email (default is `smtpUser`)
-## @param smtpFromName SMTP from name  (default is `wordpressFirstName` and `wordpressLastName`)
+## @param smtpProtocol Connection security: "tls" = STARTTLS (usually port 587), "ssl" = implicit TLS (smtps, port 465), empty = unencrypted (internal relays only). Any other value fails the render
+## @param smtpFromEmail Envelope sender (msmtp --from). Empty: the envelope is read from the message, i.e. WordPress' own From header (wordpress@<site host>). Set it when the relay requires the envelope to match the authenticated identity. Transport only - the visible From header stays under WordPress' control (wp_mail_from filter)
 ##
 smtpHost: ""
 smtpPort: ""
@@ -320,7 +322,6 @@ smtpUser: ""
 smtpPassword: ""
 smtpProtocol: ""
 smtpFromEmail: ""
-smtpFromName: ""
 ## @param smtpExistingSecret The name of an existing secret with SMTP credentials
 ## NOTE: Must contain key `smtp-password`
 ## NOTE: When it's set, the `smtpPassword` parameter is ignored

@@ -266,6 +266,43 @@ MANIFEST_SENTINEL=s3ntinelpw \
         --set externalCache.host=r --set externalCache.port=6379 \
         --set externalCache.password=s3ntinelpw
 
+echo "=== SMTP values render what they claim"
+# The values configure the image's msmtp sendmail wrapper through environment
+# variables; PHP mail()/wp_mail() relay through it without any mail plugin.
+# smtpProtocol/smtpFromEmail existed before 7.1.0-13 but rendered variables
+# nothing consumed - these pin the mapping onto the names the wrapper reads.
+expect "no SMTP values, no SMTP env"          absent  'name: SMTP_'
+expect "host renders"                         present 'name: SMTP_HOST'     --set smtpHost=mail.example.com
+expect "protocol tls switches TLS on"         present 'name: SMTP_TLS'      --set smtpHost=m --set smtpProtocol=tls
+expect "protocol tls keeps STARTTLS default"  absent  'name: SMTP_STARTTLS' --set smtpHost=m --set smtpProtocol=tls
+expect "protocol ssl disables STARTTLS"       present 'name: SMTP_STARTTLS' --set smtpHost=m --set smtpProtocol=ssl
+expect "protocol ssl still switches TLS on"   present 'name: SMTP_TLS'      --set smtpHost=m --set smtpProtocol=ssl
+expect "the dead SMTP_PROTOCOL env is gone"   absent  'SMTP_PROTOCOL'       --set smtpHost=m --set smtpProtocol=tls
+expect "from email sets the envelope sender"  present 'name: SMTP_FROM'     --set smtpFromEmail=news@example.com
+expect "the dead WORDPRESS_SMTP_ envs are gone" absent 'WORDPRESS_SMTP_'    --set smtpFromEmail=news@example.com
+expect "password comes from a Secret key"     present 'key: smtp-password'  --set smtpPassword=pw
+expect "existing secret is referenced"        present 'name: my-smtp'       --set smtpExistingSecret=my-smtp
+check  "smtp fully configured" --set smtpHost=m --set smtpPort=587 --set smtpUser=u \
+        --set smtpPassword=pw --set smtpProtocol=tls --set smtpFromEmail=news@example.com
+# An unknown protocol must fail the render, not silently send unencrypted.
+if helm template tst "$CHART" --set smtpProtocol=starttls >/dev/null 2>&1; then
+    echo "FAIL: smtpProtocol=starttls rendered - unknown protocols must fail the render"
+    FAILURES=$((FAILURES + 1))
+else
+    echo "ok:   unknown smtpProtocol fails the render"
+fi
+# smtpFromName was removed (transport-only chart; the From display name is
+# WordPress' business). A value that silently does nothing is how the SMTP
+# block was broken before - removed values must refuse to render instead.
+if helm template tst "$CHART" --set smtpFromName=Blog >/dev/null 2>&1; then
+    echo "FAIL: smtpFromName rendered - the removed value must fail loudly"
+    FAILURES=$((FAILURES + 1))
+else
+    echo "ok:   removed smtpFromName fails the render"
+fi
+MANIFEST_SENTINEL=s3ntinelsmtppw \
+  check "smtp password never leaves the Secret" --set smtpPassword=s3ntinelsmtppw
+
 echo "=== WP_CACHE follows the tri-state"
 expect "unset with cache off means false"  present "define( 'WP_CACHE', false )"
 expect "unset with cache on means true"    present "define( 'WP_CACHE', true )" \

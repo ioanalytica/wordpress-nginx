@@ -69,6 +69,18 @@ RUN phpaddmod imagick memcache && apk update && apk upgrade --no-cache && rm -Rf
 RUN sed -i -e 's|:="mailpit"|:=""|' -e 's|:="1025"|:=""|' /usr/local/etc/.env \
  && ! grep -qE 'mailpit|SMTP_PORT.*1025' /usr/local/etc/.env
 
+# The sendmail wrapper exposes msmtp's --tls switch as SMTP_TLS, which with
+# msmtp's default tls_starttls=on means STARTTLS (port 587). Implicit-TLS
+# submission (smtps, port 465) additionally needs --tls-starttls=off, which
+# the wrapper has no variable for - so teach it SMTP_STARTTLS in the same
+# style as its other options, right after the SMTP_TLS line it extends.
+# The grep guards the insertion: if the base image rewrites the wrapper and
+# the sed anchor no longer matches, the build fails here instead of silently
+# shipping an image where smtpProtocol=ssl configures nothing.
+RUN sed -i 's|^\[ -n "$SMTP_TLS" \].*|&\n[ -n "$SMTP_STARTTLS" ] \&\& options="$options --tls-starttls=$SMTP_STARTTLS"|' /usr/local/utils/sendmail \
+ && grep -qF -- '--tls-starttls=$SMTP_STARTTLS' /usr/local/utils/sendmail \
+ && bash -n /usr/local/utils/sendmail
+
 ################################################################################
 ONBUILD RUN hook onbuild
 
