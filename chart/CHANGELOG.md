@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.0-12
+
+* **The image no longer defaults `SMTP_HOST` to `mailpit`.** The base image ships `SMTP_HOST="mailpit"` / `SMTP_PORT="1025"` (its development mail-catcher) in `/usr/local/etc/.env`. In production that default made PHP `mail()` resolve a nonexistent host and fail silently on every `wp_mail()` call — password resets and form notifications never left the pod, with nothing in the logs but a periodic DNS lookup for `mailpit`. Both defaults are now emptied at build time, so the sendmail wrapper refuses loudly (`[mail error] SMTP_HOST is not defined`) until a deployment provides `SMTP_HOST`; with the port unset, msmtp uses its native default (25). Build-time is the only place this can be fixed: the `.env` uses `:=` expansion, which applies the default even when the variable is set but empty, so a runtime `SMTP_HOST=""` cannot disable it. Sites sending through an SMTP plugin (e.g. Post SMTP) are unaffected — they never used the wrapper. Sites relying on PHP `mail()` gain nothing until `SMTP_HOST` is set, but their failure is now visible instead of silent.
+
 ## 7.1.0-11
 
 * **`WP_HOME`/`WP_SITEURL` now resolve under wp-cli.** The generated `wp-config.php` derived both from `$_SERVER['HTTP_HOST']` unconditionally; under wp-cli there is no request, so every CLI invocation logged two PHP warnings (`Undefined array key "HTTP_HOST"`) and the site URL degenerated to `scheme:///` — visible at every container start since 7.1.0-9's post-init scripts run wp-cli. The fallback chain is now: `HTTP_HOST` (requests, unchanged) → the new `WORDPRESS_HOSTNAME` environment variable, fed from `ingress.hostname` (the canonical name reaches the site through the ingress, so the public scheme stays valid from inside the pod — a `https://localhost` would not, TLS terminates at the ingress) → `http://localhost:<container port>` as the last resort without an ingress hostname.

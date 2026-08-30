@@ -56,6 +56,20 @@ RUN hook create-project
 RUN phpaddmod imagick memcache && apk update && apk upgrade --no-cache && rm -Rf /tmp/*
 
 ################################################################################
+# The base image defaults SMTP_HOST to "mailpit" (its dev mail-catcher, port
+# 1025) in /usr/local/etc/.env. In production that default makes PHP mail()
+# resolve a nonexistent host and fail silently on every wp_mail() call.
+# Emptying the defaults makes the sendmail wrapper refuse loudly instead
+# ("[mail error] SMTP_HOST is not defined") until a deployment sets SMTP_HOST;
+# with the port empty, msmtp falls back to its native default (25).
+# This must happen at build time: the .env uses ":=" expansion, which applies
+# the default even when the variable is set but empty, so a runtime
+# SMTP_HOST="" cannot disable it. The grep guards against the base image
+# moving or renaming the lines, which would silently bring the default back.
+RUN sed -i -e 's|:="mailpit"|:=""|' -e 's|:="1025"|:=""|' /usr/local/etc/.env \
+ && ! grep -qE 'mailpit|SMTP_PORT.*1025' /usr/local/etc/.env
+
+################################################################################
 ONBUILD RUN hook onbuild
 
 ################################################################################
