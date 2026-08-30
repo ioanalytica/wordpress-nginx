@@ -324,7 +324,7 @@ echo "=== SMTP sendmail wrapper composes msmtp options from the env"
 # the entrypoint's .env exports, so SMTP_* is unset here unless an assertion
 # sets it - exactly like a pod deployed without the chart's SMTP values.
 cexec 'mkdir -p /tmp/stub \
-  && printf "%s\n" "#!/bin/sh" "echo \"\$@\" > /tmp/msmtp-args" "cat > /dev/null" > /tmp/stub/msmtp \
+  && printf "%s\n" "#!/bin/sh" "echo \"\$@\" > /tmp/msmtp-args" "cat > /tmp/msmtp-msg" > /tmp/stub/msmtp \
   && chmod 0755 /tmp/stub/msmtp'
 
 # assert_args <description> <"present"|"absent"> <needle> <env-prefix>
@@ -364,7 +364,50 @@ else
     echo "FAIL: missing SMTP_HOST did not refuse loudly: $nohost_out"
     FAILURES=$((FAILURES + 1))
 fi
-cexec 'rm -rf /tmp/stub /tmp/msmtp-args'
+
+echo "=== SMTP wrapper rewrites the From header when SMTP_FROM is set"
+# With SMTP_FROM set, the message's From header must leave the pod matching
+# the envelope (Office 365 rejects a mismatch with SendAsDenied); the body
+# must never be touched. Same stub msmtp - assertions run on the message it
+# captured.
+
+# assert_msg <description> <"present"|"absent"> <needle> <env-prefix> <message-file>
+assert_msg() {
+    local desc="$1" mode="$2" needle="$3" env="$4" msgfile="$5" msg
+    cexec 'rm -f /tmp/msmtp-msg'
+    msg="$(docker exec "$NAME" sh -c "PATH=/tmp/stub:\$PATH $env /usr/local/utils/sendmail -t < $msgfile >/dev/null 2>&1; cat /tmp/msmtp-msg 2>/dev/null")"
+    if printf '%s' "$msg" | grep -qF -- "$needle"; then
+        if [ "$mode" = present ]; then echo "ok:   $desc"
+        else echo "FAIL: $desc — found '$needle' in message:"; printf '%s\n' "$msg" | sed 's/^/      /'; FAILURES=$((FAILURES + 1)); fi
+    else
+        if [ "$mode" = absent ]; then echo "ok:   $desc"
+        else echo "FAIL: $desc — expected '$needle' in message:"; printf '%s\n' "$msg" | sed 's/^/      /'; FAILURES=$((FAILURES + 1)); fi
+    fi
+}
+
+cexec 'printf "From: WordPress <wordpress@pod.local>\nTo: b@example.com\nSubject: t\n\nbody keeps From: wordpress@pod.local intact\n" > /tmp/msg-plain'
+cexec 'printf "From: WordPress\n <wordpress@pod.local>\nTo: b@example.com\nSubject: t\n\nx\n" > /tmp/msg-folded'
+cexec 'printf "To: b@example.com\nSubject: t\n\nx\n" > /tmp/msg-nofrom'
+
+FROMENV='SMTP_HOST=relay SMTP_FROM=news@example.com'
+assert_msg "header From is replaced"            present 'From: news@example.com'    "$FROMENV" /tmp/msg-plain
+assert_msg "the old From does not survive"      absent  'wordpress@pod.local>'      "$FROMENV" /tmp/msg-plain
+assert_msg "body From-text is never touched"    present 'body keeps From: wordpress@pod.local intact' "$FROMENV" /tmp/msg-plain
+assert_msg "display name wraps the address"     present 'From: "IO Analytica" <news@example.com>' \
+        "$FROMENV SMTP_FROM_NAME='IO Analytica'" /tmp/msg-plain
+assert_msg "non-ASCII name is RFC 2047 encoded" present 'From: =?UTF-8?B?'          "$FROMENV SMTP_FROM_NAME='Müller'" /tmp/msg-plain
+assert_msg "folded From is replaced entirely"   absent  '<wordpress@pod.local>'     "$FROMENV" /tmp/msg-folded
+assert_msg "folded From leaves one From only"   present 'From: news@example.com'    "$FROMENV" /tmp/msg-folded
+assert_msg "missing From gets one inserted"     present 'From: news@example.com'    "$FROMENV" /tmp/msg-nofrom
+assert_msg "without SMTP_FROM nothing changes"  present 'From: WordPress <wordpress@pod.local>' 'SMTP_HOST=relay' /tmp/msg-plain
+# Unmodified means byte-identical, not just header-equal.
+if docker exec "$NAME" sh -c 'cmp -s /tmp/msg-plain /tmp/msmtp-msg'; then
+    echo "ok:   without SMTP_FROM the message passes through byte-identical"
+else
+    echo "FAIL: without SMTP_FROM the message was altered"
+    FAILURES=$((FAILURES + 1))
+fi
+cexec 'rm -rf /tmp/stub /tmp/msmtp-args /tmp/msmtp-msg /tmp/msg-plain /tmp/msg-folded /tmp/msg-nofrom'
 
 echo
 if [ "$FAILURES" -gt 0 ]; then

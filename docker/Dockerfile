@@ -81,6 +81,15 @@ RUN sed -i 's|^\[ -n "$SMTP_TLS" \].*|&\n[ -n "$SMTP_STARTTLS" ] \&\& options="$
  && grep -qF -- '--tls-starttls=$SMTP_STARTTLS' /usr/local/utils/sendmail \
  && bash -n /usr/local/utils/sendmail
 
+# With SMTP_FROM set, the message's From *header* is rewritten to match it
+# (plus SMTP_FROM_NAME as display name) on the way into msmtp - see
+# rewrite-mail-from for why this is a transport concern and not WordPress'.
+# Same guard pattern as above: if the base image reshapes the wrapper's
+# final exec line, the build fails instead of silently dropping the rewrite.
+RUN sed -i 's|^exec msmtp $options "$@"$|[ -n "$SMTP_FROM" ] \&\& exec /usr/local/utils/rewrite-mail-from msmtp $options "$@"\nexec msmtp $options "$@"|' /usr/local/utils/sendmail \
+ && grep -qF -- 'rewrite-mail-from msmtp' /usr/local/utils/sendmail \
+ && bash -n /usr/local/utils/sendmail /usr/local/utils/rewrite-mail-from
+
 ################################################################################
 ONBUILD RUN hook onbuild
 

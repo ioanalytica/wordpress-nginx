@@ -314,7 +314,8 @@ customPostInitScripts: {}
 ## @param smtpUser SMTP username. Authentication switches on as soon as a user or password is set
 ## @param smtpPassword SMTP user password
 ## @param smtpProtocol Connection security: "tls" = STARTTLS (usually port 587), "ssl" = implicit TLS (smtps, port 465), empty = unencrypted (internal relays only). Any other value fails the render
-## @param smtpFromEmail Envelope sender (msmtp --from). Empty: the envelope is read from the message, i.e. WordPress' own From header (wordpress@<site host>). Set it when the relay requires the envelope to match the authenticated identity. Transport only - the visible From header stays under WordPress' control (wp_mail_from filter)
+## @param smtpFromEmail Sender address: becomes the envelope sender (msmtp --from) AND replaces the message's From header on the way into msmtp - transport-side rewriting, no code injected into WordPress. Required for relays that tie the sender to the authenticated identity (e.g. Office 365 rejects a mismatched header From with SendAsDenied). Empty: envelope and header stay whatever WordPress wrote (wordpress@<site host>)
+## @param smtpFromName Human-readable display name for the rewritten From header ("Name <smtpFromEmail>"). Non-ASCII names are RFC 2047 encoded. Requires smtpFromEmail; setting it alone fails the render
 ##
 smtpHost: ""
 smtpPort: ""
@@ -322,6 +323,7 @@ smtpUser: ""
 smtpPassword: ""
 smtpProtocol: ""
 smtpFromEmail: ""
+smtpFromName: ""
 ## @param smtpExistingSecret The name of an existing secret with SMTP credentials
 ## NOTE: Must contain key `smtp-password`
 ## NOTE: When it's set, the `smtpPassword` parameter is ignored

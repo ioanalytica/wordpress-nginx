@@ -279,11 +279,14 @@ expect "protocol ssl disables STARTTLS"       present 'name: SMTP_STARTTLS' --se
 expect "protocol ssl still switches TLS on"   present 'name: SMTP_TLS'      --set smtpHost=m --set smtpProtocol=ssl
 expect "the dead SMTP_PROTOCOL env is gone"   absent  'SMTP_PROTOCOL'       --set smtpHost=m --set smtpProtocol=tls
 expect "from email sets the envelope sender"  present 'name: SMTP_FROM'     --set smtpFromEmail=news@example.com
+expect "from name renders with an email"      present 'name: SMTP_FROM_NAME' \
+        --set smtpFromEmail=news@example.com --set smtpFromName=Blog
 expect "the dead WORDPRESS_SMTP_ envs are gone" absent 'WORDPRESS_SMTP_'    --set smtpFromEmail=news@example.com
 expect "password comes from a Secret key"     present 'key: smtp-password'  --set smtpPassword=pw
 expect "existing secret is referenced"        present 'name: my-smtp'       --set smtpExistingSecret=my-smtp
 check  "smtp fully configured" --set smtpHost=m --set smtpPort=587 --set smtpUser=u \
-        --set smtpPassword=pw --set smtpProtocol=tls --set smtpFromEmail=news@example.com
+        --set smtpPassword=pw --set smtpProtocol=tls \
+        --set smtpFromEmail=news@example.com --set smtpFromName=Blog
 # An unknown protocol must fail the render, not silently send unencrypted.
 if helm template tst "$CHART" --set smtpProtocol=starttls >/dev/null 2>&1; then
     echo "FAIL: smtpProtocol=starttls rendered - unknown protocols must fail the render"
@@ -291,14 +294,14 @@ if helm template tst "$CHART" --set smtpProtocol=starttls >/dev/null 2>&1; then
 else
     echo "ok:   unknown smtpProtocol fails the render"
 fi
-# smtpFromName was removed (transport-only chart; the From display name is
-# WordPress' business). A value that silently does nothing is how the SMTP
-# block was broken before - removed values must refuse to render instead.
+# The display name is part of the rewritten From header; without an address
+# it configures nothing, and a value that silently does nothing is how the
+# SMTP block was broken before - it must refuse to render instead.
 if helm template tst "$CHART" --set smtpFromName=Blog >/dev/null 2>&1; then
-    echo "FAIL: smtpFromName rendered - the removed value must fail loudly"
+    echo "FAIL: smtpFromName without smtpFromEmail rendered - must fail loudly"
     FAILURES=$((FAILURES + 1))
 else
-    echo "ok:   removed smtpFromName fails the render"
+    echo "ok:   smtpFromName without smtpFromEmail fails the render"
 fi
 MANIFEST_SENTINEL=s3ntinelsmtppw \
   check "smtp password never leaves the Secret" --set smtpPassword=s3ntinelsmtppw

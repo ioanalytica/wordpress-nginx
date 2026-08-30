@@ -1,0 +1,60 @@
+#!/usr/bin/env sh
+# Rewrites the RFC 5322 From header of the message on stdin to match
+# SMTP_FROM (and SMTP_FROM_NAME, when set), then hands the rewritten
+# message to the command given as arguments - the sendmail wrapper invokes
+# this as `rewrite-mail-from msmtp <options...>` when SMTP_FROM is set.
+#
+# This is transport-side canonical-sender rewriting, the same job Postfix
+# does with sender_canonical/header_checks: submission services such as
+# Office 365 reject a message whose *header* From does not match the
+# authenticated identity (SendAsDenied), and WordPress writes
+# wordpress@<host> there unless site code filters it. Doing it here keeps
+# the whole mail configuration in the environment - no code injected into
+# WordPress, and the site's own From only ever leaves the pod when the
+# operator has not claimed the sender.
+#
+# Scope is deliberately narrow: only the first From header in the header
+# block is replaced (folded continuation lines included); one is inserted
+# when the message has none. The body - including any "From:" text in it -
+# is never touched.
+
+set -eu
+
+# The values are operator-supplied chart values, but a stray newline must
+# not become a second header (header injection), so strip CR/LF.
+from_addr=$(printf '%s' "${SMTP_FROM:?SMTP_FROM is not set}" | tr -d '\r\n')
+from_name=$(printf '%s' "${SMTP_FROM_NAME:-}" | tr -d '\r\n')
+
+if [ -z "$from_name" ]; then
+    NEWFROM="From: $from_addr"
+elif printf '%s' "$from_name" | LC_ALL=C grep -q '[^ -~]'; then
+    # Non-ASCII display name: RFC 2047 encoded word (UTF-8, base64).
+    NEWFROM="From: =?UTF-8?B?$(printf '%s' "$from_name" | base64 | tr -d '\n')?= <$from_addr>"
+else
+    # ASCII display name: quoted-string, with backslash and quote escaped.
+    esc=$(printf '%s' "$from_name" | sed 's/\\/\\\\/g; s/"/\\"/g')
+    NEWFROM="From: \"$esc\" <$from_addr>"
+fi
+export NEWFROM
+
+# The header travels to awk through the environment, not -v: awk -v applies
+# backslash-escape processing to the value, which would let a literal \n in
+# a name fold new lines - ENVIRON hands it over verbatim.
+awk '
+    BEGIN { inhdr = 1; done = 0; infold = 0 }
+    inhdr && /^$/ {                 # end of the header block
+        if (!done) { print ENVIRON["NEWFROM"]; done = 1 }
+        inhdr = 0
+    }
+    inhdr && infold && /^[ \t]/ { next }   # folded rest of the replaced From
+    inhdr {
+        infold = 0
+        if (!done && tolower($0) ~ /^from:/) {
+            print ENVIRON["NEWFROM"]
+            done = 1; infold = 1
+            next
+        }
+    }
+    { print }
+    END { if (inhdr && !done) print ENVIRON["NEWFROM"] }
+' | exec "$@"

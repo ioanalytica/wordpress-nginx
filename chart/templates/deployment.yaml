@@ -531,11 +531,16 @@ spec:
             {{- end }}
             {{- end }}
             {{- if .Values.smtpFromEmail }}
+            # Envelope sender, and the From header is rewritten to match on
+            # the way into msmtp (transport-side, no code in WordPress).
             - name: SMTP_FROM
               value: {{ .Values.smtpFromEmail | quote }}
-            {{- end }}
             {{- if .Values.smtpFromName }}
-            {{- fail "smtpFromName was removed: the chart configures mail transport only and does not touch the wp_mail() From header. Set the display name in WordPress (wp_mail_from_name filter)." }}
+            - name: SMTP_FROM_NAME
+              value: {{ .Values.smtpFromName | quote }}
+            {{- end }}
+            {{- else if .Values.smtpFromName }}
+            {{- fail "smtpFromName requires smtpFromEmail: the display name is part of the rewritten From header and cannot stand alone" }}
             {{- end }}
             {{- if (include "wordpress.cacheHasPassword" .) }}
             # Read by the post-init cache configuration script. Kept in the
