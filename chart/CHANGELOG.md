@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.0-14
+
+* Maintenance rebuild for package freshness: the image now enables Alpine's community repository and runs a full `apk update && apk upgrade` directly after `FROM`, so every build starts from current packages instead of the base image's snapshot. No chart behavior changes; upgrade is recommended as routine hardening.
+
 ## 7.1.0-13
 
 * **The SMTP values now configure mail delivery completely - and only mail delivery.** PHP `mail()` and therefore `wp_mail()` relay through the image's msmtp sendmail wrapper, configured entirely from chart values via environment variables: no mail plugin, nothing written to the database. `smtpHost`, `smtpPort`, `smtpUser` and `smtpPassword`/`smtpExistingSecret` worked before; the remaining values rendered environment variables that nothing consumed (`SMTP_PROTOCOL`, `WORDPRESS_SMTP_FROM_EMAIL`, `WORDPRESS_SMTP_FROM_NAME` - inherited names, read by neither the wrapper nor the image) and are now mapped onto the names the wrapper actually reads. Verified end to end: STARTTLS handshake and delivery through the wrapper against a TLS-enabled mail sink, implicit TLS against a public submission endpoint.

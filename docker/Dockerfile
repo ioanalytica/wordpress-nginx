@@ -12,6 +12,10 @@ ARG DEBUG
 
 FROM shinsenter/php:${PHP_VERSION}-fpm-nginx-alpine
 
+# community repo + upgrades for CVE freshness.
+RUN sed -i 's/#\(.*\/community\)/\1/' /etc/apk/repositories
+RUN apk update && apk upgrade --no-cache && rm -rf /var/cache/apk/*
+
 ENV WP_VERSION=7.1
 
 # Links the GHCR package to this repository.
@@ -77,6 +81,9 @@ RUN sed -i -e 's|:="mailpit"|:=""|' -e 's|:="1025"|:=""|' /usr/local/etc/.env \
 # The grep guards the insertion: if the base image rewrites the wrapper and
 # the sed anchor no longer matches, the build fails here instead of silently
 # shipping an image where smtpProtocol=ssl configures nothing.
+# SC2016: the single quotes are the point - sed must see the literal $
+# of the wrapper's own variables, not a build-time expansion.
+# hadolint ignore=SC2016
 RUN sed -i 's|^\[ -n "$SMTP_TLS" \].*|&\n[ -n "$SMTP_STARTTLS" ] \&\& options="$options --tls-starttls=$SMTP_STARTTLS"|' /usr/local/utils/sendmail \
  && grep -qF -- '--tls-starttls=$SMTP_STARTTLS' /usr/local/utils/sendmail \
  && bash -n /usr/local/utils/sendmail
@@ -86,6 +93,8 @@ RUN sed -i 's|^\[ -n "$SMTP_TLS" \].*|&\n[ -n "$SMTP_STARTTLS" ] \&\& options="$
 # rewrite-mail-from for why this is a transport concern and not WordPress'.
 # Same guard pattern as above: if the base image reshapes the wrapper's
 # final exec line, the build fails instead of silently dropping the rewrite.
+# SC2016: single quotes intended, as above.
+# hadolint ignore=SC2016
 RUN sed -i 's|^exec msmtp $options "$@"$|[ -n "$SMTP_FROM" ] \&\& exec /usr/local/utils/rewrite-mail-from msmtp $options "$@"\nexec msmtp $options "$@"|' /usr/local/utils/sendmail \
  && grep -qF -- 'rewrite-mail-from msmtp' /usr/local/utils/sendmail \
  && bash -n /usr/local/utils/sendmail /usr/local/utils/rewrite-mail-from
