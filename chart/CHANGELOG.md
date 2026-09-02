@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.0-15
+
+* Bump `idxImageTag` to `1.3.3` (wordpress-idx sidecar).
+
 ## 7.1.0-14
 
 * Maintenance rebuild for package freshness: the image now enables Alpine's community repository and runs a full `apk update && apk upgrade` directly after `FROM`, so every build starts from current packages instead of the base image's snapshot. No chart behavior changes; upgrade is recommended as routine hardening.
