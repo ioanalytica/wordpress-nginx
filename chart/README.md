@@ -686,6 +686,18 @@ idx:
   resourcesPreset: "small"
 ```
 
+When enabled, the chart defines `WORDPRESS_IDX_BASE` in `wp-config.php` as
+`http://127.0.0.1:<idx.port><idx.basePath>`, pointing the plugin's server-side
+calls at the sidecar over loopback. Without it those calls (update check and
+reindex) resolve through `site_url()` to the site's public URL and depend on the
+pod being able to reach the site from the inside — which restrictive network
+policies may well prevent. Loopback is the shortest path to a sidecar in the
+same pod and needs neither DNS nor egress. Note the failure mode if the public
+URL is unreachable: the calls fail silently and the plugin stops offering
+updates, while the search keeps working, since that runs in the visitor's
+browser. Override the constant via `WORDPRESS_CONFIG_EXTRA` if the sidecar does
+not share the pod.
+
 ### Metrics & Monitoring
 
 ```yaml

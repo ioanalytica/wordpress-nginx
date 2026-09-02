@@ -225,6 +225,23 @@ spec:
               if ($configExtra = getenv_docker('WORDPRESS_CONFIG_EXTRA', '')) {
                   eval($configExtra);
               }
+              {{- if .Values.idx.enabled }}
+
+              // Reach the idx sidecar over loopback: it shares this pod's
+              // network namespace, so this is the shortest path and needs
+              // neither DNS nor egress. The plugin's server-side calls (update
+              // check, reindex) otherwise resolve through site_url() to the
+              // site's public URL, which the pod can only use if it may reach
+              // the site from the inside — restrictive network policies may
+              // prevent that. It then fails silently: the plugin stops
+              // offering updates while the search keeps working, because that
+              // runs in the visitor's browser and never takes this path.
+              // Defined after WORDPRESS_CONFIG_EXTRA so an operator can
+              // override it there for split-pod or external setups.
+              if ( ! defined( 'WORDPRESS_IDX_BASE' ) ) {
+                  define( 'WORDPRESS_IDX_BASE', 'http://127.0.0.1:{{ .Values.idx.port }}{{ .Values.idx.basePath }}' );
+              }
+              {{- end }}
 
               if ( ! defined( 'ABSPATH' ) ) {
                   define( 'ABSPATH', __DIR__ . '/' );
