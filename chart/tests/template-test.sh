@@ -85,6 +85,18 @@ else
     echo "FAIL: rendered image tag is '$rendered', chart version is $chart_version"
     FAILURES=$((FAILURES + 1))
 fi
+# Same class of drift for the sidecar: idxImageTag and the images annotation
+# are two separate spots, and only the annotation feeds provenance tooling -
+# in 7.1.0-16 the annotation kept the previous sidecar tag unnoticed.
+idx_tag=$(sed -n 's/^  idxImageTag: *"\(.*\)"$/\1/p' "$CHART/Chart.yaml")
+idx_images=$(sed -n 's|^      image: ghcr.io/ioanalytica/wordpress-idx:||p' "$CHART/Chart.yaml")
+idx_rendered=$(helm template tst "$CHART" --set idx.enabled=true | sed -n 's|.*image: "*ghcr.io/ioanalytica/wordpress-idx:||p' | tr -d '"' | head -1)
+if [ "$idx_tag" = "$idx_images" ] && [ "$idx_tag" = "$idx_rendered" ]; then
+    echo "ok:   idxImageTag, images annotation and rendered sidecar all say $idx_tag"
+else
+    echo "FAIL: idxImageTag=$idx_tag images=$idx_images rendered=$idx_rendered - must be identical"
+    FAILURES=$((FAILURES + 1))
+fi
 
 echo "=== Structural invariants across the value matrix"
 check "defaults"

@@ -1,5 +1,11 @@
 # Changelog
 
+## 7.1.0-16
+
+* **The generated `wp-config.php` now defines `WORDPRESS_IDX_BASE`** whenever `idx.enabled` is set, pointing the wordpress-idx plugin at the sidecar over loopback (`http://127.0.0.1:<idx.port><idx.basePath>`). The plugin makes two server-side calls — its own update check and the reindex action — and without the constant both resolve through `site_url()` to the site's public URL, so they only work if the pod can reach the site from the inside. Loopback is the shortest path to a sidecar sharing the pod, needs no DNS and stays available under restrictive network policies, which makes it the better default regardless. Where the public URL is not reachable from the pod, the difference is not cosmetic: the calls fail silently and the symptom misleads, because the search keeps working — it runs as `fetch()` in the visitor's browser and never touches this path — while the plugin simply stops offering updates. The chart is the only place that knows the sidecar shares the pod and on which port and base path it listens. The define sits after the `WORDPRESS_CONFIG_EXTRA` eval and is guarded by `! defined()`, so an operator can still override it there for setups where the sidecar does not share the pod.
+* **Note for file-integrity monitoring:** the content of the generated `wp-config.php` changes with this release (first pod start on 7.1.0-16). Refresh content-hash baselines accordingly; the file remains identical across sites with identical values, so the new hash can be computed from the rendered template ahead of the rollout.
+* Bump `idxImageTag` to `1.3.4` (wordpress-idx sidecar). Besides the constant above, that build routes the plugin's reindex call through the same base URL — it called `site_url()` directly and so ignored `WORDPRESS_IDX_BASE` entirely — and lets a forced update check bypass the plugin's own manifest cache, which otherwise pinned a stale or failed lookup for up to six hours.
+
 ## 7.1.0-15
 
 * Bump `idxImageTag` to `1.3.3` (wordpress-idx sidecar).
