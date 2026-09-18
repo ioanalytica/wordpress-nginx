@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.1-1
+
+* Update to WordPress 7.1.1. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.
+
 ## 7.1.0-17
 
 * Dragonfly is bumped to **v2.0.0** (was `v1.40.1`) for the internal cache (`memcached.enabled: true`). The major version marks upstream's maturity milestone rather than a feature break: it adds Valkey 9 RDB loading and `GEOSEARCHSTORE`, reduces connection-accounting and buffering overhead, and carries a long list of correctness fixes for streams, RESP3, tiered storage and cluster migration. Nothing the chart depends on changed — the deprecations in this release concern `--huffman_table` and the fixed-length replication backlog, neither of which the chart passes. Verified before the bump, against the actual image: `--requirepass` and `--memcached_port` are both still accepted, and the container comes up listening on `0.0.0.0:6379` and `0.0.0.0:11211` with exactly the flags the chart passes. Password authentication for the cache is unaffected.
