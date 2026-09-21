@@ -77,8 +77,12 @@ jobs:
           set -euo pipefail
           image="docker.dragonflydb.io/dragonflydb/dragonfly:${NEW}"
           docker pull -q "$image"
+          # gflags' --help exits 1 by design. Under `set -o pipefail` that status
+          # wins over a matching grep, so piping it straight into grep reports
+          # every flag as missing. Capture the output once, then match.
+          help=$(docker run --rm "$image" --help 2>&1 || true)
           for flag in requirepass memcached_port; do
-            if ! docker run --rm "$image" --help 2>&1 | grep -q -- "--${flag}"; then
+            if ! printf '%s\n' "$help" | grep -q -- "--${flag}"; then
               echo "::error::${image} no longer accepts --${flag}; bump needs manual review"
               exit 1
             fi

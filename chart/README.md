@@ -104,7 +104,7 @@ The chart can deploy an internal [Dragonfly](https://www.dragonflydb.io/) instan
 ```yaml
 memcached:
   enabled: true
-  image: "dragonflydb/dragonfly:v1.26.0"
+  image: "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.0"
   password: "cachepass"
   persistence:
     enabled: true
