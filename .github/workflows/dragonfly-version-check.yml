@@ -116,6 +116,9 @@ jobs:
         with:
           branch: dragonfly-bump/${{ steps.upstream.outputs.latest }}
           base: develop
+          # Bot-authored PRs only reach the watching inbox, where they get buried;
+          # a review request lands in the participating inbox and triggers email.
+          reviewers: ioanalytica
           commit-message: "Bump Dragonfly to ${{ steps.upstream.outputs.latest }}"
           title: "Bump Dragonfly to ${{ steps.upstream.outputs.latest }}"
           body: |

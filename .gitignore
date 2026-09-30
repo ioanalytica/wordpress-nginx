@@ -7,3 +7,4 @@
 wordpress-nginx-*.tgz
 chart/charts/
 chart/Chart.lock
+AGENTS.md

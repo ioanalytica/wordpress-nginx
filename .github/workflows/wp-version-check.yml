@@ -100,6 +100,9 @@ jobs:
         with:
           branch: wp-bump/${{ steps.wp.outputs.latest }}
           base: develop
+          # Bot-authored PRs only reach the watching inbox, where they get buried;
+          # a review request lands in the participating inbox and triggers email.
+          reviewers: ioanalytica
           commit-message: "Version ${{ steps.cmp.outputs.chart_version }}"
           title: "Bump WordPress to ${{ steps.wp.outputs.latest }} (${{ steps.cmp.outputs.chart_version }})"
           body: |

@@ -152,6 +152,9 @@ jobs:
         with:
           branch: image-bump/${{ matrix.name }}-${{ steps.upstream.outputs.latest }}
           base: develop
+          # Bot-authored PRs only reach the watching inbox, where they get buried;
+          # a review request lands in the participating inbox and triggers email.
+          reviewers: ioanalytica
           commit-message: "Bump ${{ matrix.name }} to ${{ steps.upstream.outputs.latest }}"
           title: "Bump ${{ matrix.name }} to ${{ steps.upstream.outputs.latest }}"
           body: |
