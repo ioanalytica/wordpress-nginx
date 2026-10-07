@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.3-1
+
+* Update to WordPress 7.1.3. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.
+
 ## 7.1.2-1
 
 * Update to WordPress 7.1.2. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.
