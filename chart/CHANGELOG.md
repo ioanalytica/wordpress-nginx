@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.3-2
+
+* Bump `idxImageTag` to `1.3.5` (wordpress-idx sidecar). Maintenance only: the sidecar's own dependencies move on (dotenv 18, Express 5.3, mysql2 3.24.5), with no change to the environment variables it reads or the endpoints it serves.
+
 ## 7.1.3-1
 
 * Update to WordPress 7.1.3. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.
