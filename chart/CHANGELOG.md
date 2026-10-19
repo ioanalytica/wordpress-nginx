@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.3-3
+
+* Image hardening: the image is rebuilt on current Alpine 3.24 packages, picking up the latest security updates for `expat`, `libX11` and `libXrender`. The release build now refreshes the system packages on every release instead of reusing a cached package layer, so each image ships the package set current at its release. No chart or configuration changes.
+
 ## 7.1.3-2
 
 * Bump `idxImageTag` to `1.3.5` (wordpress-idx sidecar). Maintenance only: the sidecar's own dependencies move on (dotenv 18, Express 5.3, mysql2 3.24.5), with no change to the environment variables it reads or the endpoints it serves.

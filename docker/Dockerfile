@@ -14,6 +14,10 @@ FROM shinsenter/php:${PHP_VERSION}-fpm-nginx-alpine
 
 # community repo + upgrades for CVE freshness.
 RUN sed -i 's/#\(.*\/community\)/\1/' /etc/apk/repositories
+# The build cache keeps the upgrade layer as long as the base image is
+# unchanged, which would ship an older build's package set. The release
+# workflow passes the tag here, so every release upgrades afresh.
+ARG APK_REFRESH
 RUN apk update && apk upgrade --no-cache && rm -rf /var/cache/apk/*
 
 ENV WP_VERSION=7.1.3

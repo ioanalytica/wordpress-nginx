@@ -44,6 +44,8 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: wordpress-nginx:smoke-test
+          # Busts the cached apk upgrade layer once per release (see Dockerfile).
+          build-args: APK_REFRESH=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -76,6 +78,7 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          build-args: APK_REFRESH=${{ steps.meta.outputs.version }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
