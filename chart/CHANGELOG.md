@@ -1,5 +1,11 @@
 # Changelog
 
+## 7.1.3-4
+
+* Security hardening: the image is rebuilt on PHP **8.4.27** (was 8.4.26), a security release from the PHP project. Upgrading is strongly recommended; see the [PHP 8.4.27 release announcement](https://www.php.net/ChangeLog-8.php#8.4.27).
+* Refreshed Alpine packages, including ImageMagick 7.1.2.34 and current CA certificates.
+* Dragonfly is bumped to **v2.0.2** (was `v2.0.0`) for the internal cache (`memcached.enabled: true`). Patch release; no change to the flags the chart passes.
+
 ## 7.1.3-3
 
 * Image hardening: the image is rebuilt on current Alpine 3.24 packages, picking up the latest security updates for `expat`, `libX11` and `libXrender`. The release build now refreshes the system packages on every release instead of reusing a cached package layer, so each image ships the package set current at its release. No chart or configuration changes.
