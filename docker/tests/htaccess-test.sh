@@ -15,27 +15,42 @@ FAILURES=0
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-helm template tst "$CHART" > "$WORK/render.yaml"
-python3 - "$WORK" <<'PY'
+# render <helm args...>: extract the check from the chart rendered with these
+# values, so policy, deniedPaths and the PHP allowlist reach it exactly as
+# they would in a cluster.
+render() {
+    helm template tst "$CHART" "$@" > "$WORK/render.yaml"
+    python3 - "$WORK" <<'PY'
 import sys, yaml
 work = sys.argv[1]
 docs = [d for d in yaml.safe_load_all(open(f"{work}/render.yaml")) if d]
 dep = next(d for d in docs if d.get("kind") == "Deployment")
 script = dep["spec"]["template"]["spec"]["initContainers"][0]["args"][-1]
-start = script.index('echo "Checking wp-content for .htaccess')
+start = script.index('HTACCESS_POLICY=')
 end = script.index('echo "Checks completed."')
 open(f"{work}/check.sh", "w").write("set -e\n" + script[start:end] + 'echo "Checks completed."\n')
 PY
+}
 
-# run <policy> <prefixes> <setup-script>  -> prints output, sets RC
+# denied <path>...: sets ARGS to helm args declaring each path a deny entry.
+# An array, not a word-split string: "deniedPaths[0]" is also a glob.
+denied() {
+    local i=0 p
+    ARGS=()
+    for p in "$@"; do
+        ARGS+=(--set-json "nginx.deniedPaths[$i]={\"path\":\"$p\",\"action\":\"deny\"}")
+        i=$((i + 1))
+    done
+}
+
+# run <policy> <setup-script> [helm args...]  -> prints output, sets RC
 run() {
-    local policy="$1" prefixes="$2" setup="$3"
-    OUT="$(docker run --rm -i -e POLICY="$policy" -e PREFIXES="$prefixes" \
+    local policy="$1" setup="$2"; shift 2
+    render --set "nginx.htaccessPolicy=$policy" "$@"
+    OUT="$(docker run --rm -i \
         -v "$WORK/check.sh:/check.sh:ro" -v "$setup:/setup.sh:ro" busybox sh -c '
         mkdir -p /wordpress/wp-content; sh /setup.sh
-        sed -e "s|^ *HTACCESS_POLICY=.*|HTACCESS_POLICY=\"$POLICY\"|" \
-            -e "s|^ *DENIED_PREFIXES=.*|DENIED_PREFIXES=\"$PREFIXES\"|" /check.sh > /run.sh
-        ash -e /run.sh; echo "RC=$?"' 2>&1)"
+        ash -e /check.sh; echo "RC=$?"' 2>&1)"
     RC="$(printf '%s' "$OUT" | sed -n 's/^RC=//p' | tail -1)"
 }
 
@@ -63,7 +78,8 @@ printf '%s\n' 'location ~* /w3-total-cache/ini/ { deny all; }' 'location ~* /w3-
 SETUP
 
 echo "=== Real site, policy fail, corrected deniedPaths"
-run fail "/wp-content/ai1wm-backups /wp-content/uploads/wpcf7_uploads" "$WORK/styxnet.sh"
+denied /wp-content/ai1wm-backups /wp-content/uploads/wpcf7_uploads
+run fail "$WORK/styxnet.sh" "${ARGS[@]}"
 expect_line "W3TC pub is plugin-managed, not deny"        'plugin-managed: /wp-content/plugins/w3-total-cache/pub/'
 expect_line "W3TC ini is plugin-managed"                  'plugin-managed: /wp-content/plugins/w3-total-cache/ini/'
 expect_line "W3TC minify is plugin-managed"               'plugin-managed: /wp-content/cache/minify/'
@@ -74,13 +90,15 @@ expect_line "ai1wm blanket deny is covered"               'covered: +/wp-content
 expect_rc   "nothing uncovered, fail mode starts"         0
 
 echo "=== Real site, policy fail, ai1wm NOT covered"
-run fail "/wp-content/uploads/wpcf7_uploads" "$WORK/styxnet.sh"
+denied /wp-content/uploads/wpcf7_uploads
+run fail "$WORK/styxnet.sh" "${ARGS[@]}"
 expect_line "ai1wm reported uncovered"                    'UNCOVERED: +/wp-content/ai1wm-backups/'
 expect_line "proposal names the directory"                '- path: /wp-content/ai1wm-backups'
 expect_rc   "blanket deny uncovered blocks start"         1
 
 echo "=== Real site, partial directory wrongly listed"
-run warn "/wp-content/uploads/wpcf7_captcha" "$WORK/styxnet.sh"
+denied /wp-content/uploads/wpcf7_captcha
+run warn "$WORK/styxnet.sh" "${ARGS[@]}"
 expect_line "warns that a deny breaks the exception"      'WARNING: +/wp-content/uploads/wpcf7_captcha is in nginx.deniedPaths'
 
 cat > "$WORK/edge.sh" <<'SETUP'
@@ -92,7 +110,7 @@ printf 'Options -Indexes\n' > $W/c/.htaccess
 printf 'Require all denied\n' > $W/r/.htaccess
 SETUP
 echo "=== Edge cases, policy fail, nothing covered"
-run fail "" "$WORK/edge.sh"
+run fail "$WORK/edge.sh"
 expect_line "Require all denied is a blanket deny"        'UNCOVERED: +/wp-content/r/'
 expect_line "partial is not proposed"                     'partial: +/wp-content/a/'
 expect_line "php allow in uploads is SUSPICIOUS"          'SUSPICIOUS: +/wp-content/uploads/b/'
@@ -100,7 +118,8 @@ expect_line "Options -Indexes is info"                    'info: +/wp-content/c/
 expect_rc   "only the blanket deny blocks"                1
 
 echo "=== Edge cases, blanket deny covered, rest uncovered"
-run fail "/wp-content/r" "$WORK/edge.sh"
+denied /wp-content/r
+run fail "$WORK/edge.sh" "${ARGS[@]}"
 expect_rc   "partial/allow/other never block fail mode"   0
 
 cat > "$WORK/empty.sh" <<'SETUP'
@@ -115,13 +134,210 @@ SETUP
 # the script, and the pod never starts. Any plugin leaving an empty or
 # comments-only .htaccess behind would have taken the site down on next roll.
 echo "=== Empty and comments-only .htaccess must not stop the init container"
-run warn "" "$WORK/empty.sh"
+run warn "$WORK/empty.sh"
 expect_line "empty file reported as no access control"   'info: +/wp-content/empty/.htaccess is empty or only comments'
 expect_line "comments-only reported the same way"        'info: +/wp-content/comments/.htaccess is empty or only comments'
 expect_line "the real deny is still found"               'UNCOVERED: +/wp-content/real/'
 expect_rc   "warn mode completes"                        0
-run fail "/wp-content/real" "$WORK/empty.sh"
+denied /wp-content/real
+run fail "$WORK/empty.sh" "${ARGS[@]}"
 expect_rc   "fail mode is not tripped by empty files"    0
+
+expect_no_line() {
+    if printf '%s' "$OUT" | grep -qE -- "$2"; then
+        echo "FAIL: $1 — found a line matching '$2'"; FAILURES=$((FAILURES + 1))
+    else echo "ok:   $1"; fi
+}
+
+# Files found on the k3s-io fleet on 2026-10-28. The first version of the
+# report flagged 21 directories there, 13 of them already closed: Wordfence's
+# PHP-only guards (the PHP allowlist answers 403), backup-db under a regex
+# deniedPaths entry, and uploads/.htaccess - for which it proposed denying
+# /wp-content/uploads, i.e. every image on the site.
+cat > "$WORK/fleet.sh" <<'SETUP'
+W=/wordpress/wp-content
+mkdir -p $W/plugins/wordfence/lib $W/wflogs $W/backup-db $W/uploads/wp_encryption $W/uploads/mixed
+printf '<IfModule mod_rewrite.c>\n\tRewriteEngine On\n\tRewriteCond %%{REQUEST_URI} \\.php$\n\tRewriteRule .* - [F,L,NC]\n</IfModule>\n<IfModule !mod_rewrite.c>\n\t<FilesMatch "\\.php$">\n\t<IfModule mod_authz_core.c>\n\t\tRequire all denied\n\t</IfModule>\n\t<IfModule !mod_authz_core.c>\n\t\tOrder deny,allow\n\t\tDeny from all\n\t</IfModule>\n\t</FilesMatch>\n</IfModule>\n' > $W/plugins/wordfence/lib/.htaccess
+: > $W/plugins/wordfence/lib/compat.php
+printf '<IfModule mod_authz_core.c>\n\tRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\n\tOrder deny,allow\n\tDeny from all\n</IfModule>\n' > $W/wflogs/.htaccess
+printf '<Files ~ ".*\\..*">\norder allow,deny\ndeny from all\n</Files>\n' > $W/backup-db/.htaccess
+printf '<Files *.php>\ndeny from all\n</Files>\n' > $W/uploads/.htaccess
+printf '<Files debug.log>\nOrder allow,deny\nDeny from all\n</Files>\n' > $W/uploads/wp_encryption/.htaccess
+printf '<Files *.php>\ndeny from all\n</Files>\n<Files secret.txt>\ndeny from all\n</Files>\n' > $W/uploads/mixed/.htaccess
+SETUP
+BACKUP_RE='{"path":"~* ^/wp-content/[^/]*backup[^/]*(/|$)","action":"deny"}'
+
+echo "=== Fleet files, PHP allowlist enforced, backup regex in deniedPaths"
+run fail "$WORK/fleet.sh" --set-json "nginx.deniedPaths[0]=$BACKUP_RE"
+expect_line "PHP-only guard is covered by the allowlist"  'covered: +/wp-content/plugins/wordfence/lib/.* denies PHP only; the PHP allowlist answers 403'
+expect_line "uploads PHP guard is covered too"            'covered: +/wp-content/uploads/\.htaccess .* the PHP allowlist answers 403'
+expect_no_line "uploads root is never proposed"           '- path: /wp-content/uploads$'
+expect_line "regex deniedPaths entry covers backup-db"    'covered: +/wp-content/backup-db/'
+expect_line "blanket deny still uncovered"                'UNCOVERED: +/wp-content/wflogs/'
+expect_line "blanket deny proposes the directory"         '- path: /wp-content/wflogs$'
+expect_line "named-file deny is reported per file"        'UNCOVERED: +/wp-content/uploads/wp_encryption/.* denies files: debug.log'
+expect_line "named-file deny proposes the file, recursively" "- path: '~\\* \\^/wp-content/uploads/wp_encryption/\\(\\.\\*/\\)\\?debug\\\\\\.log\\$'"
+expect_no_line "named-file deny never proposes the dir"   '- path: /wp-content/uploads/wp_encryption$'
+expect_line "mixed file: named part reported"             'UNCOVERED: +/wp-content/uploads/mixed/.* denies extensions: php; files: secret.txt'
+expect_line "mixed file: only the name is proposed"       "- path: '~\\* \\^/wp-content/uploads/mixed/\\(\\.\\*/\\)\\?secret\\\\\\.txt\\$'"
+expect_no_line "mixed file: PHP left to the allowlist"   "uploads/mixed/\\.\\*\\\\\\.php"
+expect_rc   "uncovered denies block fail mode"            1
+
+echo "=== Fleet files, every remaining deny closed"
+run fail "$WORK/fleet.sh" --set-json "nginx.deniedPaths[0]=$BACKUP_RE" \
+    --set-json 'nginx.deniedPaths[1]={"path":"/wp-content/wflogs","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[2]={"path":"~* ^/wp-content/uploads/wp_encryption/(.*/)?debug\\.log$","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[3]={"path":"/wp-content/uploads/mixed","action":"deny"}'
+expect_line "file entry covers the named file"            'covered: +/wp-content/uploads/wp_encryption/'
+expect_line "directory entry covers its named files"      'covered: +/wp-content/uploads/mixed/'
+expect_rc   "nothing uncovered, fail mode starts"         0
+
+echo "=== PHP-only guard without the allowlist"
+run fail "$WORK/fleet.sh" --set phpExecutionAllowlist.mode=off
+expect_line "PHP-only guard uncovered with allowlist off" 'UNCOVERED: +/wp-content/plugins/wordfence/lib/.* denies PHP only'
+expect_line "proposal closes PHP, not the directory"      "- path: '~\\* \\^/wp-content/plugins/wordfence/lib/\\.\\*\\\\\\.php\\$'"
+expect_rc   "uncovered PHP blocks fail mode"              1
+
+echo "=== PHP-only guard over PHP that extraAllowedPaths opens"
+run warn "$WORK/fleet.sh" \
+    --set-json 'phpExecutionAllowlist.extraAllowedPaths=["~*^/wp-content/plugins/wordfence/lib/compat\\.php$"]'
+expect_line "allowlist exception is named"                'extraAllowedPaths lets PHP run here: /wp-content/plugins/wordfence/lib/compat.php'
+
+echo "=== A deniedPaths regex busybox cannot compile covers nothing"
+run warn "$WORK/fleet.sh" --set-json 'nginx.deniedPaths[0]={"path":"~* ^/wp-content/(?!x)wflogs/","action":"deny"}'
+expect_line "PCRE-only entry leaves the directory open"   'UNCOVERED: +/wp-content/wflogs/'
+
+# One fixture per review finding on the first narrowed version, plus the
+# set -e abort CodeRabbit found in the extraAllowedPaths lookup.
+cat > "$WORK/review.sh" <<'SETUP'
+W=/wordpress/wp-content
+mkdir -p $W/ext $W/rx $W/dots $W/dotsglob $W/mixed $W/plugins/w3-total-cache/pub $W/wflogs
+printf '<FilesMatch "\\.(php|phps|phtml)$">\nRequire all denied\n</FilesMatch>\n' > $W/ext/.htaccess
+printf '<FilesMatch "debug.log">\nRequire all denied\n</FilesMatch>\n' > $W/rx/.htaccess
+printf '<FilesMatch "^\\.">\nRequire all denied\n</FilesMatch>\n' > $W/dots/.htaccess
+printf '<Files .ht*>\ndeny from all\n</Files>\n' > $W/dotsglob/.htaccess
+printf '<Files *.php>\ndeny from all\n</Files>\n<Files secret.txt>\ndeny from all\n</Files>\n' > $W/mixed/.htaccess
+printf '<FilesMatch "\\.php$">\nRequire all denied\n</FilesMatch>\n' > $W/plugins/w3-total-cache/pub/.htaccess
+printf 'Require all denied\n' > $W/wflogs/.htaccess
+: > $W/ext/a.php; : > $W/ext/b.php
+printf '%s\n' 'location ~* /w3-total-cache/pub/(?!sns\.php$)[^/]+\.php$ { deny all; }' > /wordpress/nginx.conf
+SETUP
+
+echo "=== Review cases, PHP allowlist enforced"
+run warn "$WORK/review.sh" \
+    --set-json 'nginx.deniedPaths[0]={"path":"~* ^/wp-content/wflogs/$","action":"deny"}'
+expect_line "php covered, phps/phtml still open"          'UNCOVERED: +/wp-content/ext/.* denies extensions: php phps phtml'
+expect_line "proposal closes only phps/phtml"             "- path: '~\\* \\^/wp-content/ext/\\.\\*\\\\\\.\\(phps\\|phtml\\)\\$'"
+expect_line "FilesMatch regex is not a file name"         'UNCOVERED: +/wp-content/rx/\.htaccess \(<FilesMatch "debug\.log">\)$'
+expect_line "FilesMatch regex proposes the directory"     '- path: /wp-content/rx$'
+expect_line "dotfile-only FilesMatch is covered"          'covered: +/wp-content/dots/.* denies dotfiles only'
+expect_line "dotfile-only Files glob is covered"          'covered: +/wp-content/dotsglob/.* denies dotfiles only'
+expect_line "directory-only regex does not cover files"   'UNCOVERED: +/wp-content/wflogs/'
+expect_line "plugin-managed narrow deny stays managed"    'covered: +/wp-content/plugins/w3-total-cache/pub/.* PHP allowlist answers 403'
+expect_line "script completes"                            'Checks completed\.'
+
+echo "=== Review cases, PHP allowlist off"
+run fail "$WORK/review.sh" --set phpExecutionAllowlist.mode=off \
+    --set-json 'nginx.deniedPaths[0]={"path":"/wp-content/wflogs","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[1]={"path":"/wp-content/rx","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[2]={"path":"~* ^/wp-content/ext/.*\\.(php|phps|phtml)$","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[3]={"path":"~* ^/wp-content/mixed/(.*/)?secret\\.txt$","action":"deny"}'
+expect_line "mixed file reports its PHP with allowlist off" 'UNCOVERED: +/wp-content/mixed/.* denies extensions: php; files: secret.txt'
+expect_line "mixed file proposes its PHP"                 "- path: '~\\* \\^/wp-content/mixed/\\.\\*\\\\\\.php\\$'"
+expect_no_line "mixed file: covered name not proposed"    'secret\\\.txt\$'
+expect_line "plugin-managed wins over a PHP proposal"     'plugin-managed: +/wp-content/plugins/w3-total-cache/pub/'
+expect_line "extension regex entry covers its extensions" 'covered: +/wp-content/ext/'
+expect_rc   "only the mixed PHP blocks fail mode"         1
+
+echo "=== extraAllowedPaths matching no PHP file in a PHP-only directory"
+# The lookup used to end its loop on a failed match; under set -e the init
+# container then exited and the pod never started, even with policy warn.
+run warn "$WORK/fleet.sh" \
+    --set-json 'phpExecutionAllowlist.extraAllowedPaths=["~*^/wp-content/plugins/other/cb\\.php$"]'
+expect_line "PHP-only guard still covered"                'covered: +/wp-content/plugins/wordfence/lib/.* the PHP allowlist answers 403'
+expect_line "script completes"                            'Checks completed\.'
+expect_rc   "warn mode completes"                         0
+
+# CodeRabbit's second round: every way the report could credit coverage
+# NGINX does not give must err toward "uncovered".
+cat > "$WORK/cr2.sh" <<'SETUP'
+W=/wordpress/wp-content
+mkdir -p $W/logs $W/wflogs
+printf '<Files *.log>\ndeny from all\n</Files>\n' > $W/logs/.htaccess
+: > $W/logs/debug.log
+printf 'Require all denied\n' > $W/wflogs/.htaccess
+: > $W/wflogs/config.dat
+SETUP
+
+echo "=== A rule that only matches the probe name covers nothing"
+run warn "$WORK/cr2.sh" \
+    --set-json 'nginx.deniedPaths[0]={"path":"~* ^/wp-content/logs/x\\.log$","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[1]={"path":"~* ^/wp-content/wflogs/x$","action":"deny"}'
+expect_line "extension rule missing a real file"          'UNCOVERED: +/wp-content/logs/.* denies extensions: log'
+expect_line "directory rule missing a real file"          'UNCOVERED: +/wp-content/wflogs/'
+
+echo "=== A deniedPaths entry ERE reads differently from PCRE covers nothing"
+run warn "$WORK/cr2.sh" \
+    --set-json 'nginx.deniedPaths[0]={"path":"~* ^/wp-content/wflogs/\\w","action":"deny"}'
+expect_line "\\w entry does not count as coverage"         'UNCOVERED: +/wp-content/wflogs/'
+
+echo "=== An extraAllowedPaths entry busybox cannot compile"
+run warn "$WORK/fleet.sh" \
+    --set-json 'phpExecutionAllowlist.extraAllowedPaths=["~*^/wp-content/plugins/(?!x)wordfence/lib/compat\\.php$"]'
+expect_line "allowlist not credited"                      'UNCOVERED: +/wp-content/plugins/wordfence/lib/.* denies PHP only'
+expect_line "the unchecked entry is named as the reason"  'extraAllowedPaths entry cannot be checked here'
+expect_line "script completes"                            'Checks completed\.'
+
+# CodeRabbit's third round, and the same question asked of every other place
+# that credits coverage: can it say "covered" while NGINX serves the file?
+cat > "$WORK/cr3.sh" <<'SETUP'
+W=/wordpress/wp-content
+mkdir -p $W/uploads/enc/sub $W/flat/sub
+printf '<Files *.php>\ndeny from all\n</Files>\n' > $W/uploads/.htaccess
+printf '<Files debug.log>\ndeny from all\n</Files>\n' > $W/uploads/enc/.htaccess
+: > $W/uploads/enc/sub/debug.log
+printf 'deny from all\n' > $W/flat/.htaccess
+: > $W/flat/a.dat
+SETUP
+
+echo "=== extraAllowedPaths entries the report cannot read as NGINX does"
+run warn "$WORK/fleet.sh" \
+    --set-json 'phpExecutionAllowlist.extraAllowedPaths=["~*^/wp-content/plugins/wordfence/lib/cb\\d\\.php$"]'
+expect_line "\\d entry: allowlist not credited"           'UNCOVERED: +/wp-content/plugins/wordfence/lib/.* denies PHP only'
+expect_line "\\d entry: named as unchecked"               'extraAllowedPaths entry cannot be checked here'
+
+echo "=== extraAllowedPaths opening new PHP in a directory that has none yet"
+run warn "$WORK/cr3.sh" \
+    --set-json 'phpExecutionAllowlist.extraAllowedPaths=["~*^/wp-content/uploads/.*\\.php$"]'
+expect_line "uploads PHP guard not credited"              'UNCOVERED: +/wp-content/uploads/\.htaccess .* denies PHP only'
+expect_line "new PHP named as the reason"                 'extraAllowedPaths lets new PHP files here run'
+
+echo "=== A deny reaches into subdirectories"
+run warn "$WORK/cr3.sh" \
+    --set-json 'nginx.deniedPaths[0]={"path":"/wp-content/uploads/enc/debug.log","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[1]={"path":"~* ^/wp-content/flat/[^/]*$","action":"deny"}'
+expect_line "top-level file entry misses subdirectories"  'UNCOVERED: +/wp-content/uploads/enc/.* denies files: debug.log'
+expect_line "top-level directory rule misses subdirs"     'UNCOVERED: +/wp-content/flat/'
+run warn "$WORK/cr3.sh" \
+    --set-json 'nginx.deniedPaths[0]={"path":"~* ^/wp-content/uploads/enc/(.*/)?debug\\.log$","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[1]={"path":"/wp-content/flat","action":"deny"}'
+expect_line "recursive file entry covers"                 'covered: +/wp-content/uploads/enc/'
+expect_line "directory entry covers subdirectories"       'covered: +/wp-content/flat/'
+
+# Own review of the third round.
+cat > "$WORK/own.sh" <<'SETUP'
+W=/wordpress/wp-content
+mkdir -p "$W/plugins/a+b"
+printf '<FilesMatch "\\.php$">\nRequire all denied\n</FilesMatch>\n' > "$W/plugins/a+b/.htaccess"
+: > "$W/plugins/a+b/cb.php"
+printf '<FilesMatch "\\.(sql|log)$">\nRequire all denied\n</FilesMatch>\n' > $W/.htaccess
+printf '%s\n' 'rewrite ^/wp-content/cache/minify/ /index.php last;' > /wordpress/nginx.conf
+SETUP
+
+echo "=== An extraAllowedPaths entry without ~ is an exact string"
+run warn "$WORK/own.sh" --set-json 'phpExecutionAllowlist.extraAllowedPaths=["/wp-content/plugins/a+b/cb.php"]'
+expect_line "exact entry with + found as open PHP"        'extraAllowedPaths lets PHP run here: /wp-content/plugins/a\+b/cb\.php'
+expect_line "wp-content root is not plugin-managed"       'UNCOVERED: +/wp-content/\.htaccess .* denies extensions: sql log'
 
 echo
 if [ "$FAILURES" -gt 0 ]; then echo "=== $FAILURES assertion(s) FAILED"; exit 1; fi

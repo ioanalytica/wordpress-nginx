@@ -347,26 +347,6 @@ Translate a deniedPaths action into the HTTP status NGINX answers with.
 {{- end -}}
 
 {{/*
-Plain directory prefixes from nginx.deniedPaths, space-separated on ONE line,
-for the init container's .htaccess coverage check. One line is not cosmetic:
-the value is interpolated into a shell assignment inside a YAML block scalar,
-and a newline in it ends the block and breaks the Deployment manifest.
-Regex entries are not listed: the init container does string-prefix matching,
-not regex evaluation, and a regex entry is therefore reported as "not covered"
-rather than guessed at.
-*/}}
-{{- define "wordpress.nginx.deniedPathPrefixes" -}}
-{{- $prefixes := list -}}
-{{- range .Values.nginx.deniedPaths -}}
-{{- $p := trim .path -}}
-{{- if not (hasPrefix "~" $p) -}}
-{{- $prefixes = append $prefixes (trimSuffix "/" $p) -}}
-{{- end -}}
-{{- end -}}
-{{- join " " $prefixes -}}
-{{- end -}}
-
-{{/*
 Return true when a cache password is available to hand to the cache plugin.
 The internal Dragonfly always has one (it is generated when not provided and
 the server starts with --requirepass); an external cache only has one when

@@ -1,5 +1,17 @@
 # Changelog
 
+## 7.1.3-8
+
+* **The `.htaccess` report now names what is actually open, and stops proposing denies that would break a site.** A `deny`-class file is narrowed by what it denies:
+  * **File extensions** (`<Files *.php>` in `uploads/`; Wordfence's `<FilesMatch "\.php$">` in `lib/`, `views/`, `waf/` and siblings): judged per extension. `php` is covered with `phpExecutionAllowlist.mode: enforce`, because NGINX already answers 403 for that PHP - unless `extraAllowedPaths` lets PHP in that directory run - a file that exists, which the report names, or one added later - or holds an entry the init container cannot read as NGINX does, in which case the allowlist is not credited at all. Every other extension (`phtml`, `phps`, `phar`, ...) NGINX serves as a plain file, so the proposal is a regex closing exactly those extensions, never the directory. The previous report proposed denying `/wp-content/uploads` for an `uploads/.htaccess` of this kind, which would have blocked every image on the site.
+  * **Named files** (`<Files debug.log>`): one `deniedPaths` regex per name instead of the directory, covering the subdirectories `<Files>` governs too. A `<FilesMatch>` is a regex even when it looks like a file name, and keeps the directory proposal.
+  * **Dotfiles** (`<Files .ht*>`, `<FilesMatch "^\.">`): covered, since NGINX denies dotfiles everywhere.
+  * Anything else keeps the whole-directory proposal, and a plugin-managed directory stays plugin-managed whatever its `.htaccess` denies.
+* **Regex `deniedPaths` entries now count as coverage.** The report tests paths against every entry in the form NGINX gets it - plain paths included - so a directory closed by a regex such as `~* ^/wp-content/[^/]*backup[^/]*(/|$)` is no longer reported as open. A directory, extension or name counts as closed only when a new file - at the top and in a subdirectory - and every file it holds now are denied, so an entry matching only the directory URL, only the top level or only some names does not count. Only entries that read the same in busybox ERE and NGINX PCRE count; any other entry covers nothing in the report, so its directory still shows as uncovered rather than being assumed closed.
+* `htaccessPolicy: fail` blocks the start for any uncovered deny of the kinds above, and for nothing that is already covered.
+* Validated against live sites before release: every entry the new report no longer lists was confirmed closed.
+* `docker/tests/htaccess-test.sh` now renders the chart per case with real values instead of patching the script, and pins every case above, including a regression for an `extraAllowedPaths` lookup that must never stop the init container.
+
 ## 7.1.3-7
 
 * **With `idx.enabled`, the wordpress-idx search plugin now follows the sidecar on every container start.** A new application-hook script (`zz-05-idx-plugin.sh`) fetches the plugin package from the sidecar over loopback - never from wordpress.org, so plugin and sidecar stay one release - and installs and activates the plugin when it is missing, or updates it in place when the sidecar ships a newer build. Until now the plugin had to be installed by hand, and an update only arrived through WordPress' own update check, which could lag a sidecar upgrade by hours. Rolling out a new `idxImageTag` now brings the matching plugin with the pod restart.
