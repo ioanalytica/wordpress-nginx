@@ -8,7 +8,7 @@
   * Anything else keeps the whole-directory proposal.
 * **Regex `deniedPaths` entries now count as coverage.** The report tests each path against every entry in the form NGINX gets it - plain paths included - so a directory closed by a regex such as `~* ^/wp-content/[^/]*backup[^/]*(/|$)` is no longer reported as open. An entry using PCRE-only syntax that busybox cannot compile covers nothing in the report, so its directory still shows as uncovered rather than being assumed closed.
 * `htaccessPolicy: fail` blocks the start for any uncovered deny of the kinds above, and for nothing that is already covered.
-* Run against the live fleet before release, the report went from 21 uncovered entries to the 6 that were in fact reachable from outside; every one of the 15 removed was confirmed closed with an HTTP probe.
+* Validated against live sites before release: every entry the new report no longer lists was confirmed closed.
 * `docker/tests/htaccess-test.sh` now renders the chart per case with real values instead of patching the script, and pins the PHP-only, named-file, mixed, regex-coverage, `extraAllowedPaths` and non-compiling-regex cases with files taken from the fleet.
 
 ## 7.1.3-7
