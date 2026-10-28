@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.1.3-6
+
+* Bump `idxImageTag` to `1.3.7` (wordpress-idx sidecar). The bundled WordPress plugin now asks the sidecar on every update check instead of reading a manifest cached for up to six hours. Before, after a sidecar upgrade the plugin kept reporting itself as current until that cache expired, although the new sidecar already offered a newer build; only "Check again" on the Updates screen got past it. The fix takes effect once a site has installed plugin 1.3.7: that update itself may still need "Check again", every later one shows up with the next regular check. No change to the environment variables the sidecar reads or the endpoints it serves.
+* The wordpress-nginx image has no changes of its own; the release build refreshes its Alpine packages as usual.
+
 ## 7.1.3-5
 
 * Image hardening: the image is rebuilt on current Alpine 3.24 packages, picking up the latest security updates for `curl`, `libraw` and `nginx` (nginx 1.30.6). Still PHP **8.4.27**, the current 8.4 release. No chart or configuration changes; upgrading is recommended as routine hardening.
