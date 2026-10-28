@@ -401,7 +401,7 @@ wrong often enough to do damage:
 
 | class | what the file says | what the report does |
 |-------|--------------------|----------------------|
-| `deny` | blanket `deny from all` / `Require all denied`, no exceptions | proposes a `deniedPaths` entry; the only class that can block the start under `fail` |
+| `deny` | `deny from all` / `Require all denied`, no exceptions | narrowed by what it denies (below); the only class that can block the start under `fail` |
 | `partial` | deny plus `<Files>` allow exceptions (e.g. Contact Form 7's captcha directory, which must serve its images) | reports it; a directory deny would break the exception, so nothing is proposed — and if you list it anyway, the report warns |
 | `allow` | `allow from all` / `Require all granted`, in particular for `.php` in an upload directory | flags it as **SUSPICIOUS**: that is not a protection but the usual companion of a webshell. NGINX ignores it; find out who wrote it and when |
 | `other` | rewrites, headers, mime, `Options` | informational |
@@ -423,7 +423,7 @@ Checking wp-content for .htaccess files …
 ```
 
 With `htaccessPolicy: fail` the pod refuses to start while a `deny`-class
-directory is uncovered. That is the strict reading — a site should not come up
+file is uncovered. That is the strict reading — a site should not come up
 with a protection its plugin explicitly asked for silently missing — but it is
 an opt-in: the `.htaccess` typically appears at runtime, on a plugin update,
 and a start-time check only sees it on the next rollout, possibly weeks later.
@@ -432,11 +432,25 @@ Enable `fail` for new sites, quarantined sites, or where a compliance rule
 demands it. `partial`, `allow` and `other` never block, because there is
 nothing a `deniedPaths` entry could correctly add for them.
 
-Coverage is a string-prefix comparison against the plain directory entries.
-Regex entries are not evaluated — the init container is busybox, not NGINX —
-so a directory only a regex covers is reported as uncovered; declare it as a
-plain path as well if you use `fail`. The check matches file content, never
-evaluates it; the first directive line goes into the log as data.
+A `deny` is narrowed by what it actually denies, because proposing a directory
+deny for every one of them breaks sites:
+
+| the deny covers | example | what the report does |
+|-----------------|---------|----------------------|
+| the whole directory | `wflogs/`, `uploads/wp-statistics/` | proposes the directory |
+| PHP only | Wordfence's `lib/`, `views/`, `waf/`; `<Files *.php>` in `uploads/` | with `phpExecutionAllowlist.mode: enforce` reports it **covered** — NGINX already answers 403 for that PHP — unless an `extraAllowedPaths` entry lets a PHP file there run. Otherwise proposes a regex that closes the directory's PHP, never the directory: for `uploads/` that would block every image |
+| named files | `<Files debug.log>` | proposes one entry per file |
+
+A deny scoped by any other `<Files>` pattern (`<Files ~ ".*\..*">`) counts as a
+whole-directory deny.
+
+Coverage tests the request path against every `deniedPaths` entry in the form
+NGINX gets it — a case-insensitive regex, plain paths included — with busybox
+`grep -iE`. ERE is close to PCRE for the patterns used here; an entry with
+PCRE-only syntax (`(?!…)`, `\d`) does not compile in busybox and covers
+nothing in the report, so its directory shows as uncovered rather than being
+assumed closed. The check matches file content, never evaluates it; the first
+directive line goes into the log as data.
 
 ### Ingress
 

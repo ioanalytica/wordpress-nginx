@@ -168,12 +168,17 @@ expect "action defaults to deny"           present '" 403;' \
         --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x'
 expect "reason becomes a comment"          present '# Download Monitor' \
         --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x' --set 'nginx.deniedPaths[0].reason=Download Monitor'
-expect "init gets plain prefixes"          present 'DENIED_PREFIXES="/wp-content/uploads/x"' \
+# The init container's .htaccess report tests coverage with the very regexes
+# NGINX gets, one per line - plain paths as their anchored form, regex entries
+# verbatim - so a directory only a regex entry closes counts as covered.
+expect "init gets plain paths as regex"    present '^/wp-content/uploads/x(/|$)' \
         --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x'
-expect "init does not get regex entries"   present 'DENIED_PREFIXES=""' \
+expect "init gets regex entries too"       present '^/wp-content/themes/evil/' \
         --set 'nginx.deniedPaths[0].path=~* ^/wp-content/themes/evil/'
-expect "several prefixes stay on one line" present 'DENIED_PREFIXES="/wp-content/ai1wm-backups /wp-content/backup-db /wp-content/cache/minify"' \
-        -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"
+check  "several entries keep the manifest valid" -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"
+expect "init gets the PHP allowlist mode"  present 'PHP_ALLOWLIST_MODE="enforce"'
+expect "init gets extra allowed PHP"       present '^/wp-content/plugins/p/cb\.php$' \
+        --set-json 'phpExecutionAllowlist.extraAllowedPaths=["~*^/wp-content/plugins/p/cb\\.php$"]'
 expect "reason with regex-like chars renders" present '# .htaccess found (<Files ~ ".*\..*">)' \
         -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"
 # The init script classifies .htaccess content. These assert the classifier's
