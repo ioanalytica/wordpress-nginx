@@ -258,6 +258,36 @@ expect_line "PHP-only guard still covered"                'covered: +/wp-content
 expect_line "script completes"                            'Checks completed\.'
 expect_rc   "warn mode completes"                         0
 
+# CodeRabbit's second round: every way the report could credit coverage
+# NGINX does not give must err toward "uncovered".
+cat > "$WORK/cr2.sh" <<'SETUP'
+W=/wordpress/wp-content
+mkdir -p $W/logs $W/wflogs
+printf '<Files *.log>\ndeny from all\n</Files>\n' > $W/logs/.htaccess
+: > $W/logs/debug.log
+printf 'Require all denied\n' > $W/wflogs/.htaccess
+: > $W/wflogs/config.dat
+SETUP
+
+echo "=== A rule that only matches the probe name covers nothing"
+run warn "$WORK/cr2.sh" \
+    --set-json 'nginx.deniedPaths[0]={"path":"~* ^/wp-content/logs/x\\.log$","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[1]={"path":"~* ^/wp-content/wflogs/x$","action":"deny"}'
+expect_line "extension rule missing a real file"          'UNCOVERED: +/wp-content/logs/.* denies extensions: log'
+expect_line "directory rule missing a real file"          'UNCOVERED: +/wp-content/wflogs/'
+
+echo "=== A deniedPaths entry ERE reads differently from PCRE covers nothing"
+run warn "$WORK/cr2.sh" \
+    --set-json 'nginx.deniedPaths[0]={"path":"~* ^/wp-content/wflogs/\\w","action":"deny"}'
+expect_line "\\w entry does not count as coverage"         'UNCOVERED: +/wp-content/wflogs/'
+
+echo "=== An extraAllowedPaths entry busybox cannot compile"
+run warn "$WORK/fleet.sh" \
+    --set-json 'phpExecutionAllowlist.extraAllowedPaths=["~*^/wp-content/plugins/(?!x)wordfence/lib/compat\\.php$"]'
+expect_line "allowlist not credited"                      'UNCOVERED: +/wp-content/plugins/wordfence/lib/.* denies PHP only'
+expect_line "the unchecked entry is named as the reason"  'extraAllowedPaths entry cannot be checked here'
+expect_line "script completes"                            'Checks completed\.'
+
 echo
 if [ "$FAILURES" -gt 0 ]; then echo "=== $FAILURES assertion(s) FAILED"; exit 1; fi
 echo "=== All assertions passed"

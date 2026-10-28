@@ -448,13 +448,16 @@ in which `.` is any character, so it also guards `debug.log.1`. The report
 proposes nothing narrower than it can state exactly. A plugin-managed
 directory (above) stays plugin-managed whatever the deny covers.
 
-Coverage tests a request path against every `deniedPaths` entry in the form
-NGINX gets it — a case-insensitive regex, plain paths included — with busybox
-`grep -iE`; for a directory, the path of a file inside it, so an entry that
-only matches the directory URL does not count. ERE is close to PCRE for the
-patterns used here; an entry with PCRE-only syntax (`(?!…)`, `\d`) does not
-compile in busybox and covers nothing in the report, so its directory shows as
-uncovered rather than being assumed closed. The check matches file content,
+Coverage tests paths against every `deniedPaths` entry in the form NGINX gets
+it — a case-insensitive regex, plain paths included — with busybox `grep -iE`.
+A directory (or an extension in it) counts as closed only when both a new file
+and every file it holds now are denied, so an entry that matches only the
+directory URL, or only some names, does not count. Busybox reads ERE, NGINX
+PCRE; only entries in the subset both read alike count — one that does not
+compile, or that uses `\d`, `\w`, `(?…)`, `{,n}` or a possessive quantifier,
+covers nothing in the report, so its directory shows as uncovered rather than
+being assumed closed. An `extraAllowedPaths` entry busybox cannot check errs the
+other way, so then no PHP deny is credited to the allowlist. The check matches file content,
 never evaluates it; the first directive line goes into the log as data.
 
 ### Ingress
