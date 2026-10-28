@@ -438,19 +438,24 @@ deny for every one of them breaks sites:
 | the deny covers | example | what the report does |
 |-----------------|---------|----------------------|
 | the whole directory | `wflogs/`, `uploads/wp-statistics/` | proposes the directory |
-| PHP only | Wordfence's `lib/`, `views/`, `waf/`; `<Files *.php>` in `uploads/` | with `phpExecutionAllowlist.mode: enforce` reports it **covered** — NGINX already answers 403 for that PHP — unless an `extraAllowedPaths` entry lets a PHP file there run. Otherwise proposes a regex that closes the directory's PHP, never the directory: for `uploads/` that would block every image |
+| file extensions | `<Files *.php>` in `uploads/`; Wordfence's `<FilesMatch "\.php$">` in `lib/`, `views/`, `waf/`; `<FilesMatch "\.(php\|phtml)$">` | judged per extension. `php` is covered with `phpExecutionAllowlist.mode: enforce` — NGINX answers 403 for that PHP — unless an `extraAllowedPaths` entry lets a PHP file there run. Every other extension (`phtml`, `phps`, `phar`, `log`) NGINX serves as a plain file, so the report proposes a regex closing exactly those extensions — never the directory: for `uploads/` that would block every image |
 | named files | `<Files debug.log>` | proposes one entry per file |
+| dotfiles | `<Files .ht*>`, `<FilesMatch "^\.">` | covered: NGINX denies dotfiles everywhere |
 
-A deny scoped by any other `<Files>` pattern (`<Files ~ ".*\..*">`) counts as a
-whole-directory deny.
+Any other pattern counts as a whole-directory deny, including a `<FilesMatch>`
+that looks like a file name: `<FilesMatch "debug.log">` is an unanchored regex
+in which `.` is any character, so it also guards `debug.log.1`. The report
+proposes nothing narrower than it can state exactly. A plugin-managed
+directory (above) stays plugin-managed whatever the deny covers.
 
-Coverage tests the request path against every `deniedPaths` entry in the form
+Coverage tests a request path against every `deniedPaths` entry in the form
 NGINX gets it — a case-insensitive regex, plain paths included — with busybox
-`grep -iE`. ERE is close to PCRE for the patterns used here; an entry with
-PCRE-only syntax (`(?!…)`, `\d`) does not compile in busybox and covers
-nothing in the report, so its directory shows as uncovered rather than being
-assumed closed. The check matches file content, never evaluates it; the first
-directive line goes into the log as data.
+`grep -iE`; for a directory, the path of a file inside it, so an entry that
+only matches the directory URL does not count. ERE is close to PCRE for the
+patterns used here; an entry with PCRE-only syntax (`(?!…)`, `\d`) does not
+compile in busybox and covers nothing in the report, so its directory shows as
+uncovered rather than being assumed closed. The check matches file content,
+never evaluates it; the first directive line goes into the log as data.
 
 ### Ingress
 

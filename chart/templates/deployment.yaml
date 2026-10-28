@@ -289,19 +289,25 @@ spec:
               #
               #   deny     - deny with no allow exception, narrowed by what it denies:
               #     whole directory - propose a directory deny
-              #     PHP only        - Wordfence's lib/, views/, waf/ and the like, or
-              #                       <Files *.php> in uploads: the PHP allowlist in
-              #                       enforce mode already answers 403, so covered;
-              #                       a directory deny here would break the static
-              #                       files next to the PHP - for uploads/, every image
-              #     named files     - <Files debug.log>: propose a deny per file
+              #     extensions      - <Files *.php>, <FilesMatch "\.(php|phtml)$">: judged per
+              #                       extension. php is covered by the PHP allowlist in
+              #                       enforce mode - unless extraAllowedPaths lets a PHP file
+              #                       there run; every other extension (phtml, phps, phar, log)
+              #                       NGINX serves as a plain file, so it needs a deniedPaths
+              #                       regex. Never the directory: for uploads/, that would
+              #                       block every image
+              #     named files     - <Files debug.log> (a <Files> name, not a regex): one
+              #                       deny per file
+              #     dotfiles        - <Files .ht*>, <FilesMatch "^\.">: NGINX denies dotfiles
+              #                       for every location already, so covered
               #   partial  - deny plus <Files>/<FilesMatch> allow exceptions: report,
               #              no proposal; a directory deny would break the exception
               #   allow    - allow from all / Require all granted, or PHP allowed in
               #              uploads: flag as SUSPICIOUS, never propose anything
               #   other    - rewrites, headers, mime, options: report as informational
-              # A deny scoped by a <Files> pattern that is neither PHP-only nor a
-              # plain file name (<Files ~ ".*\..*">) counts as a whole-directory deny.
+              # Any other pattern - a regex such as <FilesMatch "debug.log"> (unanchored,
+              # "." is any character) or <Files ~ ".*\..*"> - counts as a whole-directory
+              # deny: the report proposes nothing narrower than it can state exactly.
               #
               # Plugins that do think of NGINX write their rules into the per-site
               # /wordpress/nginx.conf (W3 Total Cache does). A directory that has a
@@ -321,28 +327,42 @@ spec:
               PHP_ALLOWLIST_MODE="{{ .Values.phpExecutionAllowlist.mode }}"
               # One regex per line, quoted heredoc: entries are matched, never
               # expanded by the shell.
-              cat > /tmp/denied-paths <<'DENIED_PATHS_EOF'
+              cat > /tmp/denied-paths.all <<'DENIED_PATHS_EOF'
               {{- range .Values.nginx.deniedPaths }}
               {{ include "wordpress.nginx.deniedPathRegex" . | trimPrefix "~*" }}
               {{- end }}
               DENIED_PATHS_EOF
               # PHP the allowlist lets through on top of the core entry points; a
-              # PHP-only .htaccess over such a file is not covered by the allowlist.
-              cat > /tmp/php-extra-allowed <<'PHP_EXTRA_ALLOWED_EOF'
+              # PHP deny over such a file is not covered by the allowlist.
+              cat > /tmp/php-extra-allowed.all <<'PHP_EXTRA_ALLOWED_EOF'
               {{- range .Values.phpExecutionAllowlist.extraAllowedPaths }}
               {{ trimPrefix "~" (trim .) | trimPrefix "*" | trim }}
               {{- end }}
               PHP_EXTRA_ALLOWED_EOF
-              # matches_any <file> <path>: does any regex in <file> match <path>?
-              # One grep per entry, so a single entry that does not compile only
-              # loses itself.
-              matches_any() {
+              # keep_compiling <in> <out>: the entries busybox grep can compile. One
+              # bad entry in a grep -f list fails every match, so each is tried
+              # alone first; grep exits 2 on a pattern it cannot compile.
+              keep_compiling() {
+                : > "$2"
                 while IFS= read -r re; do
                   [ -n "$re" ] || continue
-                  printf '%s\n' "$2" | grep -qiE -- "$re" 2>/dev/null && return 0
+                  rc=0; printf 'x\n' | grep -qiE -- "$re" 2>/dev/null || rc=$?
+                  if [ "$rc" -le 1 ]; then printf '%s\n' "$re" >> "$2"; fi
                 done < "$1"
-                return 1
               }
+              keep_compiling /tmp/denied-paths.all /tmp/denied-paths
+              keep_compiling /tmp/php-extra-allowed.all /tmp/php-extra-allowed
+              # matches_any <file> <path>: does any regex in <file> match <path>?
+              matches_any() {
+                [ -s "$1" ] && printf '%s\n' "$2" | grep -qiE -f "$1"
+              }
+              # PHP files under wp-content that extraAllowedPaths lets execute -
+              # listed once, so each .htaccess only looks its directory up.
+              : > /tmp/php-open
+              if [ "$PHP_ALLOWLIST_MODE" = enforce ] && [ -s /tmp/php-extra-allowed ] && [ -d /wordpress/wp-content ]; then
+                find /wordpress/wp-content -type f -iname '*.php' 2>/dev/null | sed 's#^/wordpress##' \
+                  | grep -iE -f /tmp/php-extra-allowed > /tmp/php-open || true
+              fi
               rm -f /tmp/htaccess-found /tmp/htaccess-blocking
               if [ -d /wordpress/wp-content ]; then
                 # -print, not -printf: busybox find has no -printf.
@@ -387,94 +407,110 @@ spec:
                     grep -qE "(location|rewrite).*${tail2}" /wordpress/nginx.conf 2>/dev/null && plugin_managed=1
                   fi
                   covered=no
-                  matches_any /tmp/denied-paths "$rel/" && covered=yes
-                  # What a deny covers: one line per deny directive, "ALL" outside
-                  # any <Files>/<FilesMatch> block, else that block's pattern
-                  # (FilesMatch marked with "~ "). <IfModule> wrappers are ignored:
+                  # Probe a file inside, not the directory itself: an entry that only
+                  # matches "<dir>/" leaves every file below it open.
+                  matches_any /tmp/denied-paths "$rel/x" && covered=yes
+                  # What a deny covers: one line per deny directive - "ALL" outside any
+                  # <Files>/<FilesMatch> block, else "F <pattern>" for <Files> and
+                  # "M <pattern>" for <FilesMatch>. <IfModule> wrappers are ignored:
                   # Apache takes one branch, both state the same intent.
-                  scope=dir; deny_files=""
+                  scope=dir; exts=""; names=""; dots=0
                   if [ "$class" = deny ]; then
                     scopes="$(printf '%s\n' "$body" | awk '
                       { l = $0; sub(/^[ \t]+/, "", l); ll = tolower(l) }
                       ll ~ /^<files(match)?[ \t>]/ {
                         p = l; sub(/^<[^ \t>]*[ \t]*/, "", p); sub(/>[ \t]*$/, "", p)
-                        if (ll ~ /^<filesmatch/) p = "~ " p
-                        pat = p; next }
+                        pat = (ll ~ /^<filesmatch/ ? "M " : "F ") p; next }
                       ll ~ /^<\/files/ { pat = ""; next }
                       ll ~ /deny[ \t]+from[ \t]+all|require[ \t]+all[ \t]+denied/ { print (pat == "" ? "ALL" : pat) }
                     ' | sort -u)"
-                    if ! printf '%s\n' "$scopes" | grep -qx ALL; then
-                      scope=php
-                      while IFS= read -r s; do
+                    if [ -n "$scopes" ] && ! printf '%s\n' "$scopes" | grep -qx ALL; then
+                      scope=narrow
+                      while IFS= read -r line; do
+                        [ -n "$line" ] || continue
+                        kind="${line%% *}"; s="${line#* }"
+                        # <Files ~ "re"> is a regex, like <FilesMatch>.
+                        case "$s" in "~"*) kind=M ;; esac
                         s="$(printf '%s' "$s" | sed -e 's/^~[[:space:]]*//' -e 's/^"//' -e 's/"$//')"
-                        if printf '%s' "$s" | grep -qiE '^(\*|\^?\.\*)?\\?\.\(?(php[0-9s]?|pht|phtml|phar)(\|(php[0-9s]?|pht|phtml|phar))*\)?\$?$'; then
-                          :
-                        elif printf '%s' "$s" | grep -qE '^[A-Za-z0-9._-]+$'; then
-                          [ "$scope" = php ] && scope=files
-                          deny_files="$deny_files $s"
+                        if [ "$kind" = F ] && printf '%s' "$s" | grep -qE '^\*\.[A-Za-z0-9]+$'; then
+                          exts="$exts ${s#\*.}"
+                        elif [ "$kind" = M ] && printf '%s' "$s" | grep -qE '^(\^?\.\*)?\\\.\(?[A-Za-z0-9]+(\|[A-Za-z0-9]+)*\)?\$$'; then
+                          exts="$exts $(printf '%s' "$s" | sed -e 's/^\^\{0,1\}\.\*//' -e 's/^\\\.//' -e 's/[()$]//g' -e 's/|/ /g')"
+                        elif [ "$kind" = F ] && printf '%s' "$s" | grep -qE '^[A-Za-z0-9_-][A-Za-z0-9._-]*$'; then
+                          names="$names $s"
+                        elif { [ "$kind" = F ] && [ "${s#.}" != "$s" ]; } || { [ "$kind" = M ] && [ "${s#^\\.}" != "$s" ]; }; then
+                          dots=1
                         else
                           scope=dir; break
                         fi
                       done <<SCOPES_EOF
               $scopes
               SCOPES_EOF
-                      # A file that mixes PHP-only and named-file denies is reported
-                      # by its named files; the PHP part stays with the allowlist.
-                      [ "$scope" = files ] || deny_files=""
                     fi
                   fi
-                  if [ "$scope" = php ]; then
-                    covered=no; php_open=""
-                    if [ "$PHP_ALLOWLIST_MODE" = enforce ]; then
-                      covered=allowlist
-                      # PHP files here that extraAllowedPaths lets execute.
-                      if [ -s /tmp/php-extra-allowed ]; then
-                        php_open="$(find "$dir" -type f -iname '*.php' 2>/dev/null | while IFS= read -r p; do
-                          matches_any /tmp/php-extra-allowed "${p#/wordpress}" && printf ' %s' "${p#/wordpress}"
-                        done)"
-                        [ -z "$php_open" ] || covered=no
-                      fi
+                  if [ "$scope" = narrow ]; then
+                    # Judge each extension and name; a directory entry covers them all.
+                    covered=yes; by_allowlist=0; open_exts=""; open_names=""
+                    php_open="$(awk -v p="$rel/" 'index($0, p) == 1 { printf " %s", $0 }' /tmp/php-open)"
+                    if ! matches_any /tmp/denied-paths "$rel/x"; then
+                      for e in $(printf '%s\n' $exts | tr 'A-Z' 'a-z' | sort -u); do
+                        if [ "$e" = php ] && [ "$PHP_ALLOWLIST_MODE" = enforce ] && [ -z "$php_open" ]; then
+                          by_allowlist=1
+                        elif ! matches_any /tmp/denied-paths "$rel/x.$e"; then
+                          covered=no; open_exts="$open_exts $e"
+                        fi
+                      done
+                      for n in $names; do
+                        matches_any /tmp/denied-paths "$rel/$n" || { covered=no; open_names="$open_names $n"; }
+                      done
                     fi
-                    [ "$covered" = no ] && matches_any /tmp/denied-paths "$rel/x.php" && covered=yes
-                  elif [ "$scope" = files ]; then
-                    covered=yes; open_files=""
-                    for n in $deny_files; do
-                      matches_any /tmp/denied-paths "$rel/$n" || { covered=no; open_files="$open_files $n"; }
-                    done
-                    # A directory entry covers every file in it.
-                    matches_any /tmp/denied-paths "$rel/" && { covered=yes; open_files=""; }
+                    what="$(printf '%s' "$exts $names" | wc -w | tr -d ' ')"
+                    if [ "$what" = 1 ] && [ "$(printf '%s' "$exts" | tr 'A-Z' 'a-z' | tr -d ' ')" = php ]; then what="PHP only"
+                    else what="${exts:+extensions:$exts}${exts:+${names:+; }}${names:+files:$names}"; fi
+                    [ -n "$what" ] || what="dotfiles only"
                   fi
                   first="$(printf '%s' "$body" | head -n1 | cut -c1-70)"
                   case "$class" in
                     deny)
-                      if [ "$covered" = allowlist ]; then
-                        echo "  covered:        $rel/.htaccess ($first) - denies PHP only; the PHP allowlist answers 403"
+                      if [ "$scope" = narrow ] && [ "$covered" = yes ]; then
+                        if [ "$by_allowlist" = 1 ]; then
+                          echo "  covered:        $rel/.htaccess ($first) - denies $what; the PHP allowlist answers 403"
+                        elif [ "$dots" = 1 ] && [ -z "$exts$names" ]; then
+                          echo "  covered:        $rel/.htaccess ($first) - denies dotfiles only; NGINX denies those everywhere"
+                        else
+                          echo "  covered:        $rel/.htaccess ($first) - denies $what"
+                        fi
                       elif [ "$covered" = yes ]; then
                         echo "  covered:        $rel/.htaccess ($first)"
-                      elif [ "$scope" = php ]; then
-                        echo "  UNCOVERED:      $rel/.htaccess ($first) - denies PHP only"
-                        if [ -n "$php_open" ]; then
-                          echo "    phpExecutionAllowlist.extraAllowedPaths lets PHP run here:$php_open"
-                          echo "    Narrow that entry, or close the directory's PHP:"
-                        else
-                          echo "    phpExecutionAllowlist.mode is '$PHP_ALLOWLIST_MODE', so NGINX runs this PHP. Set it to"
-                          echo "    'enforce', or close the directory's PHP:"
-                        fi
-                        echo "      - path: '~* ^$(printf '%s' "$rel" | sed 's/[].[^$()|*+?{}\\]/\\&/g')/.*\.php\$'"
-                        echo "        action: deny"
-                        echo "        reason: .htaccess found ($first)"
-                        touch /tmp/htaccess-blocking
-                      elif [ "$scope" = files ]; then
-                        echo "  UNCOVERED:      $rel/.htaccess ($first) - denies named files only:$open_files"
-                        echo "    NGINX does not read this file; these files are open. To close them:"
-                        for n in $open_files; do
-                          echo "      - path: $rel/$n"
-                          echo "        action: deny"
-                          echo "        reason: .htaccess found ($first)"
-                        done
-                        touch /tmp/htaccess-blocking
                       elif [ "$plugin_managed" = 1 ]; then
                         echo "  plugin-managed: $rel/.htaccess - a rule for this directory exists in the site's nginx.conf"
+                      elif [ "$scope" = narrow ]; then
+                        echo "  UNCOVERED:      $rel/.htaccess ($first) - denies $what"
+                        if [ -n "$open_exts" ]; then
+                          case " $open_exts " in *" php "*)
+                            if [ -n "$php_open" ]; then
+                              echo "    phpExecutionAllowlist.extraAllowedPaths lets PHP run here:$php_open"
+                            else
+                              echo "    phpExecutionAllowlist.mode is '$PHP_ALLOWLIST_MODE', so NGINX runs this PHP."
+                            fi ;;
+                          esac
+                          echo "    NGINX serves these as they are. To close them, without closing the directory:"
+                          set -- $open_exts
+                          alt="$(printf '%s|' "$@")"; alt="${alt%|}"
+                          [ "$#" -gt 1 ] && alt="($alt)"
+                          echo "      - path: '~* ^$(printf '%s' "$rel" | sed 's/[].[^$()|*+?{}\\]/\\&/g')/.*\.$alt\$'"
+                          echo "        action: deny"
+                          echo "        reason: .htaccess found ($first)"
+                        fi
+                        if [ -n "$open_names" ]; then
+                          echo "    NGINX does not read this file; these files are open. To close them:"
+                          for n in $open_names; do
+                            echo "      - path: $rel/$n"
+                            echo "        action: deny"
+                            echo "        reason: .htaccess found ($first)"
+                          done
+                        fi
+                        touch /tmp/htaccess-blocking
                       else
                         echo "  UNCOVERED:      $rel/.htaccess ($first)"
                         echo "    NGINX does not read this file; the directory is open. To close it:"

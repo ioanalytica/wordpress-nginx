@@ -171,13 +171,15 @@ expect "reason becomes a comment"          present '# Download Monitor' \
 # The init container's .htaccess report tests coverage with the very regexes
 # NGINX gets, one per line - plain paths as their anchored form, regex entries
 # verbatim - so a directory only a regex entry closes counts as covered.
-expect "init gets plain paths as regex"    present '^/wp-content/uploads/x(/|$)' \
+# The needles carry the init script's indentation: the same regexes also
+# appear in the NGINX ConfigMaps and would match there.
+expect "init gets plain paths as regex"    present '              ^/wp-content/uploads/x(/|$)' \
         --set 'nginx.deniedPaths[0].path=/wp-content/uploads/x'
-expect "init gets regex entries too"       present '^/wp-content/themes/evil/' \
+expect "init gets regex entries too"       present '              ^/wp-content/themes/evil/' \
         --set 'nginx.deniedPaths[0].path=~* ^/wp-content/themes/evil/'
 check  "several entries keep the manifest valid" -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"
 expect "init gets the PHP allowlist mode"  present 'PHP_ALLOWLIST_MODE="enforce"'
-expect "init gets extra allowed PHP"       present '^/wp-content/plugins/p/cb\.php$' \
+expect "init gets extra allowed PHP"       present '              ^/wp-content/plugins/p/cb\.php$' \
         --set-json 'phpExecutionAllowlist.extraAllowedPaths=["~*^/wp-content/plugins/p/cb\\.php$"]'
 expect "reason with regex-like chars renders" present '# .htaccess found (<Files ~ ".*\..*">)' \
         -f "$(dirname "$0")/fixtures/denied-paths-multi.yaml"

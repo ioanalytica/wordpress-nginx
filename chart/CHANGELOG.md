@@ -3,13 +3,14 @@
 ## 7.1.3-8
 
 * **The `.htaccess` report now names what is actually open, and stops proposing denies that would break a site.** A `deny`-class file is narrowed by what it denies:
-  * **PHP only** (Wordfence's `lib/`, `views/`, `waf/` and siblings; `<Files *.php>` in `uploads/`): with `phpExecutionAllowlist.mode: enforce` this is reported as covered, because NGINX already answers 403 for that PHP - unless an `extraAllowedPaths` entry lets a PHP file in that directory run, which the report then names. Otherwise the proposal is a regex that closes the directory's PHP, never the directory. The previous report proposed denying `/wp-content/uploads` for an `uploads/.htaccess` of this kind, which would have blocked every image on the site.
-  * **Named files** (`<Files debug.log>`): one `deniedPaths` entry per file instead of the directory.
-  * Anything else keeps the whole-directory proposal.
-* **Regex `deniedPaths` entries now count as coverage.** The report tests each path against every entry in the form NGINX gets it - plain paths included - so a directory closed by a regex such as `~* ^/wp-content/[^/]*backup[^/]*(/|$)` is no longer reported as open. An entry using PCRE-only syntax that busybox cannot compile covers nothing in the report, so its directory still shows as uncovered rather than being assumed closed.
+  * **File extensions** (`<Files *.php>` in `uploads/`; Wordfence's `<FilesMatch "\.php$">` in `lib/`, `views/`, `waf/` and siblings): judged per extension. `php` is covered with `phpExecutionAllowlist.mode: enforce`, because NGINX already answers 403 for that PHP - unless an `extraAllowedPaths` entry lets a PHP file in that directory run, which the report then names. Every other extension (`phtml`, `phps`, `phar`, ...) NGINX serves as a plain file, so the proposal is a regex closing exactly those extensions, never the directory. The previous report proposed denying `/wp-content/uploads` for an `uploads/.htaccess` of this kind, which would have blocked every image on the site.
+  * **Named files** (`<Files debug.log>`): one `deniedPaths` entry per file instead of the directory. A `<FilesMatch>` is a regex even when it looks like a file name, and keeps the directory proposal.
+  * **Dotfiles** (`<Files .ht*>`, `<FilesMatch "^\.">`): covered, since NGINX denies dotfiles everywhere.
+  * Anything else keeps the whole-directory proposal, and a plugin-managed directory stays plugin-managed whatever its `.htaccess` denies.
+* **Regex `deniedPaths` entries now count as coverage.** The report tests the path of a file inside each directory against every entry in the form NGINX gets it - plain paths included - so a directory closed by a regex such as `~* ^/wp-content/[^/]*backup[^/]*(/|$)` is no longer reported as open, while an entry that only matches the directory URL is not mistaken for closing its files. An entry busybox cannot compile covers nothing in the report, so its directory still shows as uncovered rather than being assumed closed.
 * `htaccessPolicy: fail` blocks the start for any uncovered deny of the kinds above, and for nothing that is already covered.
 * Validated against live sites before release: every entry the new report no longer lists was confirmed closed.
-* `docker/tests/htaccess-test.sh` now renders the chart per case with real values instead of patching the script, and pins the PHP-only, named-file, mixed, regex-coverage, `extraAllowedPaths` and non-compiling-regex cases with files taken from the fleet.
+* `docker/tests/htaccess-test.sh` now renders the chart per case with real values instead of patching the script, and pins every case above, including a regression for an `extraAllowedPaths` lookup that must never stop the init container.
 
 ## 7.1.3-7
 
