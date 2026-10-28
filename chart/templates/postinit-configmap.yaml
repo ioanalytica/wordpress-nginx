@@ -16,6 +16,8 @@ absent plugin is logged and skipped, never fatal.
 Key names are ordering (run-parts sorts lexically, after the image's
 init-wordpress since everything is mounted with a zz- prefix):
   00-preinstall-plugins.sh        first, so a preinstalled cache plugin
+  05-idx-plugin.sh                (idx.enabled) brings the search plugin
+                                  to the sidecar's build
   10-configure-w3-total-cache.sh  is already active when this runs
   <customPostInitScripts keys>    letters sort after the digit prefixes
 */}}
@@ -64,6 +66,86 @@ data:
     fi
     {{- end }}
     {{- end }}
+  {{- end }}
+  {{- if .Values.idx.enabled }}
+  05-idx-plugin.sh: |-
+    #!/bin/bash
+
+    # The wordpress-idx search plugin, from the sidecar that shares this pod:
+    # installed and activated when missing, updated when the sidecar ships a
+    # newer build and idx.pluginAutoUpdate is on (off: updates are only
+    # offered in wp-admin). The source is the sidecar's own package over
+    # loopback, never wordpress.org, so plugin and sidecar stay one release.
+    # Waiting for the sidecar is bounded and every failure is logged and
+    # skipped - the plugin must not keep the site from starting.
+    base="http://127.0.0.1:{{ .Values.idx.port }}{{ .Values.idx.basePath }}/plugin"
+    slug="wordpress-idx-search"
+
+    if ! wp core is-installed 2>/dev/null; then
+      echo "[idx-plugin] WordPress is not installed yet - skipping"
+      exit 0
+    fi
+
+    # The sidecar starts alongside this container and may still be pulling
+    # its image; it serves the package as soon as it listens.
+    manifest=""
+    for _ in $(seq 1 60); do
+      manifest="$(curl -fsS --max-time 2 "$base/update-info.json" 2>/dev/null)" && break
+      manifest=""
+      sleep 1
+    done
+    if [ -z "$manifest" ]; then
+      echo "[idx-plugin] sidecar not reachable at $base - continuing"
+      exit 0
+    fi
+
+    offered="$(printf '%s' "$manifest" | php -r '$m = json_decode(stream_get_contents(STDIN), true); echo is_array($m) && isset($m["version"]) ? $m["version"] : "";')"
+    if [ -z "$offered" ]; then
+      echo "[idx-plugin] sidecar manifest has no version - continuing"
+      exit 0
+    fi
+
+    installed=""
+    if wp plugin is-installed "$slug" 2>/dev/null; then
+      installed="$(wp plugin get "$slug" --field=version 2>/dev/null)"
+    fi
+
+    if [ -n "$installed" ]; then
+      {{- if .Values.idx.pluginAutoUpdate }}
+      if ! php -r 'exit(version_compare($argv[1], $argv[2], "<") ? 0 : 1);' "$installed" "$offered"; then
+        echo "[idx-plugin] $slug $installed is current (sidecar offers $offered)"
+        exit 0
+      fi
+      {{- else }}
+      echo "[idx-plugin] $slug $installed installed, sidecar offers $offered - updates are left to wp-admin"
+      exit 0
+      {{- end }}
+    fi
+
+    if ! tmpdir="$(mktemp -d)"; then
+      echo "[idx-plugin] no temporary directory - continuing"
+      exit 0
+    fi
+    trap 'rm -rf "$tmpdir"' EXIT
+    # The hook runs as root, wp as the web user: mktemp's 0700 would hide the
+    # package, and wp-cli then reports the path as an "invalid plugin slug".
+    chmod 0755 "$tmpdir"
+    package="$tmpdir/$slug.zip"
+    if ! curl -fsS --max-time 60 -o "$package" "$base/$slug.zip"; then
+      echo "[idx-plugin] could not download $slug $offered from the sidecar - continuing"
+      exit 0
+    fi
+
+    if [ -z "$installed" ]; then
+      wp plugin install "$package" --activate \
+        && echo "[idx-plugin] installed and activated $slug $offered" \
+        || echo "[idx-plugin] could not install $slug $offered - continuing"
+    else
+      # --force replaces the files in place; the activation state is kept.
+      wp plugin install "$package" --force \
+        && echo "[idx-plugin] updated $slug $installed -> $offered" \
+        || echo "[idx-plugin] could not update $slug to $offered - continuing"
+    fi
   {{- end }}
   {{- if .Values.wordpressConfigureCache }}
   {{- $cacheFullname := include "wordpress.cacheHost" . }}

@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.1.3-7
+
+* **With `idx.enabled`, the wordpress-idx search plugin now follows the sidecar on every container start.** A new application-hook script (`zz-05-idx-plugin.sh`) fetches the plugin package from the sidecar over loopback - never from wordpress.org, so plugin and sidecar stay one release - and installs and activates the plugin when it is missing, or updates it in place when the sidecar ships a newer build. Until now the plugin had to be installed by hand, and an update only arrived through WordPress' own update check, which could lag a sidecar upgrade by hours. Rolling out a new `idxImageTag` now brings the matching plugin with the pod restart.
+* Updates on start honour `idx.pluginAutoUpdate`: with `false`, an installed plugin is left as it is and updates stay a choice in wp-admin; a missing plugin is still installed. A plugin deactivated in wp-admin stays deactivated - only a fresh install is activated. A plugin deleted in wp-admin comes back on the next start; disable `idx` to remove it for good.
+* The script waits up to 60 seconds for the sidecar (it may still be pulling its image) and logs every failure as `[idx-plugin]` without failing the boot. Verified end to end against a real WordPress and the 1.3.7 sidecar: fresh install and activation, in-place update from 1.3.5 with the activation kept, and no action when current.
+* The post-init ConfigMap is now also rendered when `idx.enabled` is the only feature using it; the template test pins that, the mount, the loopback source and both `pluginAutoUpdate` modes.
+
 ## 7.1.3-6
 
 * Bump `idxImageTag` to `1.3.7` (wordpress-idx sidecar). The bundled WordPress plugin now asks the sidecar on every update check instead of reading a manifest cached for up to six hours. Before, after a sidecar upgrade the plugin kept reporting itself as current until that cache expired, although the new sidecar already offered a newer build; only "Check again" on the Updates screen got past it. The fix takes effect once a site has installed plugin 1.3.7: that update itself may still need "Check again", every later one shows up with the next regular check. No change to the environment variables the sidecar reads or the endpoints it serves.

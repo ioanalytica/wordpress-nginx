@@ -656,6 +656,12 @@ spec:
               subPath: 00-preinstall-plugins.sh
               readOnly: true
             {{- end }}
+            {{- if .Values.idx.enabled }}
+            - name: custom-postinit
+              mountPath: /etc/hooks/application/zz-05-idx-plugin.sh
+              subPath: 05-idx-plugin.sh
+              readOnly: true
+            {{- end }}
             {{- if .Values.wordpressConfigureCache }}
             - name: custom-postinit
               mountPath: /etc/hooks/application/zz-10-configure-w3-total-cache.sh

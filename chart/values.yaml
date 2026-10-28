@@ -1290,6 +1290,9 @@ metrics:
 ##
 idx:
   ## @param idx.enabled Enable wordpress-idx search sidecar container
+  ## NOTE: on every container start the bundled WordPress plugin is installed
+  ## and activated from the sidecar when missing (see idx.pluginAutoUpdate
+  ## for updates). Deactivating it in wp-admin is respected; deleting it is not.
   ##
   enabled: false
   ## wordpress-idx image
@@ -1323,7 +1326,7 @@ idx:
   ## @param idx.forceUpdate Force rebuild of search index on every startup
   ##
   forceUpdate: false
-  ## @param idx.pluginAutoUpdate Let the bundled WordPress plugin install its own updates automatically (served by the sidecar). Set to false to only surface updates in wp-admin.
+  ## @param idx.pluginAutoUpdate Keep the bundled WordPress plugin at the sidecar's build: updated on every container start and by WordPress' own auto-updates. Set to false to only surface updates in wp-admin.
   ##
   pluginAutoUpdate: true
   ## @param idx.resourcesPreset Set container resources according to one common preset

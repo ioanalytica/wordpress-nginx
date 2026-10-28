@@ -242,6 +242,26 @@ expect "custom script mounts with zz prefix" present 'mountPath: /etc/hooks/appl
 check "postinit set" --set wordpressConfigureCache=true --set memcached.enabled=true \
         --set 'customPostInitScripts.my-task\.sh=echo hi'
 
+echo "=== idx plugin follows the sidecar on every start"
+# The plugin comes from the sidecar's own package over loopback, so plugin
+# and sidecar stay one release. Installing alone must not need any other
+# post-init feature: with preinstall emptied, idx alone still renders the
+# ConfigMap the mount points at.
+IDX=(--set idx.enabled=true)
+expect "no idx script without idx"         absent  '05-idx-plugin.sh'
+expect "idx script mounts as a single file" present 'mountPath: /etc/hooks/application/zz-05-idx-plugin.sh' "${IDX[@]}"
+expect "package comes from the sidecar"    present 'base="http://127.0.0.1:3000/idx/plugin"' "${IDX[@]}"
+expect "port and base path follow values"  present 'base="http://127.0.0.1:3100/search/plugin"' \
+        "${IDX[@]}" --set idx.port=3100 --set idx.basePath=/search
+expect "missing plugin is installed active" present 'wp plugin install "$package" --activate' "${IDX[@]}"
+expect "older plugin is updated in place"  present 'wp plugin install "$package" --force' "${IDX[@]}"
+expect "web user can read the package"     present 'chmod 0755 "$tmpdir"' "${IDX[@]}"
+expect "no start update without autoUpdate" absent 'version_compare' \
+        "${IDX[@]}" --set idx.pluginAutoUpdate=false
+expect "still installs without autoUpdate" present 'wp plugin install "$package" --activate' \
+        "${IDX[@]}" --set idx.pluginAutoUpdate=false
+check "idx alone renders the postinit ConfigMap" "${IDX[@]}" --set-json 'wordpressPreinstallPlugins=[]'
+
 echo "=== wp-config site URL falls back sanely without a request"
 expect "requests keep using HTTP_HOST"       present "isset(\$_SERVER['HTTP_HOST'])"
 expect "CLI falls back to the canonical host" present "getenv_docker('WORDPRESS_HOSTNAME', '')"
