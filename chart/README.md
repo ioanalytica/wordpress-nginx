@@ -439,7 +439,7 @@ deny for every one of them breaks sites:
 |-----------------|---------|----------------------|
 | the whole directory | `wflogs/`, `uploads/wp-statistics/` | proposes the directory |
 | file extensions | `<Files *.php>` in `uploads/`; Wordfence's `<FilesMatch "\.php$">` in `lib/`, `views/`, `waf/`; `<FilesMatch "\.(php\|phtml)$">` | judged per extension. `php` is covered with `phpExecutionAllowlist.mode: enforce` — NGINX answers 403 for that PHP — unless an `extraAllowedPaths` entry lets a PHP file there run. Every other extension (`phtml`, `phps`, `phar`, `log`) NGINX serves as a plain file, so the report proposes a regex closing exactly those extensions — never the directory: for `uploads/` that would block every image |
-| named files | `<Files debug.log>` | proposes one entry per file |
+| named files | `<Files debug.log>` | proposes one regex per name, covering the directory and its subdirectories — `<Files>` governs both |
 | dotfiles | `<Files .ht*>`, `<FilesMatch "^\.">` | covered: NGINX denies dotfiles everywhere |
 
 Any other pattern counts as a whole-directory deny, including a `<FilesMatch>`
@@ -450,14 +450,16 @@ directory (above) stays plugin-managed whatever the deny covers.
 
 Coverage tests paths against every `deniedPaths` entry in the form NGINX gets
 it — a case-insensitive regex, plain paths included — with busybox `grep -iE`.
-A directory (or an extension in it) counts as closed only when both a new file
-and every file it holds now are denied, so an entry that matches only the
-directory URL, or only some names, does not count. Busybox reads ERE, NGINX
+A directory (or an extension or name in it) counts as closed only when a new
+file — in the directory and in a subdirectory, which an `.htaccess` governs too
+— and every file it holds now are denied, so an entry that matches only the
+directory URL, only the top level, or only some names, does not count. Busybox reads ERE, NGINX
 PCRE; only entries in the subset both read alike count — one that does not
 compile, or that uses `\d`, `\w`, `(?…)`, `{,n}` or a possessive quantifier,
 covers nothing in the report, so its directory shows as uncovered rather than
-being assumed closed. An `extraAllowedPaths` entry busybox cannot check errs the
-other way, so then no PHP deny is credited to the allowlist. The check matches file content,
+being assumed closed. `extraAllowedPaths` errs the other way: when an entry cannot be read as NGINX
+reads it, or lets PHP run in that directory — PHP that exists or PHP added
+later — no PHP deny there is credited to the allowlist. The check matches file content,
 never evaluates it; the first directive line goes into the log as data.
 
 ### Ingress

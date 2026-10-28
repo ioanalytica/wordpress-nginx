@@ -350,36 +350,42 @@ spec:
                   if [ "$rc" -le 1 ]; then printf '%s\n' "$re" >> "$2"; fi
                 done < "$1"
               }
+              # pcre_alike <in> <out>: the entries busybox ERE and NGINX PCRE read
+              # alike. One that compiles in ERE can still mean something else in
+              # PCRE (\d, \w, (?...), {,n}, possessive a++).
+              pcre_alike() {
+                grep -vE -e '\\[A-Za-z0-9]' -e '\(\?' -e '\{,' -e '[*+?}]\+' "$1" > "$2" || true
+              }
+              # Only deniedPaths entries both read alike count as coverage; any
+              # other entry covers nothing in this report - erring toward
+              # "uncovered".
               keep_compiling /tmp/denied-paths.all /tmp/denied-paths.compiled
-              # NGINX evaluates deniedPaths as PCRE; a pattern that compiles in ERE
-              # can still mean something else there (\d, \w, {,n}, possessive a++).
-              # Only the subset both read alike counts as coverage; any other entry
-              # covers nothing in this report - erring toward "uncovered".
-              grep -vE -e '\\[A-Za-z0-9]' -e '\(\?' -e '\{,' -e '[*+?}]\+' \
-                /tmp/denied-paths.compiled > /tmp/denied-paths || true
+              pcre_alike /tmp/denied-paths.compiled /tmp/denied-paths
+              # extraAllowedPaths errs the other way: an entry this report cannot
+              # read as NGINX does may still let PHP run. Then no PHP deny is
+              # credited to the allowlist. The lookup of PHP it opens keeps every
+              # entry that compiles - matching too much there errs toward "open".
               keep_compiling /tmp/php-extra-allowed.all /tmp/php-extra-allowed
-              # A dropped extraAllowedPaths entry errs the other way: NGINX still
-              # runs the PHP it allows. Then no PHP deny is credited to the
-              # allowlist.
+              pcre_alike /tmp/php-extra-allowed /tmp/php-extra-allowed.alike
               PHP_EXTRA_UNCHECKED=0
-              [ "$(grep -c . /tmp/php-extra-allowed.all || true)" = "$(grep -c . /tmp/php-extra-allowed || true)" ] \
+              [ "$(grep -c . /tmp/php-extra-allowed.all || true)" = "$(grep -c . /tmp/php-extra-allowed.alike || true)" ] \
                 || PHP_EXTRA_UNCHECKED=1
               # matches_any <file> <path>: does any regex in <file> match <path>?
               matches_any() {
                 [ -s "$1" ] && printf '%s\n' "$2" | grep -qiE -f "$1"
               }
-              # dir_covered <dir> [ext]: do deniedPaths close <dir> - a new file in
-              # it and every file it holds now (with that extension, if given)? A
-              # rule that only matches some names would pass a synthetic probe.
-              dir_covered() {
-                matches_any /tmp/denied-paths "${1#/wordpress}/x${2:+.$2}" || return 1
-                if [ -n "$2" ]; then
-                  find "$1" -type f ! -name '.*' -iname "*.$2" 2>/dev/null > /tmp/dir-files || true
-                else
-                  find "$1" -type f ! -name '.*' 2>/dev/null > /tmp/dir-files || true
-                fi
-                dc_open="$(sed 's#^/wordpress##' /tmp/dir-files | grep -viE -f /tmp/denied-paths | head -n1 || true)"
-                [ -z "$dc_open" ]
+              # denies_all <dir> <name> [find tests...]: do deniedPaths close a new
+              # file <name> in <dir> and in a subdirectory of it, and every file
+              # under <dir> the find tests select now? An .htaccess governs its
+              # subdirectories too, and a rule that matches only some names would
+              # pass a synthetic probe alone.
+              denies_all() {
+                da_dir="$1"; da_rel="${1#/wordpress}"; da_name="$2"; shift 2
+                matches_any /tmp/denied-paths "$da_rel/$da_name" || return 1
+                matches_any /tmp/denied-paths "$da_rel/x/$da_name" || return 1
+                find "$da_dir" -type f ! -name '.*' "$@" 2>/dev/null > /tmp/dir-files || true
+                da_open="$(sed 's#^/wordpress##' /tmp/dir-files | grep -viE -f /tmp/denied-paths | head -n1 || true)"
+                [ -z "$da_open" ]
               }
               # PHP files under wp-content that extraAllowedPaths lets execute -
               # listed once, so each .htaccess only looks its directory up.
@@ -434,7 +440,7 @@ spec:
                   # Probe files inside, not the directory itself: an entry that only
                   # matches "<dir>/" leaves every file below it open.
                   dir_cov=no
-                  dir_covered "$dir" && dir_cov=yes
+                  denies_all "$dir" x && dir_cov=yes
                   covered=$dir_cov
                   # What a deny covers: one line per deny directive - "ALL" outside any
                   # <Files>/<FilesMatch> block, else "F <pattern>" for <Files> and
@@ -477,18 +483,24 @@ spec:
                   if [ "$scope" = narrow ]; then
                     # Judge each extension and name; a directory entry covers them all.
                     covered=yes; by_allowlist=0; open_exts=""; open_names=""
+                    # PHP that extraAllowedPaths lets run here: files that exist now,
+                    # and whether a new one would be let through as well.
                     php_open="$(awk -v p="$rel/" 'index($0, p) == 1 { printf " %s", $0 }' /tmp/php-open)"
+                    php_new=0
+                    if matches_any /tmp/php-extra-allowed "$rel/x.php" \
+                        || matches_any /tmp/php-extra-allowed "$rel/x/x.php"; then php_new=1; fi
                     if [ "$dir_cov" != yes ]; then
                       for e in $(printf '%s\n' $exts | tr 'A-Z' 'a-z' | sort -u); do
                         if [ "$e" = php ] && [ "$PHP_ALLOWLIST_MODE" = enforce ] \
-                            && [ "$PHP_EXTRA_UNCHECKED" = 0 ] && [ -z "$php_open" ]; then
+                            && [ "$PHP_EXTRA_UNCHECKED" = 0 ] && [ -z "$php_open" ] && [ "$php_new" = 0 ]; then
                           by_allowlist=1
-                        elif ! dir_covered "$dir" "$e"; then
+                        elif ! denies_all "$dir" "x.$e" -iname "*.$e"; then
                           covered=no; open_exts="$open_exts $e"
                         fi
                       done
+                      # <Files name> also governs that name in every subdirectory.
                       for n in $names; do
-                        matches_any /tmp/denied-paths "$rel/$n" || { covered=no; open_names="$open_names $n"; }
+                        denies_all "$dir" "$n" -name "$n" || { covered=no; open_names="$open_names $n"; }
                       done
                     fi
                     what="$(printf '%s' "$exts $names" | wc -w | tr -d ' ')"
@@ -515,13 +527,16 @@ spec:
                         echo "  UNCOVERED:      $rel/.htaccess ($first) - denies $what"
                         if [ -n "$open_exts" ]; then
                           case " $open_exts " in *" php "*)
-                            if [ -n "$php_open" ]; then
-                              echo "    phpExecutionAllowlist.extraAllowedPaths lets PHP run here:$php_open"
-                            elif [ "$PHP_ALLOWLIST_MODE" = enforce ]; then
-                              echo "    A phpExecutionAllowlist.extraAllowedPaths entry cannot be checked here (busybox"
-                              echo "    cannot compile it), so the PHP allowlist is not credited for this PHP."
-                            else
+                            if [ "$PHP_ALLOWLIST_MODE" != enforce ]; then
                               echo "    phpExecutionAllowlist.mode is '$PHP_ALLOWLIST_MODE', so NGINX runs this PHP."
+                            elif [ -n "$php_open" ]; then
+                              echo "    phpExecutionAllowlist.extraAllowedPaths lets PHP run here:$php_open"
+                            elif [ "$php_new" = 1 ]; then
+                              echo "    phpExecutionAllowlist.extraAllowedPaths lets new PHP files here run."
+                            else
+                              echo "    A phpExecutionAllowlist.extraAllowedPaths entry cannot be checked here (it does"
+                              echo "    not compile in busybox, or may read differently in NGINX), so the PHP allowlist"
+                              echo "    is not credited for this PHP."
                             fi ;;
                           esac
                           echo "    NGINX serves these as they are. To close them, without closing the directory:"
@@ -533,9 +548,10 @@ spec:
                           echo "        reason: .htaccess found ($first)"
                         fi
                         if [ -n "$open_names" ]; then
-                          echo "    NGINX does not read this file; these files are open. To close them:"
+                          echo "    NGINX does not read this file; these files are open, here and in every"
+                          echo "    subdirectory. To close them:"
                           for n in $open_names; do
-                            echo "      - path: $rel/$n"
+                            echo "      - path: '~* ^$(printf '%s' "$rel" | sed 's/[].[^$()|*+?{}\\]/\\&/g')/(.*/)?$(printf '%s' "$n" | sed 's/[].[^$()|*+?{}\\]/\\&/g')\$'"
                             echo "        action: deny"
                             echo "        reason: .htaccess found ($first)"
                           done

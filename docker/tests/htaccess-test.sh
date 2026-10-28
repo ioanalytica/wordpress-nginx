@@ -176,17 +176,17 @@ expect_line "regex deniedPaths entry covers backup-db"    'covered: +/wp-content
 expect_line "blanket deny still uncovered"                'UNCOVERED: +/wp-content/wflogs/'
 expect_line "blanket deny proposes the directory"         '- path: /wp-content/wflogs$'
 expect_line "named-file deny is reported per file"        'UNCOVERED: +/wp-content/uploads/wp_encryption/.* denies files: debug.log'
-expect_line "named-file deny proposes the file"           '- path: /wp-content/uploads/wp_encryption/debug.log$'
+expect_line "named-file deny proposes the file, recursively" "- path: '~\\* \\^/wp-content/uploads/wp_encryption/\\(\\.\\*/\\)\\?debug\\\\\\.log\\$'"
 expect_no_line "named-file deny never proposes the dir"   '- path: /wp-content/uploads/wp_encryption$'
 expect_line "mixed file: named part reported"             'UNCOVERED: +/wp-content/uploads/mixed/.* denies extensions: php; files: secret.txt'
-expect_line "mixed file: only the name is proposed"       '- path: /wp-content/uploads/mixed/secret.txt$'
-expect_no_line "mixed file: PHP left to the allowlist"   "path: '~\\* \\^/wp-content/uploads/mixed/"
+expect_line "mixed file: only the name is proposed"       "- path: '~\\* \\^/wp-content/uploads/mixed/\\(\\.\\*/\\)\\?secret\\\\\\.txt\\$'"
+expect_no_line "mixed file: PHP left to the allowlist"   "uploads/mixed/\\.\\*\\\\\\.php"
 expect_rc   "uncovered denies block fail mode"            1
 
 echo "=== Fleet files, every remaining deny closed"
 run fail "$WORK/fleet.sh" --set-json "nginx.deniedPaths[0]=$BACKUP_RE" \
     --set-json 'nginx.deniedPaths[1]={"path":"/wp-content/wflogs","action":"deny"}' \
-    --set-json 'nginx.deniedPaths[2]={"path":"/wp-content/uploads/wp_encryption/debug.log","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[2]={"path":"~* ^/wp-content/uploads/wp_encryption/(.*/)?debug\\.log$","action":"deny"}' \
     --set-json 'nginx.deniedPaths[3]={"path":"/wp-content/uploads/mixed","action":"deny"}'
 expect_line "file entry covers the named file"            'covered: +/wp-content/uploads/wp_encryption/'
 expect_line "directory entry covers its named files"      'covered: +/wp-content/uploads/mixed/'
@@ -241,10 +241,10 @@ run fail "$WORK/review.sh" --set phpExecutionAllowlist.mode=off \
     --set-json 'nginx.deniedPaths[0]={"path":"/wp-content/wflogs","action":"deny"}' \
     --set-json 'nginx.deniedPaths[1]={"path":"/wp-content/rx","action":"deny"}' \
     --set-json 'nginx.deniedPaths[2]={"path":"~* ^/wp-content/ext/.*\\.(php|phps|phtml)$","action":"deny"}' \
-    --set-json 'nginx.deniedPaths[3]={"path":"/wp-content/mixed/secret.txt","action":"deny"}'
+    --set-json 'nginx.deniedPaths[3]={"path":"~* ^/wp-content/mixed/(.*/)?secret\\.txt$","action":"deny"}'
 expect_line "mixed file reports its PHP with allowlist off" 'UNCOVERED: +/wp-content/mixed/.* denies extensions: php; files: secret.txt'
 expect_line "mixed file proposes its PHP"                 "- path: '~\\* \\^/wp-content/mixed/\\.\\*\\\\\\.php\\$'"
-expect_no_line "mixed file: covered name not proposed"    '- path: /wp-content/mixed/secret.txt$'
+expect_no_line "mixed file: covered name not proposed"    'secret\\\\\.txt\\$'
 expect_line "plugin-managed wins over a PHP proposal"     'plugin-managed: +/wp-content/plugins/w3-total-cache/pub/'
 expect_line "extension regex entry covers its extensions" 'covered: +/wp-content/ext/'
 expect_rc   "only the mixed PHP blocks fail mode"         1
@@ -287,6 +287,42 @@ run warn "$WORK/fleet.sh" \
 expect_line "allowlist not credited"                      'UNCOVERED: +/wp-content/plugins/wordfence/lib/.* denies PHP only'
 expect_line "the unchecked entry is named as the reason"  'extraAllowedPaths entry cannot be checked here'
 expect_line "script completes"                            'Checks completed\.'
+
+# CodeRabbit's third round, and the same question asked of every other place
+# that credits coverage: can it say "covered" while NGINX serves the file?
+cat > "$WORK/cr3.sh" <<'SETUP'
+W=/wordpress/wp-content
+mkdir -p $W/uploads/enc/sub $W/flat/sub
+printf '<Files *.php>\ndeny from all\n</Files>\n' > $W/uploads/.htaccess
+printf '<Files debug.log>\ndeny from all\n</Files>\n' > $W/uploads/enc/.htaccess
+: > $W/uploads/enc/sub/debug.log
+printf 'deny from all\n' > $W/flat/.htaccess
+: > $W/flat/a.dat
+SETUP
+
+echo "=== extraAllowedPaths entries the report cannot read as NGINX does"
+run warn "$WORK/fleet.sh" \
+    --set-json 'phpExecutionAllowlist.extraAllowedPaths=["~*^/wp-content/plugins/wordfence/lib/cb\\d\\.php$"]'
+expect_line "\\d entry: allowlist not credited"           'UNCOVERED: +/wp-content/plugins/wordfence/lib/.* denies PHP only'
+expect_line "\\d entry: named as unchecked"               'extraAllowedPaths entry cannot be checked here'
+
+echo "=== extraAllowedPaths opening new PHP in a directory that has none yet"
+run warn "$WORK/cr3.sh" \
+    --set-json 'phpExecutionAllowlist.extraAllowedPaths=["~*^/wp-content/uploads/.*\\.php$"]'
+expect_line "uploads PHP guard not credited"              'UNCOVERED: +/wp-content/uploads/\.htaccess .* denies PHP only'
+expect_line "new PHP named as the reason"                 'extraAllowedPaths lets new PHP files here run'
+
+echo "=== A deny reaches into subdirectories"
+run warn "$WORK/cr3.sh" \
+    --set-json 'nginx.deniedPaths[0]={"path":"/wp-content/uploads/enc/debug.log","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[1]={"path":"~* ^/wp-content/flat/[^/]*$","action":"deny"}'
+expect_line "top-level file entry misses subdirectories"  'UNCOVERED: +/wp-content/uploads/enc/.* denies files: debug.log'
+expect_line "top-level directory rule misses subdirs"     'UNCOVERED: +/wp-content/flat/'
+run warn "$WORK/cr3.sh" \
+    --set-json 'nginx.deniedPaths[0]={"path":"~* ^/wp-content/uploads/enc/(.*/)?debug\\.log$","action":"deny"}' \
+    --set-json 'nginx.deniedPaths[1]={"path":"/wp-content/flat","action":"deny"}'
+expect_line "recursive file entry covers"                 'covered: +/wp-content/uploads/enc/'
+expect_line "directory entry covers subdirectories"       'covered: +/wp-content/flat/'
 
 echo
 if [ "$FAILURES" -gt 0 ]; then echo "=== $FAILURES assertion(s) FAILED"; exit 1; fi
