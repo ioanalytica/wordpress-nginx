@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.1.3-5
+
+* Image hardening: the image is rebuilt on current Alpine 3.24 packages, picking up the latest security updates for `curl`, `libraw` and `nginx` (nginx 1.30.6). Still PHP **8.4.27**, the current 8.4 release. No chart or configuration changes; upgrading is recommended as routine hardening.
+* Bump `idxImageTag` to `1.3.6` (wordpress-idx sidecar). Hardening release: the sidecar is rebuilt on Node **26.12.1** (a security release) and current Alpine 3.24 packages, and its HTTP request-body parser is updated (body-parser 2.4.0). Its dependencies move on as well (dotenv 18.0.9, mysql2 3.24.6). No change to the environment variables it reads or the endpoints it serves.
+
 ## 7.1.3-4
 
 * Security hardening: the image is rebuilt on PHP **8.4.27** (was 8.4.26), a security release from the PHP project. Upgrading is strongly recommended; see the [PHP 8.4.27 release announcement](https://www.php.net/ChangeLog-8.php#8.4.27).
