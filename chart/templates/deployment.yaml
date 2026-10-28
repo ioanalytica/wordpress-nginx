@@ -336,7 +336,9 @@ spec:
               # PHP deny over such a file is not covered by the allowlist.
               cat > /tmp/php-extra-allowed.all <<'PHP_EXTRA_ALLOWED_EOF'
               {{- range .Values.phpExecutionAllowlist.extraAllowedPaths }}
-              {{ trimPrefix "~" (trim .) | trimPrefix "*" | trim }}
+              {{- $p := trim . }}
+              {{- /* Without "~" an NGINX map key is an exact string, not a regex. */}}
+              {{ if hasPrefix "~" $p }}{{ trimPrefix "~" $p | trimPrefix "*" | trim }}{{ else }}^{{ regexQuoteMeta $p }}${{ end }}
               {{- end }}
               PHP_EXTRA_ALLOWED_EOF
               # keep_compiling <in> <out>: the entries busybox grep can compile. One
@@ -373,6 +375,10 @@ spec:
               # matches_any <file> <path>: does any regex in <file> match <path>?
               matches_any() {
                 [ -s "$1" ] && printf '%s\n' "$2" | grep -qiE -f "$1"
+              }
+              # re_quote <text>: <text> as a literal inside a regex.
+              re_quote() {
+                printf '%s' "$1" | sed 's/[].[^$()|*+?{}\\]/\\&/g'
               }
               # denies_all <dir> <name> [find tests...]: do deniedPaths close a new
               # file <name> in <dir> and in a subdirectory of it, and every file
@@ -429,18 +435,23 @@ spec:
                   fi
                   # Per-site nginx.conf: a plugin may already have translated this
                   # directory into an NGINX rule. Match on the directory's last two
-                  # path segments, which is how W3TC writes its locations.
+                  # path segments, which is how W3TC writes its locations - taken
+                  # literally, and never for wp-content itself, whose name nearly
+                  # every rule in that file carries.
                   plugin_managed=0
-                  if [ -s /wordpress/nginx.conf ]; then
-                    tail2="$(printf '%s' "$rel" | awk -F/ '{print $(NF-1)"/"$NF}')"
+                  if [ -s /wordpress/nginx.conf ] && [ "$rel" != /wp-content ]; then
+                    tail2="$(re_quote "$(printf '%s' "$rel" | awk -F/ '{print $(NF-1)"/"$NF}')")"
                     # ".*", not "[^\n]*": busybox grep has no \n escape inside a bracket
                     # expression - it would exclude the letter n and miss "minify".
                     grep -qE "(location|rewrite).*${tail2}" /wordpress/nginx.conf 2>/dev/null && plugin_managed=1
                   fi
                   # Probe files inside, not the directory itself: an entry that only
                   # matches "<dir>/" leaves every file below it open.
+                  # Only the classes that report coverage pay for the subtree walk.
                   dir_cov=no
-                  denies_all "$dir" x && dir_cov=yes
+                  case "$class" in deny|partial|allow)
+                    denies_all "$dir" x && dir_cov=yes ;;
+                  esac
                   covered=$dir_cov
                   # What a deny covers: one line per deny directive - "ALL" outside any
                   # <Files>/<FilesMatch> block, else "F <pattern>" for <Files> and
@@ -543,7 +554,7 @@ spec:
                           set -- $open_exts
                           alt="$(printf '%s|' "$@")"; alt="${alt%|}"
                           [ "$#" -gt 1 ] && alt="($alt)"
-                          echo "      - path: '~* ^$(printf '%s' "$rel" | sed 's/[].[^$()|*+?{}\\]/\\&/g')/.*\.$alt\$'"
+                          echo "      - path: '~* ^$(re_quote "$rel")/.*\.$alt\$'"
                           echo "        action: deny"
                           echo "        reason: .htaccess found ($first)"
                         fi
@@ -551,7 +562,7 @@ spec:
                           echo "    NGINX does not read this file; these files are open, here and in every"
                           echo "    subdirectory. To close them:"
                           for n in $open_names; do
-                            echo "      - path: '~* ^$(printf '%s' "$rel" | sed 's/[].[^$()|*+?{}\\]/\\&/g')/(.*/)?$(printf '%s' "$n" | sed 's/[].[^$()|*+?{}\\]/\\&/g')\$'"
+                            echo "      - path: '~* ^$(re_quote "$rel")/(.*/)?$(re_quote "$n")\$'"
                             echo "        action: deny"
                             echo "        reason: .htaccess found ($first)"
                           done

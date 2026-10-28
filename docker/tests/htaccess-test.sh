@@ -244,7 +244,7 @@ run fail "$WORK/review.sh" --set phpExecutionAllowlist.mode=off \
     --set-json 'nginx.deniedPaths[3]={"path":"~* ^/wp-content/mixed/(.*/)?secret\\.txt$","action":"deny"}'
 expect_line "mixed file reports its PHP with allowlist off" 'UNCOVERED: +/wp-content/mixed/.* denies extensions: php; files: secret.txt'
 expect_line "mixed file proposes its PHP"                 "- path: '~\\* \\^/wp-content/mixed/\\.\\*\\\\\\.php\\$'"
-expect_no_line "mixed file: covered name not proposed"    'secret\\\\\.txt\\$'
+expect_no_line "mixed file: covered name not proposed"    'secret\\\.txt\$'
 expect_line "plugin-managed wins over a PHP proposal"     'plugin-managed: +/wp-content/plugins/w3-total-cache/pub/'
 expect_line "extension regex entry covers its extensions" 'covered: +/wp-content/ext/'
 expect_rc   "only the mixed PHP blocks fail mode"         1
@@ -323,6 +323,21 @@ run warn "$WORK/cr3.sh" \
     --set-json 'nginx.deniedPaths[1]={"path":"/wp-content/flat","action":"deny"}'
 expect_line "recursive file entry covers"                 'covered: +/wp-content/uploads/enc/'
 expect_line "directory entry covers subdirectories"       'covered: +/wp-content/flat/'
+
+# Own review of the third round.
+cat > "$WORK/own.sh" <<'SETUP'
+W=/wordpress/wp-content
+mkdir -p "$W/plugins/a+b"
+printf '<FilesMatch "\\.php$">\nRequire all denied\n</FilesMatch>\n' > "$W/plugins/a+b/.htaccess"
+: > "$W/plugins/a+b/cb.php"
+printf '<FilesMatch "\\.(sql|log)$">\nRequire all denied\n</FilesMatch>\n' > $W/.htaccess
+printf '%s\n' 'rewrite ^/wp-content/cache/minify/ /index.php last;' > /wordpress/nginx.conf
+SETUP
+
+echo "=== An extraAllowedPaths entry without ~ is an exact string"
+run warn "$WORK/own.sh" --set-json 'phpExecutionAllowlist.extraAllowedPaths=["/wp-content/plugins/a+b/cb.php"]'
+expect_line "exact entry with + found as open PHP"        'extraAllowedPaths lets PHP run here: /wp-content/plugins/a\+b/cb\.php'
+expect_line "wp-content root is not plugin-managed"       'UNCOVERED: +/wp-content/\.htaccess .* denies extensions: sql log'
 
 echo
 if [ "$FAILURES" -gt 0 ]; then echo "=== $FAILURES assertion(s) FAILED"; exit 1; fi
