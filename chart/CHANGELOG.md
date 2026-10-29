@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.1.4-5
+
+* **Every release now gets its own W3 Total Cache key space.** W3 Total Cache starts every cache key with `common.instance_id`, an id it draws once at activation and stores in `wp-content/w3tc-config/master.php`. A site set up as a copy of another one carries the original's id along, and on a shared cache server the two then share keys: WP-CLI calls without `--url`, loopback and pod-IP requests, and every flush, whose version counters carry no host. With `wordpressConfigureCache` the configuration script now sets the id on every start, before its first flush, derived from `<namespace>/<release name>` (the first 28 bits of its SHA-256, plus one).
+  * The first start on this version switches each site to its new id once: the caches start cold, and entries under the old id expire on their own.
+  * New `wordpressCacheInstanceId` sets the id explicitly, for example to keep an id across a release rename. A value that is not an integer from 1 to 2147483647 fails the render.
+* The template test checks that the id is stable for a release, differs between releases and namespaces, is set before the first flush, and that invalid overrides fail the render.
+
 ## 7.1.4-4
 
 * **File-integrity monitoring no longer needs baseline maintenance after plugin updates.** Plugins update themselves automatically, and W3 Total Cache rewrites files the watcher checks. Those files are now judged by content, never by a digest that every update would break:

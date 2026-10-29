@@ -244,6 +244,39 @@ expect "cache config never activates W3TC"  absent  'wp plugin activate w3-total
         --set wordpressConfigureCache=true --set memcached.enabled=true
 expect "cache config declares the server"   present 'export SERVER_SOFTWARE=nginx' \
         --set wordpressConfigureCache=true --set memcached.enabled=true
+# The instance id prefixes every W3TC cache key. Derived from
+# "<namespace>/<release>" it must be stable across renders and differ per
+# release; "default/tst" hashes to this value. The namespace is passed
+# explicitly: without -n, helm takes the one of the current kube context.
+W3TC=(--set wordpressConfigureCache=true --set memcached.enabled=true)
+expect "instance id derives from the release" present 'option set common.instance_id 223805861 --type=integer' \
+        "${W3TC[@]}" -n default
+expect "instance id can be set explicitly"    present 'option set common.instance_id 1512969306 --type=integer' \
+        "${W3TC[@]}" --set wordpressCacheInstanceId=1512969306
+iid_of() { helm template "$1" "$CHART" -n "$2" "${W3TC[@]}" 2>&1 | sed -n 's/.*option set common\.instance_id \([0-9]*\) .*/\1/p'; }
+a="$(iid_of tst default)"; b="$(iid_of tst other)"; c="$(iid_of copy default)"
+if [ -n "$a" ] && [ -n "$b" ] && [ -n "$c" ] && [ "$a" != "$b" ] && [ "$a" != "$c" ]; then
+    echo "ok:   instance id differs per namespace and release"
+else
+    echo "FAIL: instance ids tst/default=$a tst/other=$b copy/default=$c - must all differ"
+    FAILURES=$((FAILURES + 1))
+fi
+# Set before the first flush, so the flushes reach the keys in use from now on.
+order="$(helm template tst "$CHART" "${W3TC[@]}" 2>&1 | grep -nE 'common\.instance_id|total-cache flush all' | head -1)"
+if [[ "$order" == *common.instance_id* ]]; then
+    echo "ok:   instance id is set before any flush"
+else
+    echo "FAIL: first match is '$order' - the instance id must be set before the first flush"
+    FAILURES=$((FAILURES + 1))
+fi
+for bad in 0 -1 1.5 abc true 2147483648; do
+    if helm template tst "$CHART" "${W3TC[@]}" --set wordpressCacheInstanceId="$bad" >/dev/null 2>&1; then
+        echo "FAIL: wordpressCacheInstanceId=$bad rendered - must fail the render"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   wordpressCacheInstanceId=$bad fails the render"
+    fi
+done
 expect "custom script mounts with zz prefix" present 'mountPath: /etc/hooks/application/zz-my-task.sh' \
         --set 'customPostInitScripts.my-task\.sh=echo hi'
 check "postinit set" --set wordpressConfigureCache=true --set memcached.enabled=true \

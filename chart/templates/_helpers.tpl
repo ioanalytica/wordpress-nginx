@@ -265,6 +265,41 @@ Return and validate the cache type
 {{- end -}}
 
 {{/*
+W3 Total Cache's common.instance_id, the first component of every cache key.
+W3TC draws it once at activation and keeps it in wp-content, so a copied
+wp-content carries it to the copy, and two sites on one cache server then
+share keys. Derived from "<namespace>/<release>" unless set explicitly: the
+first 28 bits of its SHA-256, plus one, since W3TC treats 0 as unset.
+*/}}
+{{- define "wordpress.w3tcInstanceId" -}}
+{{- $id := .Values.wordpressCacheInstanceId -}}
+{{- if or (kindIs "invalid" $id) (eq (toString $id) "") -}}
+{{- $digits := dict "0" 0 "1" 1 "2" 2 "3" 3 "4" 4 "5" 5 "6" 6 "7" 7 "8" 8 "9" 9 "a" 10 "b" 11 "c" 12 "d" 13 "e" 14 "f" 15 -}}
+{{- $n := 0 -}}
+{{- range $c := splitList "" (sha256sum (printf "%s/%s" .Release.Namespace .Release.Name) | trunc 7) -}}
+{{- $n = add (mul $n 16) (get $digits $c) -}}
+{{- end -}}
+{{- add1 $n -}}
+{{- else -}}
+{{- /* A number from a values file arrives as float64, which toString
+       would print in exponent notation. */ -}}
+{{- $text := toString $id -}}
+{{- if or (kindIs "float64" $id) (kindIs "int" $id) (kindIs "int64" $id) -}}
+{{- $text = ternary (printf "%.0f" (float64 $id)) "" (eq (float64 $id) (floor $id)) -}}
+{{- else if not (kindIs "string" $id) -}}
+{{- $text = "" -}}
+{{- end -}}
+{{- if not (regexMatch "^[1-9][0-9]{0,9}$" $text) -}}
+{{- fail (printf "wordpressCacheInstanceId: %v is not a positive integer" $id) -}}
+{{- end -}}
+{{- if gt (atoi $text) 2147483647 -}}
+{{- fail (printf "wordpressCacheInstanceId: %v exceeds 2147483647" $id) -}}
+{{- end -}}
+{{- $text -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return the value for the WP_CACHE constant in wp-config.php.
 An unset wordpressWpCache follows wordpressConfigureCache; an explicit
 true/false wins. Note that "default" is unusable here - it would treat an

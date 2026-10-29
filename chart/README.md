@@ -49,6 +49,7 @@ helm install my-wordpress ./chart
 | `wordpressScheme` | URL scheme (`http`/`https`) | `http` |
 | `wordpressSkipInstall` | Skip the installation wizard | `false` |
 | `wordpressConfigureCache` | Auto-configure W3 Total Cache | `false` |
+| `wordpressCacheInstanceId` | W3 Total Cache instance id (cache key prefix) | derived from namespace and release |
 | `wordpressPlugins` | Plugins to activate (`all`, `none`, or list) | `none` |
 
 ### Database (MariaDB)
@@ -98,6 +99,13 @@ The chart can deploy an internal [Dragonfly](https://www.dragonflydb.io/) instan
 > cache would fight over the `advanced-cache.php`/`object-cache.php`
 > drop-ins. To install and activate W3TC declaratively, list it in
 > `wordpressPreinstallPlugins`.
+
+> **Every release gets its own cache key space.** W3 Total Cache prefixes
+> its keys with an instance id it stores in wp-content, so a site copied
+> from another one would share keys with its original on the same cache
+> server. Since 7.1.4-5 the configuration script sets the id on every
+> start, derived from namespace and release name;
+> `wordpressCacheInstanceId` sets it explicitly.
 
 #### Internal Cache
 

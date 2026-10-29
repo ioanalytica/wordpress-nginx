@@ -159,6 +159,16 @@ existingWordPressConfigurationSecret: ""
 ## NOTE: useful if you deploy Memcached for caching database queries or you use an external cache server
 ##
 wordpressConfigureCache: false
+## W3 Total Cache starts every cache key with `common.instance_id`, which it
+## draws once at activation and stores in wp-content. A site copied from
+## another one carries the original's id along, and on a shared cache server
+## the two then read each other's entries (WP-CLI without --url, loopback
+## requests) and flush each other's caches. With wordpressConfigureCache the
+## chart therefore sets the id on every start, derived from
+## "<namespace>/<release name>", which is unique per release.
+## @param wordpressCacheInstanceId [nullable] W3 Total Cache `common.instance_id` (1-2147483647). Empty: derived from namespace and release name. Only used with `wordpressConfigureCache`
+##
+wordpressCacheInstanceId: ~
 ## WP_CACHE in wp-config.php. WordPress only loads the page cache drop-in
 ## `wp-content/advanced-cache.php` when this constant is true, so without it
 ## every page cache plugin (W3 Total Cache, WP Rocket, LiteSpeed Cache, ...)
