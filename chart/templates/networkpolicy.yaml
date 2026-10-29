@@ -64,6 +64,9 @@ spec:
         {{- if .Values.idx.enabled }}
         - port: {{ .Values.idx.port }}
         {{- end }}
+        {{- if and .Values.fim.enabled (eq .Values.fim.mode "sidecar") }}
+        - port: {{ .Values.fim.port }}
+        {{- end }}
         {{- range .Values.extraContainerPorts }}
         - port: {{ . }}
         {{- end }}

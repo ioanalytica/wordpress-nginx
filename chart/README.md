@@ -722,6 +722,54 @@ updates, while the search keeps working, since that runs in the visitor's
 browser. Override the constant via `WORDPRESS_CONFIG_EXTRA` if the sidecar does
 not share the pod.
 
+### File-Integrity Monitoring
+
+An optional watcher mounts the site's volume read-only, polls it every
+`fim.interval` seconds and reports findings as Prometheus metrics
+(`wp_fim_violation{path,rule}`, `wp_fim_violations`,
+`wp_fim_last_scan_timestamp_seconds`, `wp_fim_scan_duration_seconds`). It
+polls rather than using inotify, which does not see writes made by another
+NFS client. It runs PHP from the chart's own image, so it needs no further
+image.
+
+```yaml
+fim:
+  enabled: true
+  mode: deployment            # own pod (recommended); or: sidecar
+  nameMarkers: [requestentry] # indicators of a known toolkit
+  baseline:                   # quote the digests
+    salts.php: ["ee9409c0..."]
+    nginx.conf: ["324b8cdc..."]
+  serviceMonitor:
+    enabled: true
+  prometheusRule:
+    enabled: true             # leave off if a shared rule set covers the watchers
+```
+
+What it reports, structurally rather than by known file names: a
+`mu-plugins` directory, executable files directly in `wp-content/`, loose files
+directly in `plugins/` or `themes/`, executable files in `uploads/`, `.user.ini`
+files, encoded payload carriers (`.b64`, `.bak`, ...), unreadable directories,
+and changes to baselined files. Each finding names its rule in the `rule` label;
+`values.yaml` lists them all.
+
+- **wp-config.php is baselined automatically.** The chart generates it, so the
+  digest is computed at render time and follows every chart upgrade without
+  manual re-baselining.
+- **Web-root mounts are watched as static paths.** Every `extraVolumeMounts`
+  entry that mounts a subPath of the chart's volume below `/var/www/html` is
+  included; anything executable there is a finding.
+- **Re-baselining after a legitimate change:** a `baseline-modified` finding
+  carries the digest it found in its `sha256` label. The watcher re-reads its
+  configuration on every scan, so a values change takes effect without a
+  restart.
+- **Own pod or sidecar:** the own pod shares neither the network namespace nor
+  the lifecycle of WordPress. It keeps reporting while WordPress is scaled down
+  for an investigation, and a compromised WordPress container cannot take over
+  its port. It needs the volume on its node. With a volume that is not
+  ReadWriteMany, it is scheduled next to WordPress; ReadWriteOncePod and setups
+  without persistence need `mode: sidecar`.
+
 ### Metrics & Monitoring
 
 ```yaml

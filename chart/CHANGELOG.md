@@ -1,5 +1,18 @@
 # Changelog
 
+## 7.1.4-2
+
+* **New: file-integrity monitoring as a chart feature (`fim.enabled`, off by default).** A watcher mounts the site's volume read-only, polls it every `fim.interval` seconds and exports its findings as Prometheus metrics. The metric names and rule names match the per-site watchers that ran beside the chart until now, so existing alert rules keep working; the Service carries `app: <release>-fim`, which an optional ServiceMonitor copies onto the samples.
+  * **Structural rules instead of file-name lists:** a `mu-plugins` directory, executable files directly in `wp-content/`, loose files directly in `plugins/` or `themes/`, executable files in `uploads/`, `.user.ini` files, encoded payload carriers such as `.b64`, unreadable directories, and changes to baselined files. Site-specific file-name markers (`fim.nameMarkers`), allowances and extra writable directories are values.
+  * **`wp-config.php` is baselined by the chart itself.** Its content now comes from one named template (`wordpress.wpConfigPhp`), and the watcher's digest is computed from it at render time, so a chart upgrade no longer needs a manual re-baseline. The file the init container writes is byte-identical to 7.1.4-1.
+  * **Web-root mounts are found automatically:** every `extraVolumeMounts` entry that mounts a subPath of the chart's volume below `/var/www/html` is watched as a static path.
+  * **Re-baselining from the alert:** a `baseline-modified` finding carries the digest it found in a `sha256` label. The configuration is re-read on every scan, so a baseline change applies without a restart.
+  * **Own pod by default (`fim.mode: deployment`), sidecar as an option.** The own pod shares neither network namespace nor lifecycle with WordPress: it keeps reporting while WordPress is scaled down, and it has a NetworkPolicy that allows no egress at all. With a volume that is not ReadWriteMany it is scheduled next to WordPress. `mode: sidecar` covers ReadWriteOncePod and setups without persistence, and has no readiness probe, so it can never take WordPress out of its Service.
+  * The watcher runs PHP from the chart's own image; there is no new image to pin or track. Every scan runs in a forked child, so `/metrics` stays responsive during long scans, and a hung scan surfaces as a stale `wp_fim_last_scan_timestamp_seconds`.
+  * Optional `fim.prometheusRule` with `WpFimViolation`, `WpFimWatcherStalled` and `WpFimWatcherAbsent`, scoped to the release.
+* A baseline digest that YAML has read as a number, or one that is not 64 hex characters, fails the render instead of being silently compared.
+* The template test checks that the pinned `wp-config.php` digest matches the bytes the init container writes (the rendered heredoc is replayed), that no Service selecting WordPress also selects the watcher, and that a sidecar watcher has no readiness probe.
+
 ## 7.1.4-1
 
 * Update to WordPress 7.1.4. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.

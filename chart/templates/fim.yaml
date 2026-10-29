@@ -1,0 +1,240 @@
+{{- /*
+Copyright IO ANALYTICA. All Rights Reserved.
+SPDX-License-Identifier: Apache-2.0
+*/}}
+
+{{- if .Values.fim.enabled }}
+{{- $fullname := include "wordpress.fim.fullname" . }}
+{{- $sidecar := eq .Values.fim.mode "sidecar" }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/component: fim
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+data:
+  fim.php: |
+    {{- .Files.Get "files/fim.php" | nindent 4 }}
+  config.json: |
+    {{- include "wordpress.fim.config" . | nindent 4 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/component: fim
+    # Copied onto every sample by the ServiceMonitor's targetLabels, so rules
+    # shared across sites can tell the watchers apart.
+    app: {{ printf "%s-fim" .Release.Name }}
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: fim-metrics
+      port: {{ .Values.fim.port }}
+      protocol: TCP
+      targetPort: fim-metrics
+  {{- if $sidecar }}
+  {{- $podLabels := include "common.tplvalues.merge" ( dict "values" ( list .Values.podLabels .Values.commonLabels ) "context" . ) }}
+  selector: {{- include "common.labels.matchLabels" ( dict "customLabels" $podLabels "context" $ ) | nindent 4 }}
+  {{- else }}
+  selector: {{- include "wordpress.fim.matchLabels" . | nindent 4 }}
+  {{- end }}
+{{- if not $sidecar }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/component: fim
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  replicas: 1
+  # One watcher is enough, and two would only double the NFS load.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels: {{- include "wordpress.fim.matchLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels: {{- include "wordpress.fim.matchLabels" . | nindent 8 }}
+        app.kubernetes.io/component: fim
+        {{- with (include "common.tplvalues.merge" ( dict "values" ( list .Values.fim.podLabels .Values.commonLabels ) "context" . ) | fromYaml) }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.fim.podAnnotations }}
+      annotations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      {{- include "wordpress.imagePullSecrets" . | nindent 6 }}
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      {{- if .Values.fim.affinity }}
+      affinity: {{- include "common.tplvalues.render" (dict "value" .Values.fim.affinity "context" $) | nindent 8 }}
+      {{- else if not (include "wordpress.fim.volumeIsShared" .) }}
+      # The volume is not ReadWriteMany: it can only be mounted on the node it
+      # is attached to, which is where WordPress runs.
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels: {{- include "common.labels.matchLabels" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 18 }}
+      {{- end }}
+      {{- with .Values.fim.nodeSelector }}
+      nodeSelector: {{- include "common.tplvalues.render" (dict "value" . "context" $) | nindent 8 }}
+      {{- end }}
+      {{- with .Values.fim.tolerations }}
+      tolerations: {{- include "common.tplvalues.render" (dict "value" . "context" $) | nindent 8 }}
+      {{- end }}
+      containers:
+        {{- include "wordpress.fim.container" . | nindent 8 }}
+      volumes:
+        - name: wordpress-data
+          persistentVolumeClaim:
+            claimName: {{ .Values.persistence.existingClaim | default (include "common.names.fullname" .) }}
+            readOnly: true
+        {{- include "wordpress.fim.volume" . | nindent 8 }}
+{{- if .Values.networkPolicy.enabled }}
+---
+kind: NetworkPolicy
+apiVersion: {{ include "common.capabilities.networkPolicy.apiVersion" . }}
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ include "common.names.namespace" . | quote }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" .Values.commonLabels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/component: fim
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  podSelector:
+    matchLabels: {{- include "wordpress.fim.matchLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  # The watcher reads a volume and answers scrapes. It opens no connection
+  # of its own, not even to DNS.
+  egress: []
+  ingress:
+    - ports:
+        - port: {{ .Values.fim.port }}
+      {{- if not .Values.networkPolicy.allowExternal }}
+      from:
+        - podSelector:
+            matchLabels:
+              {{ include "common.names.fullname" . }}-client: "true"
+        {{- if .Values.networkPolicy.ingressNSMatchLabels }}
+        - namespaceSelector:
+            matchLabels:
+              {{- range $key, $value := .Values.networkPolicy.ingressNSMatchLabels }}
+              {{ $key | quote }}: {{ $value | quote }}
+              {{- end }}
+          {{- if .Values.networkPolicy.ingressNSPodMatchLabels }}
+          podSelector:
+            matchLabels:
+              {{- range $key, $value := .Values.networkPolicy.ingressNSPodMatchLabels }}
+              {{ $key | quote }}: {{ $value | quote }}
+              {{- end }}
+          {{- end }}
+        {{- end }}
+      {{- end }}
+{{- end }}
+{{- end }}
+{{- if .Values.fim.serviceMonitor.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ default (include "common.names.namespace" .) .Values.fim.serviceMonitor.namespace | quote }}
+  {{- $labels := include "common.tplvalues.merge" ( dict "values" ( list .Values.fim.serviceMonitor.labels .Values.commonLabels ) "context" . ) }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" $labels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/component: fim
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  namespaceSelector:
+    matchNames:
+      - {{ include "common.names.namespace" . | quote }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/instance: {{ .Release.Name }}
+      app.kubernetes.io/component: fim
+  targetLabels:
+    - app
+  endpoints:
+    - port: fim-metrics
+      path: /metrics
+      interval: {{ .Values.fim.serviceMonitor.interval }}
+{{- end }}
+{{- if .Values.fim.prometheusRule.enabled }}
+{{- $selector := printf "namespace=%q,service=%q" (include "common.names.namespace" .) $fullname }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ $fullname }}
+  namespace: {{ default (include "common.names.namespace" .) .Values.fim.prometheusRule.namespace | quote }}
+  {{- $labels := include "common.tplvalues.merge" ( dict "values" ( list .Values.fim.prometheusRule.labels .Values.commonLabels ) "context" . ) }}
+  labels: {{- include "common.labels.standard" ( dict "customLabels" $labels "context" $ ) | nindent 4 }}
+    app.kubernetes.io/component: fim
+  {{- if .Values.commonAnnotations }}
+  annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
+  {{- end }}
+spec:
+  groups:
+    - name: {{ $fullname }}
+      rules:
+        - alert: WpFimViolation
+          expr: wp_fim_violation{ {{- $selector -}} } == 1
+          labels:
+            severity: critical
+          annotations:
+            summary: {{ printf "FIM violation on %s: {{ $labels.path }} ({{ $labels.rule }})" .Release.Name | quote }}
+            description: >-
+              The file-integrity watcher of {{ .Release.Name }} found
+              {{ "{{ $labels.path }}" }} matching rule {{ "{{ $labels.rule }}" }}.
+              Every rule except baseline-modified means a file appeared where
+              none belongs; baseline-modified means a file that must not
+              change did. Isolate the instance and snapshot the volume before
+              cleaning up. If the change was legitimate, add the digest from
+              the sha256 label to fim.baseline.
+        - alert: WpFimWatcherStalled
+          expr: (time() - wp_fim_last_scan_timestamp_seconds{ {{- $selector -}} }) > {{ max 600 (mul 5 (int .Values.fim.interval)) }}
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ printf "The file-integrity watcher of %s has stopped completing scans" .Release.Name | quote }}
+            description: >-
+              The watcher answers, but its last completed scan is too old: a
+              scan hangs, typically on the volume. File-integrity monitoring
+              for {{ .Release.Name }} is blind until it completes again.
+        - alert: WpFimWatcherAbsent
+          expr: absent(wp_fim_last_scan_timestamp_seconds{ {{- $selector -}} })
+          for: 5m
+          labels:
+            severity: warning
+          annotations:
+            summary: {{ printf "The file-integrity watcher of %s is not reporting" .Release.Name | quote }}
+            description: >-
+              No metrics from the watcher (pod down, Service changed or scrape
+              broken). File-integrity monitoring for {{ .Release.Name }} has
+              stopped.
+{{- end }}
+{{- end }}

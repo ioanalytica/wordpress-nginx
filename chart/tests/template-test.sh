@@ -366,6 +366,85 @@ expect "report does not block"           absent  'if ($wp_rest_blocked) { return
 expect "report freezes the decision"     present 'set $wp_rest_reported 1'     --set restApiHardening.mode=report
 expect "extra deny renders a pattern"    present '" 1;'                        --set 'restApiHardening.extraDeniedPaths={~*^/wp-json/wp/v2/comments}'
 
+echo "=== File-integrity watcher renders what it claims"
+# fim_check <desc> <deployment|sidecar> <helm args...>: the structural checks
+# plus check-fim.py - the pinned wp-config.php digest must equal the bytes
+# the init container writes, and the watcher must never sit behind the
+# WordPress Service.
+fim_check() {
+    local desc="$1" mode="$2"; shift 2
+    local out
+    if ! out="$(helm template tst "$CHART" --set fim.enabled=true --set fim.mode="$mode" "$@" 2>&1)"; then
+        echo "FAIL: $desc — helm template failed"
+        printf '%s\n' "$out" | sed 's/^/      /' | tail -5
+        FAILURES=$((FAILURES + 1))
+        return
+    fi
+    if ! printf '%s' "$out" | python3 "$(dirname "$0")/check-manifests.py" "$desc" \
+       || ! printf '%s' "$out" | python3 "$(dirname "$0")/check-fim.py" "$desc" "$mode"; then
+        FAILURES=$((FAILURES + 1))
+        return
+    fi
+    echo "ok:   $desc"
+}
+FIM=(--set fim.enabled=true)
+FIM_ONLY=(--show-only templates/fim.yaml)
+fim_check "own pod"                              deployment
+fim_check "own pod, digest follows idx"          deployment --set idx.enabled=true --set idx.port=3100
+fim_check "own pod, digest follows the cache"    deployment --set wordpressConfigureCache=true --set memcached.enabled=true
+fim_check "own pod, digest follows WP_CACHE"     deployment --set wordpressWpCache=true
+fim_check "own pod with monitoring"              deployment --set fim.serviceMonitor.enabled=true --set fim.prometheusRule.enabled=true
+fim_check "sidecar"                              sidecar
+fim_check "sidecar without persistence"          sidecar --set persistence.enabled=false
+fim_check "sidecar with monitoring"              sidecar --set fim.serviceMonitor.enabled=true --set fim.prometheusRule.enabled=true
+expect "off by default"                          absent  "app.kubernetes.io/component: fim"
+expect "own pod has its own name label"          present "app.kubernetes.io/name: wordpress-nginx-fim" "${FIM[@]}"
+expect "samples get the per-site app label"      present "app: tst-fim" "${FIM[@]}"
+expect "the volume is mounted read-only"         present "readOnly: true" "${FIM[@]}" "${FIM_ONLY[@]}"
+expect "script runs from the chart's image"      present "image: ghcr.io/ioanalytica/wordpress-nginx:" "${FIM[@]}" "${FIM_ONLY[@]}"
+expect "the watcher may open no connection"      present "egress: []" "${FIM[@]}" "${FIM_ONLY[@]}"
+expect "RWO volume pins it next to WordPress"    present "topologyKey: kubernetes.io/hostname" "${FIM[@]}" "${FIM_ONLY[@]}"
+expect "RWX volume needs no affinity"            absent  "topologyKey: kubernetes.io/hostname" "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set persistence.accessMode=ReadWriteMany
+expect "RWX in accessModes counts too"           absent  "topologyKey: kubernetes.io/hostname" "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set 'persistence.accessModes={ReadWriteMany}'
+expect "sidecar opens its port in the policy"    present "- port: 9114" "${FIM[@]}" --set fim.mode=sidecar \
+        --show-only templates/networkpolicy.yaml
+expect "sidecar renders no own pod"              absent  "kind: Deployment" "${FIM[@]}" --set fim.mode=sidecar "${FIM_ONLY[@]}"
+expect "web-root mounts become static paths"     present '"subPath": "site-alt"' "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set-json 'extraVolumeMounts=[{"name":"wordpress-data","mountPath":"/var/www/html/alt","subPath":"site-alt"}]'
+expect "other volumes are not followed"          absent  '"subPath": "site-alt"' "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set-json 'extraVolumeMounts=[{"name":"other","mountPath":"/var/www/html/alt","subPath":"site-alt"}]'
+expect "W3TC drop-ins are accepted with cache"   present '"object-cache.php"' "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set wordpressConfigureCache=true --set memcached.enabled=true
+expect "allowMuPlugins drops the writable dir"   absent  '"wp-content/mu-plugins/"' "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set fim.allowMuPlugins=true
+computed_digest=$(helm template tst "$CHART" "${FIM[@]}" "${FIM_ONLY[@]}" \
+    | grep -A1 '"wp-config.php": \[' | sed -n 's/.*"\([0-9a-f]\{64\}\)".*/\1/p')
+expect "a baseline entry replaces the computed"  absent  "${computed_digest:-no digest computed}" "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set-json 'fim.baseline={"wp-config.php":["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]}'
+expect "digests are lowercased"                  present '"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"' "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set-json 'fim.baseline={"wp-config.php":["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"]}'
+expect "an empty list drops the entry"           absent  '"wp-config.php"' "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set-json 'fim.baseline={"wp-config.php":[]}'
+expect "rules are scoped to this watcher"        present 'service="tst-wordpress-nginx-fim"' "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set fim.prometheusRule.enabled=true
+# Each of these must refuse to render: a value the watcher would silently
+# ignore, or a digest YAML has already turned into a number.
+fim_refuses() {
+    local desc="$1"; shift
+    if helm template tst "$CHART" --set fim.enabled=true "$@" >/dev/null 2>&1; then
+        echo "FAIL: $desc rendered - must fail the render"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   $desc fails the render"
+    fi
+}
+fim_refuses "an unknown fim.mode"                --set fim.mode=daemonset
+fim_refuses "an own pod without persistence"     --set persistence.enabled=false
+fim_refuses "a digest YAML read as a number"     --set-json 'fim.baseline={"salts.php":[1e5]}'
+fim_refuses "a digest of the wrong length"       --set-json 'fim.baseline={"salts.php":["abc"]}'
+
 echo
 if [ "$FAILURES" -gt 0 ]; then
     echo "=== $FAILURES check(s) FAILED"

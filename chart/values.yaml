@@ -1342,6 +1342,185 @@ idx:
     ##
     port: 3000
 
+## @section File-integrity monitoring parameters
+##
+
+## File-integrity watcher (FIM) for the WordPress volume.
+## A small process mounts the site's volume read-only, polls it every
+## fim.interval seconds and exposes its findings as Prometheus metrics:
+##   wp_fim_violation{path,rule}         1 per finding (+ sha256 for baseline-modified)
+##   wp_fim_violations                   number of findings
+##   wp_fim_last_scan_timestamp_seconds  completion time of the last scan
+##   wp_fim_scan_duration_seconds        duration of the last scan
+## It runs PHP from the chart's own wordpress-nginx image, so there is no
+## further image to pin or track.
+##
+## Rules (the value of the `rule` label):
+##   mu-plugins-dir               wp-content/mu-plugins exists (see allowMuPlugins)
+##   root-php                     executable file directly in wp-content/ (see allowedRootPhp)
+##   loose-file-in-component-dir  file directly in plugins/ or themes/ (see allowedComponentRootFiles)
+##   user-ini                     a .user.ini anywhere on the volume
+##   encoded-carrier              .b64, .bak, .suspected, .txt.php, .php.txt
+##   incident-marker              file name contains one of nameMarkers
+##   php-in-writable-dir          executable file below a writableDirs entry
+##   executable-in-static-path    executable or carrier file in a static mount (see below)
+##   baseline-missing / baseline-modified  a baselined file is gone or changed
+##   unreadable                   a directory the watcher cannot list
+##   scan-error                   the scan itself failed
+## A baselined path is judged by its digest only, never by the presence rules.
+##
+## Static mounts: every extraVolumeMounts entry that mounts a subPath of the
+## chart's own volume (`wordpress-data`) below /var/www/html is watched as a
+## static path automatically - its files are served, so nothing executable
+## belongs there. fim.extraPaths adds volume paths that are not mounted.
+##
+fim:
+  ## @param fim.enabled Run the file-integrity watcher
+  ##
+  enabled: false
+  ## @param fim.mode `deployment` runs the watcher in a pod of its own, `sidecar` as a container in the WordPress pod
+  ## The own pod is the recommended form: it shares neither the network
+  ## namespace nor the lifecycle of the workload it watches, so it keeps
+  ## reporting while WordPress is scaled down for an investigation, and a
+  ## compromised WordPress container cannot take over its metrics port.
+  ## It needs the volume on its node: with a ReadWriteOnce volume the pod is
+  ## scheduled next to WordPress (see fim.affinity); ReadWriteOncePod cannot
+  ## be shared at all - use sidecar mode there. Sidecar mode also works
+  ## without persistence.
+  ##
+  mode: deployment
+  ## @param fim.interval Seconds between two scans
+  ##
+  interval: 120
+  ## @param fim.port Metrics port
+  ##
+  port: 9114
+  ## @param fim.allowMuPlugins Accept a wp-content/mu-plugins directory
+  ## With false, the directory itself is a finding and every executable file
+  ## in it is one too.
+  ##
+  allowMuPlugins: false
+  ## @param fim.allowedRootPhp Further executable files accepted directly in wp-content/
+  ## index.php is always accepted; db.php, advanced-cache.php and
+  ## object-cache.php are added with wordpressConfigureCache. Consider
+  ## baselining the drop-ins as well: replacing them is a known persistence
+  ## technique, and a name check alone does not see it.
+  ##
+  allowedRootPhp: []
+  ## @param fim.allowedComponentRootFiles Further files accepted directly in wp-content/plugins/ or wp-content/themes/
+  ## index.php is always accepted. WordPress ships the Hello Dolly plugin as
+  ## the single file plugins/hello.php; add it here or delete the plugin.
+  ##
+  allowedComponentRootFiles: []
+  ## @param fim.writableDirs Further web paths below which an executable file is a finding
+  ## wp-content/uploads/ is always included, and wp-content/mu-plugins/ unless
+  ## allowMuPlugins is set. Give directories with a trailing slash.
+  ## e.g:
+  ## writableDirs:
+  ##   - wp-content/ngg/
+  ##
+  writableDirs: []
+  ## @param fim.nameMarkers Case-insensitive file name fragments that are a finding wherever they appear
+  ## Meant for the indicators of a known toolkit, as a cheap second net next
+  ## to the structural rules.
+  ##
+  nameMarkers: []
+  ## @param fim.ignorePaths Web paths exempt from the presence rules: an exact path, or a prefix ending in `/`
+  ##
+  ignorePaths: []
+  ## @param fim.extraPaths Further volume paths watched as static paths
+  ## e.g:
+  ## extraPaths:
+  ##   - path: idx        # name in the findings
+  ##     subPath: idx     # path on the volume
+  ##
+  extraPaths: []
+  ## @param fim.baseline [object] SHA-256 digests of files that must not change, keyed by web path
+  ## A path may list several accepted digests. wp-config.php is baselined by
+  ## the chart itself: it is generated from this chart's template, so its
+  ## digest is computed at render time and follows every chart upgrade. An
+  ## entry here replaces the computed one, and an empty list removes an
+  ## entry. Quote the digests: one made of digits and a single "e" is a
+  ## number to YAML, and the render refuses it. After a legitimate change,
+  ## take the new digest from the finding's sha256 label.
+  ## e.g:
+  ## baseline:
+  ##   salts.php: [ee9409c0...]
+  ##   nginx.conf: [324b8cdc...]
+  ##   wp-content/index.php: [bd48c24c...]
+  ##   .user.ini: [e3b0c442...]
+  ##
+  baseline: {}
+  ## @param fim.resources Set container requests and limits
+  ##
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+  ## @param fim.containerSecurityContext [object] Security context of the watcher container
+  ## The user and group must be able to read the volume. NFS ignores fsGroup,
+  ## so they have to match the file ownership directly (www-data, 33).
+  ##
+  containerSecurityContext:
+    runAsUser: 33
+    runAsGroup: 33
+    runAsNonRoot: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+  ## @param fim.podLabels Extra labels for the watcher pod (deployment mode)
+  ##
+  podLabels: {}
+  ## @param fim.podAnnotations Annotations for the watcher pod (deployment mode)
+  ##
+  podAnnotations: {}
+  ## @param fim.nodeSelector Node labels for the watcher pod (deployment mode)
+  ##
+  nodeSelector: {}
+  ## @param fim.tolerations Tolerations for the watcher pod (deployment mode)
+  ##
+  tolerations: []
+  ## @param fim.affinity Affinity for the watcher pod (deployment mode)
+  ## Empty: with a volume that is not ReadWriteMany (persistence.accessModes
+  ## or persistence.accessMode), the pod is required to run on the node of a
+  ## WordPress pod, where the volume is attached.
+  ##
+  affinity: {}
+  serviceMonitor:
+    ## @param fim.serviceMonitor.enabled Create a ServiceMonitor for the watcher
+    ## Samples carry an `app` label of `<release>-fim`, copied from the
+    ## Service, so alert rules can tell several watched sites apart.
+    ##
+    enabled: false
+    ## @param fim.serviceMonitor.namespace Namespace of the ServiceMonitor (default: release namespace)
+    ##
+    namespace: ""
+    ## @param fim.serviceMonitor.interval Scrape interval
+    ##
+    interval: 60s
+    ## @param fim.serviceMonitor.labels Extra labels, e.g. for the Prometheus serviceMonitorSelector
+    ##
+    labels: {}
+  prometheusRule:
+    ## @param fim.prometheusRule.enabled Create alert rules for this watcher
+    ## WpFimViolation (critical), WpFimWatcherStalled and WpFimWatcherAbsent
+    ## (warning), scoped to this release. Leave it off where a shared rule set
+    ## already covers the watchers, or every alert fires twice.
+    ##
+    enabled: false
+    ## @param fim.prometheusRule.namespace Namespace of the PrometheusRule (default: release namespace)
+    ##
+    namespace: ""
+    ## @param fim.prometheusRule.labels Extra labels, e.g. for the Prometheus ruleSelector
+    ##
+    labels: {}
+
 ## @section NetworkPolicy parameters
 ##
 
