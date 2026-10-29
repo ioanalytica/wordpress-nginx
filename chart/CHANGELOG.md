@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.4-1
+
+* Update to WordPress 7.1.4. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.
+
 ## 7.1.3-8
 
 * **The `.htaccess` report now names what is actually open, and stops proposing denies that would break a site.** A `deny`-class file is narrowed by what it denies:
