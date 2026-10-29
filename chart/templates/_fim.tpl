@@ -54,9 +54,19 @@ The watcher's configuration, read by files/fim.php on every scan.
 {{- range .Values.fim.extraPaths -}}
 {{- $static = append $static (dict "path" (trimSuffix "/" .path) "subPath" (trimSuffix "/" .subPath)) -}}
 {{- end -}}
-{{- $rootPhp := list "index.php" -}}
-{{- if .Values.wordpressConfigureCache -}}
-{{- $rootPhp = concat $rootPhp (list "db.php" "advanced-cache.php" "object-cache.php") -}}
+{{- /* Drop-ins are checked against the copy their plugin ships, so a
+       plugin update never needs a baseline refreshed. An empty value in
+       fim.dropins removes an entry. */ -}}
+{{- $dropins := dict -}}
+{{- range $name := list "advanced-cache.php" "db.php" "object-cache.php" -}}
+{{- $_ := set $dropins $name (printf "wp-content/plugins/w3-total-cache/wp-content/%s" $name) -}}
+{{- end -}}
+{{- range $name, $source := .Values.fim.dropins -}}
+{{- if $source -}}
+{{- $_ := set $dropins $name (trimPrefix "/" $source) -}}
+{{- else -}}
+{{- $_ := unset $dropins $name -}}
+{{- end -}}
 {{- end -}}
 {{- $writable := list "wp-content/uploads/" -}}
 {{- if not .Values.fim.allowMuPlugins -}}
@@ -86,8 +96,9 @@ The watcher's configuration, read by files/fim.php on every scan.
     "interval" (int .Values.fim.interval)
     "staticMounts" $static
     "allowMuPlugins" .Values.fim.allowMuPlugins
-    "allowedRootPhp" (concat $rootPhp .Values.fim.allowedRootPhp | uniq)
-    "allowedComponentRootFiles" (concat (list "index.php") .Values.fim.allowedComponentRootFiles | uniq)
+    "dropins" $dropins
+    "allowedRootPhp" (.Values.fim.allowedRootPhp | default list | uniq)
+    "allowedComponentRootFiles" (.Values.fim.allowedComponentRootFiles | default list | uniq)
     "writableDirs" (concat $writable .Values.fim.writableDirs | uniq)
     "nameMarkers" .Values.fim.nameMarkers
     "ignorePaths" .Values.fim.ignorePaths

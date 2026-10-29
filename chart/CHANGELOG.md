@@ -1,5 +1,15 @@
 # Changelog
 
+## 7.1.4-4
+
+* **File-integrity monitoring no longer needs baseline maintenance after plugin updates.** Plugins update themselves automatically, and W3 Total Cache rewrites files the watcher checks. Those files are now judged by content, never by a digest that every update would break:
+  * **Drop-ins are checked against the copy their plugin ships.** `advanced-cache.php`, `db.php` and `object-cache.php` in `wp-content/` must equal W3 Total Cache's own copies under `plugins/w3-total-cache/wp-content/`. A drop-in that differs, or whose plugin is gone, is a `dropin-modified` finding with its digest. This replaces the name-only allowance that came with `wordpressConfigureCache` and applies on every site, so a replaced drop-in no longer passes unnoticed. `fim.dropins` points a drop-in at another plugin's copy or removes it from the check.
+  * **`nginx.conf` is checked for its directives.** The file is included into the server block, and W3 Total Cache writes its rules there. A directive that hands requests to a backend, maps other files, loads further configuration or writes a log file (`*_pass`, `fastcgi_*`, `proxy_*`, `alias`, `root`, `include`, `access_log` with a path, Lua/Perl/njs, ...) is an `nginx-conf-directive` finding naming the directives; a file nginx could not parse is one too. W3 Total Cache's rules and hand-written rules such as a `deny` pass. A digest baseline for `nginx.conf` remains possible where no plugin writes into it and replaces the directive check there.
+  * **A placeholder `index.php` is accepted wherever it is one:** empty, or an opening tag with a single comment such as "Silence is golden". Plugins drop these into their upload directories on updates and exports. Elsewhere `index.php` was accepted by name alone; it is now held to the same content check, so code in `wp-content/index.php` or `plugins/index.php` is a finding.
+* `fim.php --scan-once` runs one scan in the foreground and prints its metrics, for a check by hand: `kubectl exec deploy/<release>-wordpress-nginx-fim -- /usr/local/bin/php /fim/fim.php --scan-once`.
+* New `chart/tests/fim-test.sh` runs the watcher against real volume trees - clean W3 Total Cache site, replaced and orphaned drop-ins, nginx.conf directives, placeholders, and every earlier rule. CI now runs the chart tests on chart changes too; until now only changes under `docker/` triggered them.
+* Validated before release against four live sites with the new rules: no new findings on any of them.
+
 ## 7.1.4-3
 
 * The init container now creates the site's `nginx.conf` on the volume only when it is missing. A misspelled file name in the check made it run on every start, touching and re-owning an existing `nginx.conf` and logging "Creating site nginx.conf" each time. Existing files are unaffected: on the sites checked before the release, every `nginx.conf` was already owned by `www-data` with mode 644, and the content was never changed.

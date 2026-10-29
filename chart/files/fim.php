@@ -20,11 +20,20 @@
  *
  * Paths are reported as the web server sees them, relative to the web root:
  * wp-content/..., wp-config.php, or the path of an extra volume mount.
+ *
+ * `php fim.php --scan-once` runs a single scan in the foreground and prints
+ * its metrics, for a check by hand and for the tests. FIM_CONFIG overrides
+ * the configuration path.
+ *
+ * Files that plugins rewrite on their own - on updates, which run
+ * automatically - are judged by content rules, never by a digest that would
+ * break with every update: W3 Total Cache's drop-ins must equal the copies
+ * the installed plugin ships, nginx.conf must not hold directives that run
+ * code or map other files, and an index.php may be a placeholder.
  */
 
 declare(strict_types=1);
 
-const CONFIG_FILE = '/fim/config.json';
 // More series than this and Prometheus pays for a flood of files that one
 // alert already covers. wp_fim_violations keeps the exact count.
 const MAX_SERIES = 1000;
@@ -33,12 +42,26 @@ const EXECUTABLE_EXT = ['.php', '.php3', '.php4', '.php5', '.php7', '.php8',
 // Payload carriers: base64 has no code markers and no .php extension, so
 // both a content scan and an extension filter miss it.
 const CARRIER_EXT = ['.b64', '.bak', '.suspected', '.txt.php', '.php.txt'];
+// The "Silence is golden" index.php plugins drop into their directories:
+// empty, or an opening tag and one comment. The comment may not hold "?",
+// "<", ">" or ";", so nothing can follow it as code.
+const PLACEHOLDER = '~^(?:<\?php)?\s*(?://[ \w.,!-]*|#[ \w.,!-]*|/\*[ \w.,!*-]*\*/)?\s*(?:\?>)?\s*$~';
+// nginx.conf is included into the server block. Directives that hand
+// requests to a backend, map URIs to other files, pull in further
+// configuration or run scripts do not belong in a site's rules. W3 Total
+// Cache writes none of them: location, if, set, rewrite, add_header,
+// expires, try_files, gzip, deny and the like.
+const NGINX_DENIED = '/^(?:\w+_pass|fastcgi_\w+|proxy_\w+|uwsgi_\w+|scgi_\w+|grpc_\w+|memcached_\w+'
+    . '|alias|root|include|load_module|autoindex\w*|\w*_by_lua\w*|lua_\w+|perl\w*|js_\w+|ssi\w*'
+    . '|dav_\w+|create_full_put_path|client_body_temp_path|xslt_\w+|image_filter\w*|mirror\w*'
+    . '|auth_request\w*|sub_filter\w*|add_before_body|add_after_body|addition_types|error_log)$/';
 
 function load_config(): array
 {
-    $raw = @file_get_contents(CONFIG_FILE);
+    $file = getenv('FIM_CONFIG') ?: '/fim/config.json';
+    $raw = @file_get_contents($file);
     if ($raw === false) {
-        throw new RuntimeException('cannot read ' . CONFIG_FILE);
+        throw new RuntimeException('cannot read ' . $file);
     }
     return json_decode($raw, true, 64, JSON_THROW_ON_ERROR);
 }
@@ -63,9 +86,98 @@ function has_marker(string $name, array $markers): bool
     return false;
 }
 
+/**
+ * The statements of an nginx configuration as [name, args...], read the way
+ * nginx reads them: "#" starts a comment where a token starts, quotes and
+ * backslashes escape, "${var}" stays inside its word. null when the text
+ * cannot be parsed - nginx would not load it either.
+ *
+ * @return list<list<string>>|null
+ */
+function nginx_statements(string $conf): ?array
+{
+    $stmts = [];
+    $cur = [];
+    $depth = 0;
+    $n = strlen($conf);
+    $i = 0;
+    while ($i < $n) {
+        $c = $conf[$i];
+        if (ctype_space($c)) {
+            $i++;
+        } elseif ($c === '#') {
+            $eol = strpos($conf, "\n", $i);
+            $i = $eol === false ? $n : $eol;
+        } elseif ($c === ';' || $c === '{') {
+            if (!$cur) {
+                return null;
+            }
+            $stmts[] = $cur;
+            $cur = [];
+            $depth += $c === '{' ? 1 : 0;
+            $i++;
+        } elseif ($c === '}') {
+            if ($cur || --$depth < 0) {
+                return null;
+            }
+            $i++;
+        } elseif ($c === '"' || $c === "'") {
+            $tok = '';
+            for ($j = $i + 1; $j < $n && $conf[$j] !== $c; $j++) {
+                if ($conf[$j] === '\\' && $j + 1 < $n) {
+                    $j++;
+                }
+                $tok .= $conf[$j];
+            }
+            if ($j >= $n) {
+                return null;
+            }
+            $cur[] = $tok;
+            $i = $j + 1;
+        } else {
+            $tok = '';
+            for ($j = $i; $j < $n && !ctype_space($conf[$j]) && !in_array($conf[$j], [';', '{', '}'], true); $j++) {
+                if ($conf[$j] === '\\' && $j + 1 < $n) {
+                    $tok .= $conf[$j++];
+                } elseif ($conf[$j] === '$' && ($conf[$j + 1] ?? '') === '{') {
+                    $close = strpos($conf, '}', $j);
+                    if ($close === false) {
+                        return null;
+                    }
+                    $tok .= substr($conf, $j, $close - $j);
+                    $j = $close;
+                }
+                $tok .= $conf[$j];
+            }
+            $cur[] = $tok;
+            $i = $j;
+        }
+    }
+    return ($cur || $depth !== 0) ? null : $stmts;
+}
+
+/** Directives of an nginx configuration that have no place in a site's rules. */
+function nginx_denied_directives(string $conf): array
+{
+    $stmts = nginx_statements($conf);
+    if ($stmts === null) {
+        return ['<unparsable>'];
+    }
+    $denied = [];
+    foreach ($stmts as $s) {
+        $name = strtolower($s[0]);
+        // access_log off is what W3TC writes; a log path could plant a file.
+        if (preg_match(NGINX_DENIED, $name) || ($name === 'access_log' && ($s[1] ?? '') !== 'off')) {
+            $denied[$name] = true;
+        }
+    }
+    ksort($denied);
+    return array_keys($denied);
+}
+
 final class Scan
 {
-    /** @var array<string, array{rule: string, sha256?: string}> */
+    /** @var array<string, array<string, string>> path => ['rule' => ..., further labels] */
     public array $violations = [];
     private string $root;
     private string $core;
@@ -83,7 +195,7 @@ final class Scan
     }
 
     /** Presence rules skip baselined paths: those are judged by their digest. */
-    private function flag(string $rel, string $rule): void
+    private function flag(string $rel, string $rule, array $labels = []): void
     {
         if (isset($this->baseline[$rel])) {
             return;
@@ -93,7 +205,7 @@ final class Scan
                 return;
             }
         }
-        $this->violations[$rel] = ['rule' => $rule];
+        $this->violations[$rel] = ['rule' => $rule] + $labels;
     }
 
     /** null for a directory that does not exist, false for one that cannot be read. */
@@ -114,12 +226,26 @@ final class Scan
         return $st !== false && ($st['mode'] & 0170000) === 0040000;
     }
 
+    /** An index.php that is a regular file holding nothing but a placeholder. */
+    private static function is_placeholder(string $low, string $abs): bool
+    {
+        if ($low !== 'index.php') {
+            return false;
+        }
+        $st = @lstat($abs);
+        if ($st === false || ($st['mode'] & 0170000) !== 0100000 || $st['size'] > 128) {
+            return false;
+        }
+        $content = @file_get_contents($abs);
+        return $content !== false && preg_match(PLACEHOLDER, $content) === 1;
+    }
+
     /**
      * Walk a tree without following symlinks. A directory that cannot be read
      * is a finding of its own: a directory its owner made unreadable would
      * otherwise hide everything below it.
      *
-     * @return iterable<array{0: string, 1: string}> [relative path, lowercased name]
+     * @return iterable<array{0: string, 1: string, 2: string}> [relative path, lowercased name, absolute path]
      */
     private function walk(string $abs, string $rel): iterable
     {
@@ -140,7 +266,7 @@ final class Scan
                 if (self::is_real_dir($p)) {
                     $stack[] = [$p, $r];
                 } else {
-                    yield [$r, strtolower($name)];
+                    yield [$r, strtolower($name), $p];
                 }
             }
         }
@@ -154,15 +280,29 @@ final class Scan
             $this->flag('wp-content/mu-plugins', 'mu-plugins-dir');
         }
 
+        // Drop-ins are copies of files their plugin ships. One that differs
+        // from the installed plugin's copy - or whose plugin is gone - was
+        // not written by that plugin. Plugin updates refresh both, so this
+        // needs no digest to maintain.
+        $dropins = $this->cfg['dropins'] ?? [];
+        foreach ($dropins as $name => $source) {
+            $have = @hash_file('sha256', $wc . '/' . $name);
+            if ($have !== false && $have !== @hash_file('sha256', $this->core . '/' . $source)) {
+                $this->flag('wp-content/' . $name, 'dropin-modified', ['sha256' => $have]);
+            }
+        }
+
         $names = $this->entries($wc);
         if ($names === false || $names === null) {
             $this->flag('wp-content', 'unreadable');
         } else {
             $allowed = $this->cfg['allowedRootPhp'];
             foreach ($names as $name) {
-                if (!in_array($name, $allowed, true)
-                    && ends_with_any(strtolower($name), EXECUTABLE_EXT)
-                    && !self::is_real_dir($wc . '/' . $name)) {
+                $p = $wc . '/' . $name;
+                $low = strtolower($name);
+                if (!in_array($name, $allowed, true) && !isset($dropins[$name])
+                    && ends_with_any($low, EXECUTABLE_EXT)
+                    && !self::is_real_dir($p) && !self::is_placeholder($low, $p)) {
                     $this->flag('wp-content/' . $name, 'root-php');
                 }
             }
@@ -179,21 +319,23 @@ final class Scan
                 continue;
             }
             foreach ($names ?? [] as $name) {
-                if (!in_array($name, $allowed, true) && !self::is_real_dir($wc . '/' . $comp . '/' . $name)) {
+                $p = $wc . '/' . $comp . '/' . $name;
+                if (!in_array($name, $allowed, true) && !self::is_real_dir($p)
+                    && !self::is_placeholder(strtolower($name), $p)) {
                     $this->flag('wp-content/' . $comp . '/' . $name, 'loose-file-in-component-dir');
                 }
             }
         }
 
         $writable = $this->cfg['writableDirs'];
-        foreach ($this->walk($this->core, '') as [$rel, $low]) {
+        foreach ($this->walk($this->core, '') as [$rel, $low, $abs]) {
             if ($low === '.user.ini') {
                 $this->flag($rel, 'user-ini');
             } elseif (ends_with_any($low, CARRIER_EXT)) {
                 $this->flag($rel, 'encoded-carrier');
             } elseif (has_marker($low, $this->markers)) {
                 $this->flag($rel, 'incident-marker');
-            } elseif (ends_with_any($low, EXECUTABLE_EXT)) {
+            } elseif (ends_with_any($low, EXECUTABLE_EXT) && !self::is_placeholder($low, $abs)) {
                 foreach ($writable as $w) {
                     if (str_starts_with($rel, $w)) {
                         $this->flag($rel, 'php-in-writable-dir');
@@ -203,6 +345,11 @@ final class Scan
             }
         }
 
+        $conf = @file_get_contents($this->core . '/nginx.conf');
+        if ($conf !== false && ($denied = nginx_denied_directives($conf))) {
+            $this->flag('nginx.conf', 'nginx-conf-directive', ['directive' => implode(',', $denied)]);
+        }
+
         // Further paths of the volume that are mounted into the web root.
         // They hold static content; anything executable there would be served.
         foreach ($this->cfg['staticMounts'] as $m) {
@@ -210,14 +357,15 @@ final class Scan
             if (self::is_real_dir($abs)) {
                 $files = $this->walk($abs, $m['path']);
             } elseif (file_exists($abs) || is_link($abs)) {
-                $files = [[$m['path'], strtolower(basename($m['path']))]];
+                $files = [[$m['path'], strtolower(basename($m['path'])), $abs]];
             } else {
                 continue;
             }
-            foreach ($files as [$rel, $low]) {
+            foreach ($files as [$rel, $low, $p]) {
                 if ($low === '.user.ini') {
                     $this->flag($rel, 'user-ini');
-                } elseif (ends_with_any($low, EXECUTABLE_EXT) || ends_with_any($low, CARRIER_EXT)) {
+                } elseif ((ends_with_any($low, EXECUTABLE_EXT) && !self::is_placeholder($low, $p))
+                          || ends_with_any($low, CARRIER_EXT)) {
                     $this->flag($rel, 'executable-in-static-path');
                 } elseif (has_marker($low, $this->markers)) {
                     $this->flag($rel, 'incident-marker');
@@ -298,8 +446,13 @@ function render_metrics(array $state): string
         '# TYPE wp_fim_violation gauge',
     ];
     foreach (array_slice($v, 0, MAX_SERIES, true) as $path => $f) {
-        $extra = isset($f['sha256']) ? sprintf(',sha256="%s"', label($f['sha256'])) : '';
-        $out[] = sprintf('wp_fim_violation{path="%s",rule="%s"%s} 1', label((string) $path), label($f['rule']), $extra);
+        $labels = sprintf('path="%s",rule="%s"', label((string) $path), label($f['rule']));
+        unset($f['rule']);
+        ksort($f);
+        foreach ($f as $k => $val) {
+            $labels .= sprintf(',%s="%s"', $k, label((string) $val));
+        }
+        $out[] = 'wp_fim_violation{' . $labels . '} 1';
     }
     array_push(
         $out,
@@ -339,6 +492,18 @@ function serve($conn, array $state): void
     }
     @fwrite($conn, $head . 'Content-Length: ' . strlen($body) . "\r\nConnection: close\r\n\r\n" . $body);
     fclose($conn);
+}
+
+if (in_array('--scan-once', $argv ?? [], true)) {
+    $start = microtime(true);
+    $scan = new Scan(load_config());
+    $scan->run();
+    echo render_metrics([
+        'violations' => $scan->violations,
+        'last_scan' => microtime(true),
+        'duration' => microtime(true) - $start,
+    ]);
+    exit(0);
 }
 
 // PID 1 ignores signals it has no handler for; without these the pod would

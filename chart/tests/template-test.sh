@@ -441,8 +441,18 @@ expect "web-root mounts become static paths"     present '"subPath": "site-alt"'
         --set-json 'extraVolumeMounts=[{"name":"wordpress-data","mountPath":"/var/www/html/alt","subPath":"site-alt"}]'
 expect "other volumes are not followed"          absent  '"subPath": "site-alt"' "${FIM[@]}" "${FIM_ONLY[@]}" \
         --set-json 'extraVolumeMounts=[{"name":"other","mountPath":"/var/www/html/alt","subPath":"site-alt"}]'
-expect "W3TC drop-ins are accepted with cache"   present '"object-cache.php"' "${FIM[@]}" "${FIM_ONLY[@]}" \
+# Drop-ins are checked against W3TC's own copies on every site, never
+# accepted by name: a name allowance is exactly what replaced drop-ins hide
+# behind, and a digest would break with every automatic W3TC update.
+expect "drop-ins are checked against W3TC"       present '"object-cache.php": "wp-content/plugins/w3-total-cache/wp-content/object-cache.php"' \
+        "${FIM[@]}" "${FIM_ONLY[@]}"
+expect "drop-ins are not accepted by name"       absent  '"advanced-cache.php",' "${FIM[@]}" "${FIM_ONLY[@]}" \
         --set wordpressConfigureCache=true --set memcached.enabled=true
+expect "a drop-in can point at another plugin"   present '"object-cache.php": "wp-content/plugins/redis-cache/includes/object-cache.php"' \
+        "${FIM[@]}" "${FIM_ONLY[@]}" --set-json 'fim.dropins={"object-cache.php":"/wp-content/plugins/redis-cache/includes/object-cache.php"}'
+expect "an empty value removes a drop-in"        absent  '"db.php"' "${FIM[@]}" "${FIM_ONLY[@]}" \
+        --set-json 'fim.dropins={"db.php":""}'
+expect "index.php is judged by content, not name" absent '"index.php"' "${FIM[@]}" "${FIM_ONLY[@]}"
 expect "allowMuPlugins drops the writable dir"   absent  '"wp-content/mu-plugins/"' "${FIM[@]}" "${FIM_ONLY[@]}" \
         --set fim.allowMuPlugins=true
 computed_digest=$(helm template tst "$CHART" "${FIM[@]}" "${FIM_ONLY[@]}" \

@@ -6,10 +6,12 @@ on:
       - develop
     paths:
       - 'docker/**'
+      - 'chart/**'
       - '.github/workflows/docker-test.yml'
   pull_request:
     paths:
       - 'docker/**'
+      - 'chart/**'
       - '.github/workflows/docker-test.yml'
 
 jobs:
@@ -58,3 +60,6 @@ jobs:
 
       - name: Run .htaccess classifier test
         run: ./docker/tests/htaccess-test.sh
+
+      - name: Run file-integrity watcher test
+        run: ./chart/tests/fim-test.sh

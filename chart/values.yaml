@@ -1364,10 +1364,20 @@ idx:
 ##   incident-marker              file name contains one of nameMarkers
 ##   php-in-writable-dir          executable file below a writableDirs entry
 ##   executable-in-static-path    executable or carrier file in a static mount (see below)
+##   dropin-modified              a drop-in differs from the copy its plugin ships (see dropins)
+##   nginx-conf-directive         nginx.conf holds a directive that runs code, maps other
+##                                files or loads further configuration (`directive` label)
 ##   baseline-missing / baseline-modified  a baselined file is gone or changed
 ##   unreadable                   a directory the watcher cannot list
 ##   scan-error                   the scan itself failed
 ## A baselined path is judged by its digest only, never by the presence rules.
+##
+## Files that plugins rewrite on their own - and plugin updates run
+## automatically - are judged by content, so no update ever needs a baseline
+## refreshed: drop-ins against their plugin's copy, nginx.conf by the
+## directives it holds (W3 Total Cache writes its rules there), and an
+## index.php is accepted wherever it is a placeholder - empty, or an opening
+## tag and one comment such as "Silence is golden".
 ##
 ## Static mounts: every extraVolumeMounts entry that mounts a subPath of the
 ## chart's own volume (`wordpress-data`) below /var/www/html is watched as a
@@ -1400,18 +1410,30 @@ fim:
   ## in it is one too.
   ##
   allowMuPlugins: false
-  ## @param fim.allowedRootPhp Further executable files accepted directly in wp-content/
-  ## index.php is always accepted; db.php, advanced-cache.php and
-  ## object-cache.php are added with wordpressConfigureCache. Consider
-  ## baselining the drop-ins as well: replacing them is a known persistence
-  ## technique, and a name check alone does not see it.
+  ## @param fim.allowedRootPhp Further executable files accepted directly in wp-content/, by name alone
+  ## A placeholder index.php and the drop-ins (see dropins) are accepted
+  ## by content and need no entry here.
   ##
   allowedRootPhp: []
-  ## @param fim.allowedComponentRootFiles Further files accepted directly in wp-content/plugins/ or wp-content/themes/
-  ## index.php is always accepted. WordPress ships the Hello Dolly plugin as
-  ## the single file plugins/hello.php; add it here or delete the plugin.
+  ## @param fim.allowedComponentRootFiles Further files accepted directly in wp-content/plugins/ or wp-content/themes/, by name alone
+  ## A placeholder index.php needs no entry. A single-file plugin such as
+  ## Hello Dolly (plugins/hello.php) does - or a baseline entry, which also
+  ## pins its content.
   ##
   allowedComponentRootFiles: []
+  ## @param fim.dropins [object] Drop-ins in wp-content/ and the plugin file each must equal, keyed by drop-in name
+  ## Defaults to W3 Total Cache's advanced-cache.php, db.php and
+  ## object-cache.php, each compared with the copy under
+  ## wp-content/plugins/w3-total-cache/wp-content/. A drop-in that differs,
+  ## or whose plugin is gone, is a finding - replacing drop-ins is a known
+  ## persistence technique. Entries here are merged over the defaults; an
+  ## empty value removes one. For another cache plugin, point the drop-in at
+  ## that plugin's copy.
+  ## e.g:
+  ## dropins:
+  ##   object-cache.php: wp-content/plugins/redis-cache/includes/object-cache.php
+  ##
+  dropins: {}
   ## @param fim.writableDirs Further web paths below which an executable file is a finding
   ## wp-content/uploads/ is always included, and wp-content/mu-plugins/ unless
   ## allowMuPlugins is set. Give directories with a trailing slash.
@@ -1443,10 +1465,12 @@ fim:
   ## entry. Quote the digests: one made of digits and a single "e" is a
   ## number to YAML, and the render refuses it. After a legitimate change,
   ## take the new digest from the finding's sha256 label.
+  ## Baseline only what nothing rewrites on its own. nginx.conf qualifies
+  ## where no plugin writes rules into it; a digest there is stricter than
+  ## the directive check, which it then replaces.
   ## e.g:
   ## baseline:
   ##   salts.php: [ee9409c0...]
-  ##   nginx.conf: [324b8cdc...]
   ##   wp-content/index.php: [bd48c24c...]
   ##   .user.ini: [e3b0c442...]
   ##

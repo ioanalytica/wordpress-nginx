@@ -739,7 +739,6 @@ fim:
   nameMarkers: [requestentry] # indicators of a known toolkit
   baseline:                   # quote the digests
     salts.php: ["ee9409c0..."]
-    nginx.conf: ["324b8cdc..."]
   serviceMonitor:
     enabled: true
   prometheusRule:
@@ -750,9 +749,17 @@ What it reports, structurally rather than by known file names: a
 `mu-plugins` directory, executable files directly in `wp-content/`, loose files
 directly in `plugins/` or `themes/`, executable files in `uploads/`, `.user.ini`
 files, encoded payload carriers (`.b64`, `.bak`, ...), unreadable directories,
-and changes to baselined files. Each finding names its rule in the `rule` label;
-`values.yaml` lists them all.
+drop-ins that differ from their plugin's copy, directives in `nginx.conf` that
+run code or map other files, and changes to baselined files. Each finding names
+its rule in the `rule` label; `values.yaml` lists them all.
 
+- **Plugin updates need no baseline maintenance.** Plugins update themselves,
+  and some rewrite files the watcher checks. Those files are judged by content
+  instead of a digest: W3 Total Cache's drop-ins must equal the copies the
+  installed plugin ships (`fim.dropins`), `nginx.conf` - where W3 Total Cache
+  writes its rules - must not hold directives such as `fastcgi_pass`, `alias`
+  or `include`, and an `index.php` is accepted wherever it is a placeholder
+  ("Silence is golden"). Baseline only files nothing rewrites on its own.
 - **wp-config.php is baselined automatically.** The chart generates it, so the
   digest is computed at render time and follows every chart upgrade without
   manual re-baselining.
@@ -762,7 +769,8 @@ and changes to baselined files. Each finding names its rule in the `rule` label;
 - **Re-baselining after a legitimate change:** a `baseline-modified` finding
   carries the digest it found in its `sha256` label. The watcher re-reads its
   configuration on every scan, so a values change takes effect without a
-  restart.
+  restart. To scan by hand, run
+  `kubectl exec deploy/<release>-wordpress-nginx-fim -- /usr/local/bin/php /fim/fim.php --scan-once`.
 - **Own pod or sidecar:** the own pod shares neither the network namespace nor
   the lifecycle of WordPress. It keeps reporting while WordPress is scaled down
   for an investigation, and a compromised WordPress container cannot take over
