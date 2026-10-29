@@ -20,7 +20,7 @@ RUN sed -i 's/#\(.*\/community\)/\1/' /etc/apk/repositories
 ARG APK_REFRESH
 RUN apk update && apk upgrade --no-cache && rm -rf /var/cache/apk/*
 
-ENV WP_VERSION=7.1.3
+ENV WP_VERSION=7.1.4
 
 # Links the GHCR package to this repository.
 LABEL org.opencontainers.image.source="https://github.com/ioanalytica/wordpress-nginx"
