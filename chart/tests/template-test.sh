@@ -269,6 +269,32 @@ expect "still installs without autoUpdate" present 'wp plugin install "$package"
         "${IDX[@]}" --set idx.pluginAutoUpdate=false
 check "idx alone renders the postinit ConfigMap" "${IDX[@]}" --set-json 'wordpressPreinstallPlugins=[]'
 
+echo "=== Init script creates only what is missing"
+# Every "if [ ! -f|-d /wordpress/PATH ]" guard on the volume must test the
+# path its block creates. A misspelled guard (ngingx.conf until 7.1.4-3) is
+# always true: the block then runs on every start against a file that
+# exists, and nothing says so.
+guards=$(helm template tst "$CHART" | python3 -c '
+import re, sys, yaml
+for d in yaml.safe_load_all(sys.stdin):
+    if not d or d.get("kind") != "Deployment":
+        continue
+    for c in d["spec"]["template"]["spec"].get("initContainers") or []:
+        if c["name"] != "prepare-base-dir":
+            continue
+        script = c["args"][-1]
+        blocks = re.findall(r"if \[ ! -[fd] (/wordpress/\S+) \]; then\n(.*?)\n\s*fi\n", script, re.S)
+        bad = [p for p, body in blocks if p not in body]
+        print(len(blocks), " ".join(bad))
+')
+read -r n_guards bad_guards <<<"$guards"
+if [ "${n_guards:-0}" -ge 3 ] && [ -z "$bad_guards" ]; then
+    echo "ok:   all $n_guards create-if-missing guards test the path they create"
+else
+    echo "FAIL: create-if-missing guards (found ${n_guards:-0}) test a path their block never creates: ${bad_guards:-none found}"
+    FAILURES=$((FAILURES + 1))
+fi
+
 echo "=== wp-config site URL falls back sanely without a request"
 expect "requests keep using HTTP_HOST"       present "isset(\$_SERVER['HTTP_HOST'])"
 expect "CLI falls back to the canonical host" present "getenv_docker('WORDPRESS_HOSTNAME', '')"

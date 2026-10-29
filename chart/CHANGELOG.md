@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.1.4-3
+
+* The init container now creates the site's `nginx.conf` on the volume only when it is missing. A misspelled file name in the check made it run on every start, touching and re-owning an existing `nginx.conf` and logging "Creating site nginx.conf" each time. Existing files are unaffected: on the sites checked before the release, every `nginx.conf` was already owned by `www-data` with mode 644, and the content was never changed.
+* The template test now checks that every create-if-missing guard in the init script tests the path its block creates.
+
 ## 7.1.4-2
 
 * **New: file-integrity monitoring as a chart feature (`fim.enabled`, off by default).** A watcher mounts the site's volume read-only, polls it every `fim.interval` seconds and exports its findings as Prometheus metrics. The metric names and rule names match the per-site watchers that ran beside the chart until now, so existing alert rules keep working; the Service carries `app: <release>-fim`, which an optional ServiceMonitor copies onto the samples.

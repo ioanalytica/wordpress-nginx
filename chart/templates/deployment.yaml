@@ -144,7 +144,7 @@ spec:
                 chown www-data:www-data /wordpress/wp-content
               fi
 
-              if [ ! -f /wordpress/ngingx.conf ]; then
+              if [ ! -f /wordpress/nginx.conf ]; then
                 echo "Creating site nginx.conf on mounted volume …"
                 touch /wordpress/nginx.conf
                 chown www-data:www-data /wordpress/nginx.conf
