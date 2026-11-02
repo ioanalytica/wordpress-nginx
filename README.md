@@ -10,11 +10,14 @@ Deploys WordPress with NGINX on Kubernetes. Supports Memcached, Redis, and Drago
 
 ```bash
 helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx \
+  --devel \
   --set externalDatabase.host=mydb.example.com \
   --set externalDatabase.password=secret \
   --set ingress.enabled=true \
   --set ingress.hostname=blog.example.com
 ```
+
+`--devel` is required as long as no `--version` is given: chart versions carry a build suffix (`7.1.4-5`), which Helm treats as a pre-release (see [Chart versions](chart/README.md#chart-versions)).
 
 See [chart/README.md](chart/README.md) for full documentation and values reference.
 

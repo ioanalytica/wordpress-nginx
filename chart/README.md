@@ -19,22 +19,37 @@ A production-ready Helm chart for deploying WordPress with NGINX on Kubernetes. 
 ## Prerequisites
 
 - Kubernetes 1.19+
-- Helm 3.2+
+- Helm 3.8+ (OCI registry support)
 - PV provisioner support in the underlying infrastructure (if persistence is enabled)
 
 ## Quick Start
 
-```bash
-helm repo add ioanalytica oci://ghcr.io/ioanalytica/charts
+The chart is published to an OCI registry. Helm installs from it directly; there is no `helm repo add` step:
 
-helm install my-wordpress ioanalytica/wordpress-nginx
+```bash
+helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx --devel
 ```
 
-Or install from local source:
+Or install from local source. The `common` subchart is not checked in, so fetch it first:
 
 ```bash
+helm dependency build ./chart
 helm install my-wordpress ./chart
 ```
+
+### Chart versions
+
+The chart version follows the WordPress release it ships, plus a build number: `7.1.4-5` is the fifth chart release on WordPress 7.1.4. The chart version is also the image tag. SemVer reads the `-5` suffix as a pre-release, so:
+
+- Without `--version`, Helm only considers stable releases and finds none. Pass `--devel` to get the newest release, or pin one explicitly (recommended for production):
+
+  ```bash
+  helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx --version 7.1.4-5
+  ```
+
+- Version ranges such as `7.1.x` or `>=7.1.0` exclude pre-releases. Flux, Argo CD and Renovate users should pin exact versions or add a pre-release to the range (for example `>=7.1.0-0`).
+
+The available versions are listed in the [CHANGELOG](CHANGELOG.md).
 
 ## Configuration
 
