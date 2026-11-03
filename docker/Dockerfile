@@ -81,14 +81,17 @@ RUN sed -i -e 's|:="mailpit"|:=""|' -e 's|:="1025"|:=""|' /usr/local/etc/.env \
 # msmtp's default tls_starttls=on means STARTTLS (port 587). Implicit-TLS
 # submission (smtps, port 465) additionally needs --tls-starttls=off, which
 # the wrapper has no variable for - so teach it SMTP_STARTTLS in the same
-# style as its other options, right after the SMTP_TLS line it extends.
+# style as its other options. It goes in right before the final exec line:
+# that line has outlived rewrites of the option blocks above it (the
+# SMTP_TLS one-liner became an if/elif block), and every option is set by
+# then, so --tls-starttls lands after the wrapper's own --tls.
 # The grep guards the insertion: if the base image rewrites the wrapper and
 # the sed anchor no longer matches, the build fails here instead of silently
 # shipping an image where smtpProtocol=ssl configures nothing.
 # SC2016: the single quotes are the point - sed must see the literal $
 # of the wrapper's own variables, not a build-time expansion.
 # hadolint ignore=SC2016
-RUN sed -i 's|^\[ -n "$SMTP_TLS" \].*|&\n[ -n "$SMTP_STARTTLS" ] \&\& options="$options --tls-starttls=$SMTP_STARTTLS"|' /usr/local/utils/sendmail \
+RUN sed -i 's|^exec msmtp $options "$@"$|[ -n "$SMTP_STARTTLS" ] \&\& options="$options --tls-starttls=$SMTP_STARTTLS"\n&|' /usr/local/utils/sendmail \
  && grep -qF -- '--tls-starttls=$SMTP_STARTTLS' /usr/local/utils/sendmail \
  && bash -n /usr/local/utils/sendmail
 
