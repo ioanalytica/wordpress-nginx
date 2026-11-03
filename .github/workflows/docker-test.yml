@@ -3,7 +3,7 @@ name: Docker image smoke test
 on:
   push:
     branches:
-      - develop
+      - main
     paths:
       - 'docker/**'
       - 'chart/**'

@@ -11,7 +11,7 @@ description: >-
   Dragonfly (Redis/Memcached) caching, and an optional FlexSearch sidecar
   (wordpress-idx) for full-text search.
 home: https://github.com/ioanalytica/wordpress-nginx
-icon: https://raw.githubusercontent.com/ioanalytica/wordpress-nginx/develop/icon.png
+icon: https://raw.githubusercontent.com/ioanalytica/wordpress-nginx/main/icon.png
 sources:
 - https://github.com/ioanalytica/wordpress-nginx
 

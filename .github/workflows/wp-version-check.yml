@@ -99,7 +99,7 @@ jobs:
         uses: peter-evans/create-pull-request@v7
         with:
           branch: wp-bump/${{ steps.wp.outputs.latest }}
-          base: develop
+          base: main
           # Bot-authored PRs only reach the watching inbox, where they get buried;
           # a review request lands in the participating inbox and triggers email.
           reviewers: ioanalytica
