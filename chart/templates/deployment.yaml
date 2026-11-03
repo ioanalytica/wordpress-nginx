@@ -638,11 +638,14 @@ spec:
                   key: smtp-password
             {{- end }}
             {{- if .Values.smtpProtocol }}
-            {{- if not (has .Values.smtpProtocol (list "tls" "ssl")) }}
-            {{- fail (printf "smtpProtocol: %q - must be \"tls\" (STARTTLS, usually port 587), \"ssl\" (implicit TLS, port 465) or empty (unencrypted)" .Values.smtpProtocol) }}
+            {{- if not (has .Values.smtpProtocol (list "tls" "ssl" "none")) }}
+            {{- fail (printf "smtpProtocol: %q - must be \"tls\" (STARTTLS, usually port 587), \"ssl\" (implicit TLS, port 465), \"none\" (unencrypted, even with credentials) or empty (unencrypted without credentials, STARTTLS with them)" .Values.smtpProtocol) }}
             {{- end }}
+            # Unset, the image's wrapper switches TLS on as soon as a user or
+            # password is set; "none" is the explicit opt-out for relays that
+            # authenticate but offer no TLS.
             - name: SMTP_TLS
-              value: "on"
+              value: {{ ternary "off" "on" (eq .Values.smtpProtocol "none") | quote }}
             {{- if eq .Values.smtpProtocol "ssl" }}
             # msmtp defaults to upgrading via STARTTLS; implicit TLS (smtps)
             # expects the handshake from the first byte instead.

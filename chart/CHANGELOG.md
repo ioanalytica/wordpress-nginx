@@ -1,5 +1,14 @@
 # Changelog
 
+## 7.1.4-6
+
+* **SMTP credentials are no longer sent unencrypted by default.** The base image's sendmail wrapper now switches TLS (STARTTLS) on as soon as a user or password is set and `SMTP_TLS` is not. With `smtpProtocol: ""` the chart sets no `SMTP_TLS`, so a site that sets `smtpUser` or a password now negotiates STARTTLS where it used to send in the clear. Without credentials, `""` stays unencrypted. Sites with `smtpProtocol: tls` or `ssl` are unaffected.
+  * New `smtpProtocol: none` keeps a connection unencrypted even with credentials (`SMTP_TLS=off`), for internal relays that authenticate but offer no TLS. Set it only where the relay cannot do STARTTLS; otherwise sending fails once this version is deployed.
+  * The template test checks the `SMTP_TLS` value per protocol; the smoke test pins the wrapper's TLS default with and without credentials.
+* Image hardening: rebuilt on the current base image and Alpine 3.24 packages (ImageMagick 7.1.2.35, libexpat 2.10.0). Still PHP **8.4.27**, the current 8.4 release. The base reshaped its sendmail wrapper; the `SMTP_STARTTLS` option the image adds for `smtpProtocol: ssl` is now inserted before the wrapper's final exec line, so implicit TLS keeps working.
+* The install commands in both READMEs work again: install straight from the OCI reference (Helm cannot `repo add` an OCI registry) with `--devel` or an explicit `--version`, since chart versions are SemVer pre-releases. A new "Chart versions" section explains the scheme.
+* The repository moved to a single `main` branch; the chart icon URL now points at it.
+
 ## 7.1.4-5
 
 * **Every release now gets its own W3 Total Cache key space.** W3 Total Cache starts every cache key with `common.instance_id`, an id it draws once at activation and stores in `wp-content/w3tc-config/master.php`. A site set up as a copy of another one carries the original's id along, and on a shared cache server the two then share keys: WP-CLI calls without `--url`, loopback and pod-IP requests, and every flush, whose version counters carry no host. With `wordpressConfigureCache` the configuration script now sets the id on every start, before its first flush, derived from `<namespace>/<release name>` (the first 28 bits of its SHA-256, plus one).

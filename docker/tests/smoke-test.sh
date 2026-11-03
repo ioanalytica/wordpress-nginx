@@ -349,6 +349,12 @@ assert_args "TLS on requests STARTTLS"              present "--tls=on"          
 assert_args "TLS on leaves the STARTTLS default"    absent  "--tls-starttls"     'SMTP_HOST=relay SMTP_TLS=on'
 assert_args "implicit TLS disables STARTTLS"        present "--tls-starttls=off" 'SMTP_HOST=relay SMTP_TLS=on SMTP_STARTTLS=off'
 assert_args "user switches auth on"                 present "--auth=on"          'SMTP_HOST=relay SMTP_USER=u'
+# The chart documents smtpProtocol="" against these: no TLS without
+# credentials, TLS by default with them, and SMTP_TLS=off (smtpProtocol
+# "none") as the only way to authenticate unencrypted.
+assert_args "no credentials, no TLS by default"     absent  "--tls="             'SMTP_HOST=relay'
+assert_args "credentials switch TLS on by default"  present "--tls=on"           'SMTP_HOST=relay SMTP_USER=u'
+assert_args "TLS off survives credentials"          present "--tls=off"          'SMTP_HOST=relay SMTP_USER=u SMTP_TLS=off'
 assert_args "from email sets the envelope sender"   present "--from=news@example.com" 'SMTP_HOST=relay SMTP_FROM=news@example.com'
 assert_args "no from falls back to the message"     present "--read-envelope-from" 'SMTP_HOST=relay'
 assert_args "password goes through passwordeval"    present "--passwordeval="    'SMTP_HOST=relay SMTP_PASSWORD=s3cretpw'
