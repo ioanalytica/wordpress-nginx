@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.4-7
+
+* Image hardening: rebuilt on current Alpine 3.24 packages, picking up the latest security update for `perl` (5.42.3, pulled in by the base image's build tooling, not used by WordPress) and `apk-tools` 3.0.9. Still PHP **8.4.27**, the current 8.4 release. No chart or configuration changes; upgrading is recommended as routine hardening.
+
 ## 7.1.4-6
 
 * **SMTP credentials are no longer sent unencrypted by default.** The base image's sendmail wrapper now switches TLS (STARTTLS) on as soon as a user or password is set and `SMTP_TLS` is not. With `smtpProtocol: ""` the chart sets no `SMTP_TLS`, so a site that sets `smtpUser` or a password now negotiates STARTTLS where it used to send in the clear. Without credentials, `""` stays unencrypted. Sites with `smtpProtocol: tls` or `ssl` are unaffected.
