@@ -53,6 +53,6 @@ Issues, questions in [Discussions](https://github.com/ioanalytica/wordpress-ngin
 
 Copyright &copy; 2024-2026 [IO ANALYTICA](https://ioanalytica.com).
 
-Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for details.
 
 WordPress itself, which the image contains and the chart deploys, is licensed under the GNU General Public License, version 2 or later.

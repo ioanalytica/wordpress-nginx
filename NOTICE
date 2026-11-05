@@ -1,0 +1,9 @@
+wordpress-nginx
+Copyright 2024 IO ANALYTICA
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This license applies to the Helm chart code (templates, helpers, workflows,
+and configuration) in this repository. The WordPress software deployed by
+this chart is licensed under the GNU General Public License v2.0 or later
+(GPL-2.0+). See https://wordpress.org/about/license/.
