@@ -1,5 +1,9 @@
 name: Build and push Docker image and Helm chart
 
+# A tag push is a release: the image is built, tested and pushed under the
+# tag, the chart is packaged and pushed at the version in chart/Chart.yaml,
+# and a GitHub Release is created. The tag must be that version
+# (scripts/check-release-tag.sh).
 on:
   push:
     tags:
@@ -9,51 +13,65 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
 
+permissions: {}
+
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
+    # A release took seven minutes with a warm build cache; the arm64 half is
+    # emulated and takes several times that without one.
+    timeout-minutes: 60
     permissions:
-      contents: write
-      packages: write
+      contents: write        # create the GitHub Release
+      packages: write        # push the image and the chart
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # docker and helm get their own registry logins, and the release
+          # step its token through the action; none needs one left in
+          # .git/config.
+          persist-credentials: false
+
+      # First of all: everything below publishes under the tag's name.
+      - name: Tag must match the chart version
+        run: ./scripts/check-release-tag.sh "$GITHUB_REF_NAME"
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3.6.0
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.10.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3.4.0
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract tag
-        id: meta
-        run: echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
-
       - name: Build image for smoke test
-        uses: docker/build-push-action@v6.18.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./docker
           platforms: linux/amd64
           load: true
           tags: wordpress-nginx:smoke-test
           # Busts the cached apk upgrade layer once per release (see Dockerfile).
-          build-args: APK_REFRESH=${{ steps.meta.outputs.version }}
+          build-args: APK_REFRESH=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Run smoke test
         run: ./docker/tests/smoke-test.sh wordpress-nginx:smoke-test
 
+      # Pinned: without a version the action asks the GitHub API for the
+      # latest release on every run.
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.1
 
       # chart/charts/ is gitignored, so the common dependency has to be
       # resolved before the chart can be linted, rendered or packaged.
@@ -69,16 +87,19 @@ jobs:
       - name: Run .htaccess classifier test
         run: ./docker/tests/htaccess-test.sh
 
+      - name: Run file-integrity watcher test
+        run: ./chart/tests/fim-test.sh
+
       - name: Build and push Docker image
-        uses: docker/build-push-action@v6.18.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./docker
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
             ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-          build-args: APK_REFRESH=${{ steps.meta.outputs.version }}
+          build-args: APK_REFRESH=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -86,13 +107,16 @@ jobs:
         run: helm package chart/
 
       - name: Push Helm chart to OCI registry
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ${{ env.REGISTRY }} --username ${{ github.actor }} --password-stdin
-          helm push wordpress-nginx-${{ steps.meta.outputs.version }}.tgz oci://${{ env.REGISTRY }}/ioanalytica/charts
+          echo "$TOKEN" | helm registry login "$REGISTRY" --username "$ACTOR" --password-stdin
+          helm push "wordpress-nginx-${GITHUB_REF_NAME}.tgz" "oci://${REGISTRY}/ioanalytica/charts"
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
-          tag_name: ${{ steps.meta.outputs.version }}
-          name: Version ${{ steps.meta.outputs.version }}
+          tag_name: ${{ github.ref_name }}
+          name: Version ${{ github.ref_name }}
           generate_release_notes: true

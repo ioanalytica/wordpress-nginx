@@ -36,14 +36,23 @@ builds.
 
 ## The daily scan
 
-Once a day a workflow scans the newest published image with
-[Trivy](https://trivy.dev/) for vulnerabilities of severity high and critical,
-reports the findings to the repository's code scanning, and fails when there
-are any. A failing scan is the signal for a new build.
+Once a day a workflow scans every image the chart can run with
+[Trivy](https://trivy.dev/) for vulnerabilities of severity high and critical:
+the project's own images as last released, every other image at the version
+the chart pins. All findings go to the repository's code scanning.
+
+The run fails when a finding has a fixed version. For the project's own image
+that is the signal for a new build, for another image the signal to raise its
+pin. A fix that has to come with a new image from the image's own project
+cannot be installed here; such a finding is listed with its reason and an
+expiry date among the
+[accepted findings](https://github.com/ioanalytica/wordpress-nginx/blob/main/.github/cve-scan-accepted.yaml)
+and fails the run again once that date has passed. A finding without any fix
+stays in code scanning and does not fail the run.
 
 ### What the scan does not see
 
-In this image the scan sees the Alpine packages. It does not cover:
+In the project's own image the scan sees the Alpine packages. It does not cover:
 
 - **PHP.** The base image builds PHP from source, so PHP is not an Alpine
   package and a vulnerability in PHP does not show in the scan.
@@ -51,8 +60,9 @@ In this image the scan sees the Alpine packages. It does not cover:
 - **Plugins and themes.** They live on the site's volume, not in the image.
 
 A green scan therefore says that the Alpine packages have no known high or
-critical vulnerability. It says nothing about PHP, WordPress or a site's
-plugins.
+critical vulnerability with a fixed version, apart from any accepted finding
+named above; one without a fix is listed in code scanning. It says nothing
+about PHP, WordPress or a site's plugins.
 
 ### What covers the rest
 
@@ -72,10 +82,14 @@ plugins.
 
 | Image | Tracked |
 |---|---|
-| Dragonfly (`memcached.image`) | weekly; the pull request is opened only after a container has started with the flags the chart passes |
-| NGINX Prometheus exporter (`metrics.image`) | weekly |
-| wordpress-idx | weekly |
-| MariaDB (`mariadb.image`) | not tracked by a workflow; the pin is raised by hand. Set `mariadb.image` to follow MariaDB releases on your own schedule |
+| Dragonfly (`memcached.image`) | weekly, by a workflow of its own; the pull request is opened only after a container has started with the flags the chart passes |
+| NGINX Prometheus exporter (`metrics.image`) | weekly, by [Renovate](https://docs.renovatebot.com/) |
+| wordpress-idx | weekly, by Renovate |
+| MariaDB (`mariadb.image`) | weekly, by Renovate. A new MariaDB series upgrades the data directory of an existing installation, so its pull request waits for a maintainer's approval. Set `mariadb.image` to follow MariaDB releases on your own schedule |
+
+Renovate also proposes new versions of the GitHub Actions and tools the
+workflows use. A pull request it opens runs the same tests as any other and is
+merged by a maintainer.
 
 ## Following releases
 

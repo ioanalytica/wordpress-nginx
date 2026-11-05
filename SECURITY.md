@@ -46,12 +46,19 @@ Not covered here:
 
 ## What the daily scan covers
 
-Once a day a workflow scans the newest published image with
+Once a day a workflow scans every image the chart can run with
 [Trivy](https://trivy.dev/) for known vulnerabilities of severity high and
-critical, reports the findings to the repository's code scanning and fails
-when there are any. A failing scan is the signal for a new build.
+critical: the project's own images as last released, every other image at
+the version the chart pins. All findings go to the repository's code
+scanning. The run fails when a finding has a fixed version: for the project's
+own image that is the signal for a new build, for another image the signal to
+raise its pin. A fix that has to come with a new image from the image's own
+project is listed, with its reason and an expiry date, in
+[`.github/cve-scan-accepted.yaml`](.github/cve-scan-accepted.yaml) and fails
+the run again once that date has passed.
 
-In this image the scan sees the **Alpine packages**. It does not see:
+In the project's own image the scan sees the **Alpine packages**. It does not
+see:
 
 - **PHP.** The base image builds PHP from source, so PHP is not an Alpine
   package, and a vulnerability in PHP does not show in the scan.
@@ -59,8 +66,9 @@ In this image the scan sees the **Alpine packages**. It does not see:
 - **Plugins and themes.** They live on the site's volume, not in the image.
 
 A green scan therefore says that the image's Alpine packages have no known
-high or critical vulnerability. It says nothing about PHP, WordPress or a
-site's plugins.
+high or critical vulnerability with a fixed version, apart from any accepted
+finding; one without a fix is listed in code scanning. It says nothing about
+PHP, WordPress or a site's plugins.
 
 What covers the rest:
 
