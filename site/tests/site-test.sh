@@ -3,10 +3,11 @@
 # mistake does not fail the VitePress build.
 #
 # Pages show sections of README.md and chart/README.md by include, and the
-# changelog, CONTRIBUTING.md and SECURITY.md whole. A broken include fails quietly: a missing file renders nothing, a
-# missing region the whole file. The links of an included section are written
-# for GitHub and are rewritten for the site (site/.vitepress/links.ts); a wrong
-# target shows only on the live site. The sidebar is a list in the config that
+# changelog, CONTRIBUTING.md and SECURITY.md whole. A broken include fails
+# quietly: a missing file renders nothing, a missing region the whole file.
+# The links of an included section are written for GitHub and are rewritten
+# for the site (site/.vitepress/links.ts); a wrong target shows only on the
+# live site. The sidebar is a list in the config that
 # the build does not compare with the pages. And the paths filters of the site
 # workflow decide which changes reach the site at all.
 #

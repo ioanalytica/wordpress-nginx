@@ -24,6 +24,8 @@ Thanks for helping. Bug reports, questions and pull requests are all welcome.
 | `chart/` | The Helm chart: `templates/`, `values.yaml`, its `README.md` and `CHANGELOG.md`, and its tests in `tests/` |
 | `chart/files/fim.php` | The file-integrity watcher the chart can run next to WordPress |
 | `docker/` | The image: `Dockerfile`, the files it adds in `rootfs/`, and its tests in `tests/` |
+| `examples/k3d/` | The page "Try it locally" and its values file |
+| `tests/try-locally/` | The run of that page in a k3d cluster, and its guard test |
 | `scripts/chart-version.sh` | The version scheme, see [Versions and releases](#versions-and-releases) |
 | `site/` | The documentation site, see [The documentation site](#the-documentation-site) |
 | `.github/workflows/` | The tests, the release build, the daily scan and the version trackers |
@@ -45,9 +47,10 @@ helm lint chart/
 
 - `helm dependency update` fetches the `common` subchart, which is not checked
   in. Everything below needs it.
-- `template-test.sh` renders the chart with many sets of values and checks the
-  manifests, and it checks that the version in `chart/Chart.yaml` follows the
-  scheme and agrees with the image tags next to it.
+- `template-test.sh` renders the chart with many sets of values, the ones in
+  `examples/` among them, and checks the manifests. It also checks that the
+  version in `chart/Chart.yaml` follows the scheme and agrees with the image
+  tags next to it.
 - `htaccess-test.sh` runs the init container's `.htaccess` check, taken from
   the rendered chart, in the image the init container uses.
 - `fim-test.sh` runs the file-integrity watcher against prepared volume trees,
@@ -67,6 +70,23 @@ Continuous integration runs both blocks on every pull request, as the jobs
 `chart-template-test` and `smoke-test` of
 [`.github/workflows/docker-test.yml`](.github/workflows/docker-test.yml).
 
+### Try it locally
+
+```sh
+tests/try-locally/test.sh
+tests/try-locally/run.sh ./chart
+```
+
+The page [Try it locally](examples/k3d/README.md) runs as written.
+`test.sh` checks in a second, without a cluster, that the page, its runner and
+its workflow still name the same things. `run.sh` creates the page's k3d
+cluster, runs every shell block of the page against the chart of the checkout
+and deletes the cluster again; it needs `docker`, `k3d`, `kubectl`, `helm`,
+`curl` and `openssl`, and the images the chart names in the registry
+(`--import` takes a locally built image instead, see the script's header). Continuous integration runs both on a pull request that
+changes the chart, the image, `examples/k3d/` or these tests
+([`.github/workflows/try-locally.yml`](.github/workflows/try-locally.yml)).
+
 ## Pull requests
 
 A pull request is easiest to review when it:
@@ -80,9 +100,13 @@ A pull request is easiest to review when it:
 - keeps the `<!-- #region name -->` and `<!-- #endregion name -->` comments of
   the READMEs around their sections: the documentation site shows the sections
   by these names;
+- adds its lines under `## Unreleased` in
+  [`chart/CHANGELOG.md`](chart/CHANGELOG.md) when it changes the chart or the
+  image, and leaves the chart version alone, see
+  [Versions and releases](#versions-and-releases);
 - uses the commit style of the history: a plain imperative summary
-  (`Add …`, `Fix …`, `Let …`), with the reason in the body. The commit that
-  raises the chart version starts with `Version <chart version>: `;
+  (`Add …`, `Fix …`, `Let …`), with the reason in the body. The commit of a
+  release starts with `Version <chart version>: `;
 - has every commit signed off, see [Sign your commits (DCO)](#sign-your-commits-dco).
 
 Code, comments, documentation and commit messages are in English.
@@ -115,33 +139,40 @@ examples. `scripts/chart-version.sh next <chart version>` prints the next
 build, `scripts/chart-version.sh first <WordPress version>` the first version
 for a new WordPress release.
 
-A change to the chart or the image reaches users as a new chart version. A
-pull request may raise the version itself or leave it to the maintainers; say
-which in its description. Raising it touches all of these, in one commit:
+A change to the chart or the image reaches users with the next chart version.
+The pull request that makes the change does not raise the version. It adds its
+lines under `## Unreleased` at the top of
+[`chart/CHANGELOG.md`](chart/CHANGELOG.md), with that heading if it is not
+there yet, and says in them what a user of the chart notices.
 
-1. `version` in `chart/Chart.yaml`;
-2. `annotations.imageTag` there, which must equal `version`;
-3. the tag of the `wordpress-nginx` entry in `annotations.images` there, which
-   must equal `version` too;
-4. a new entry at the top of [`chart/CHANGELOG.md`](chart/CHANGELOG.md) that
-   says what a user of the chart notices.
+A release is a pull request of its own. It
 
-A new release of the search sidecar is pinned in two more places:
-`annotations.idxImageTag` and the tag of the `wordpress-idx` entry in
-`annotations.images`. Check that the image exists before pinning it
+1. sets `version` in `chart/Chart.yaml`;
+2. sets `annotations.imageTag` there, which must equal `version`;
+3. sets the tag of the `wordpress-nginx` entry in `annotations.images` there,
+   which must equal `version` too;
+4. turns `## Unreleased` in `chart/CHANGELOG.md` into the heading of that
+   version.
+
+`./chart/tests/template-test.sh` fails while the three places in
+`chart/Chart.yaml` disagree and on a version outside the scheme.
+
+After its merge the maintainers push a tag with the version's name on that
+commit. The tag's build tests the image and the chart again, builds the image
+for both platforms, publishes image and chart under that version and creates
+the GitHub release.
+
+A workflow asks wordpress.org every day for the current WordPress release. The
+pull request it opens for a new one is such a release pull request: it also
+raises `WP_VERSION` in `docker/Dockerfile` and `appVersion` in
+`chart/Chart.yaml`, which no test compares with each other.
+
+A new release of the search sidecar is pinned in two places of
+`chart/Chart.yaml`: `annotations.idxImageTag` and the tag of the
+`wordpress-idx` entry in `annotations.images`. The template test fails while
+they disagree. Check that the image exists before pinning it
 (`docker manifest inspect ghcr.io/ioanalytica/wordpress-idx:<tag>`); a release
 tag alone does not say that its image was published.
-
-A new WordPress release also changes `WP_VERSION` in `docker/Dockerfile` and
-`appVersion` in `chart/Chart.yaml`. A workflow looks for one every day and
-opens that pull request.
-
-`./chart/tests/template-test.sh` fails while these places disagree and on a
-version outside the scheme.
-
-The maintainers release by pushing a tag with the chart version's name. The
-tag's build runs the tests again, builds the image, publishes image and chart
-under that version and creates the GitHub release.
 
 A tag is never moved and a version is never published a second time: a
 deployment that pins a version would not see the change. Any change after a
@@ -161,8 +192,8 @@ npm run dev      # http://localhost:5173, reloads on every change
 
 Most pages show sections of `README.md` and `chart/README.md` by region
 (`<!-- #region name -->`) instead of copying them, and `chart/CHANGELOG.md`,
-`CONTRIBUTING.md` and `SECURITY.md` whole. So each text has one source: edit
-the file and the page follows.
+`CONTRIBUTING.md`, `SECURITY.md` and `examples/k3d/README.md` whole. So each
+text has one source: edit the file and the page follows.
 
 A pull request that changes the site or a file it shows runs these in
 continuous integration:
