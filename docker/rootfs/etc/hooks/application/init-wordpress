@@ -5,15 +5,131 @@ if ! is-true "$DISABLE_GREETING"; then
     wp --version
 fi
 
-if wp-cli core is-installed --allow-root >/dev/null 2>&1; then
-  debug-echo -i "WordPress is already set up."
-else
-  debug-echo -i "Running Wordpress installer …"
-  wp-cli core install \
-              --url="${WORDPRESS_SCHEME:-http}://localhost" \
-              --title="${WORDPRESS_BLOG_NAME:-Weblog}" \
-              --admin_user="${WORDPRESS_USERNAME:-admin}" \
-              --admin_password="${WORDPRESS_PASSWORD:-admin}" \
-              --admin_email="${WORDPRESS_EMAIL:-admin@localhost}" \
-              --skip-email --quiet --allow-root
+# WP-CLI through the `wp` wrapper, which runs it as the web user. The
+# installer creates wp-content/uploads; run as root, it leaves a directory
+# that PHP-FPM cannot write to, and no upload reaches it.
+#
+# WordPress is installed here, once per container start, and nothing tries
+# again later: a database that is not up yet must not read as "not
+# installed". WP-CLI says which of the two it is, so the question is asked
+# again until the database answers. It is WordPress's own configuration that
+# is asked, whatever set it: the chart's values, an environment variable, a
+# wp-config.php of the user's own, a database proxy in a neighbouring
+# container.
+#
+# The wait ends after WORDPRESS_DB_WAIT_TIMEOUT seconds (300; 0 does not
+# wait). The start then goes on as it did before there was a wait, and a
+# new installation is made at the next start. Under the chart's default
+# liveness probe the kubelet starts the container again before that, so a
+# database that stays away shows in the pod's restarts and in this log.
+#
+# One question must not take long: PHP gives a connection a minute by default,
+# and a Service without a server behind it may not answer at all. Five
+# seconds for the connection, for this question alone. That does not bound a
+# server that takes the connection and then says nothing, so the process as a
+# whole gets a limit too: is_installed SECONDS. A try that was cut off counts
+# as a database that does not answer.
+is_installed() {
+  timeout "$1" in-app web-do php -d default_socket_timeout=5 \
+    /usr/local/bin/wp-cli --allow-root core is-installed 2>&1
+}
+
+db_wait="${WORDPRESS_DB_WAIT_TIMEOUT:-300}"
+case "$db_wait" in ''|*[!0-9]*) db_wait=300 ;; esac
+# Without leading zeros: the shell would read 08 as an octal number, and fail.
+db_wait="${db_wait#"${db_wait%%[!0]*}"}"
+db_wait="${db_wait:-0}"
+started="$(date +%s)"
+said=-30
+installed=""
+while [ -z "$installed" ]; do
+  # A try ends with the wait at the latest, and gets 15 seconds at most and
+  # 5 at least: WP-CLI needs a moment to load WordPress, and a try that is
+  # cut off before that says nothing about the database. So the wait can
+  # outlast a limit below 5 seconds, or its last seconds, by that much.
+  left=$(( db_wait - ( $(date +%s) - started ) ))
+  [ "$left" -le 15 ] || left=15
+  [ "$left" -ge 5 ] || left=5
+  out="$(is_installed "$left")"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    installed=yes
+    break
+  fi
+  case "$rc:$out" in
+    *"Error establishing a database connection"*) ;;
+    # The server answers, the database is not there yet: one that is still
+    # being provisioned. WordPress words it "Can't select database".
+    *"select database"*) ;;
+    # Cut off by timeout: 124 from coreutils, 143 from BusyBox.
+    124:*|143:*) out="No answer within ${left} s to the question whether WordPress is installed." ;;
+    *) installed=no; break ;;
+  esac
+  waited=$(( $(date +%s) - started ))
+  if [ "$waited" -ge "$db_wait" ]; then
+    installed=unknown
+    break
+  fi
+  if [ $((waited - said)) -ge 30 ]; then
+    debug-echo -w "Waiting for the database (${waited} s of at most ${db_wait} s) …"
+    said=$waited
+  fi
+  sleep 3
+done
+
+case "$installed" in
+  yes)
+    debug-echo -i "WordPress is already set up."
+    ;;
+  no)
+    debug-echo -i "Running Wordpress installer …"
+    wp core install \
+                --url="${WORDPRESS_SCHEME:-http}://localhost" \
+                --title="${WORDPRESS_BLOG_NAME:-Weblog}" \
+                --admin_user="${WORDPRESS_USERNAME:-admin}" \
+                --admin_password="${WORDPRESS_PASSWORD:-admin}" \
+                --admin_email="${WORDPRESS_EMAIL:-admin@localhost}" \
+                --skip-email --quiet
+    ;;
+  *)
+    debug-echo -w "The database did not answer within ${db_wait} s:"
+    printf '%s\n' "$out"
+    debug-echo -w "Going on with the start. A new installation is made at the next start of the container."
+    ;;
+esac
+
+# An installation made by an image that still ran the installer as root keeps
+# what that installer created with root as the owner: the upload directory
+# and, below it, the directory of the year and the month of the installation.
+# PHP-FPM cannot write there. Exactly these directories are handed to the web
+# user, where root owns them: wp-content/uploads, uploads/<year> and
+# uploads/<year>/<month>.
+#
+# Nothing else, and on purpose. No walk through the tree: it can be large and
+# on a slow volume, and this runs before the web server may start. No file
+# and no other directory: what an operator copied there as root is not this
+# hook's to give away. No symbolic link is followed: the tree is the web
+# user's to write, so a link in it may point anywhere, and this runs as root.
+# For the same reason it happens here, before PHP serves a request, and not
+# later or in the background.
+uploads="${APP_PATH:-/var/www/html}/wp-content/uploads"
+# hand_over DIRECTORY - give a directory that root owns to the web user.
+hand_over() {
+  [ -d "$1" ] && [ ! -L "$1" ] || return 0
+  [ "$(stat -c '%u' "$1" 2>/dev/null)" = "0" ] || return 0
+  if chown -h "$APP_USER:$APP_GROUP" "$1"; then
+    debug-echo -i "Handed $1 over to $APP_USER."
+  else
+    debug-echo -w "Could not hand $1 over to $APP_USER; uploads into it will fail."
+  fi
+}
+if [ -d "$uploads" ] && [ ! -L "$uploads" ]; then
+  for year in "$uploads"/[0-9][0-9][0-9][0-9]; do
+    [ -d "$year" ] && [ ! -L "$year" ] || continue
+    for month in "$year"/[0-9][0-9]; do
+      hand_over "$month"
+    done
+    hand_over "$year"
+  done
+  hand_over "$uploads"
 fi

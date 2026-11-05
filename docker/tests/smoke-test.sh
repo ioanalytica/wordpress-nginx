@@ -15,7 +15,10 @@ IMAGE="${1:?usage: smoke-test.sh <image-ref>}"
 NAME="wpnginx-smoke-$$"
 FAILURES=0
 
-cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+cleanup() {
+    docker rm -f "$NAME" "$NAME-dbwait" "$NAME-dbstall" >/dev/null 2>&1 || true
+    rm -f "${DBWAIT_CONFIG:-}"
+}
 trap cleanup EXIT
 
 cexec() { docker exec "$NAME" sh -c "$1"; }
@@ -414,6 +417,122 @@ else
     FAILURES=$((FAILURES + 1))
 fi
 cexec 'rm -rf /tmp/stub /tmp/msmtp-args /tmp/msmtp-msg /tmp/msg-plain /tmp/msg-folded /tmp/msg-nofrom'
+
+echo "=== The start hands the upload directories that belong to root to the web user"
+# An installation made while the installer still ran as root has its upload
+# directory, and the year and month below it, with root as the owner. The
+# application hook hands exactly these to the web user; here it is run once
+# more in the running container, on a tree made for it. Files, other
+# directories and what a symbolic link points to stay as they are: the hook
+# runs as root on a tree the web user can write. A limit with a leading
+# zero, which the shell would take for an octal number, must not stop the
+# hook either.
+cexec '
+u=/var/www/html/wp-content/uploads
+mkdir -p $u/2026/11 $u/2026/11/deeper $u/plugin-data /tmp/outside/11
+echo x > $u/2026/11/root-owned.txt && echo x > $u/2026/11/other-owned.txt
+ln -s /tmp/outside $u/2027
+chown -R root:root $u /tmp/outside && chown 12345:12345 $u/2026/11/other-owned.txt
+WORDPRESS_DB_WAIT_TIMEOUT=08 DISABLE_GREETING=1 /etc/hooks/application/init-wordpress >/tmp/hook.log 2>&1 || true'
+# assert_owner <description> <expected user:group, numeric> <path>
+assert_owner() {
+    local got
+    got="$(cexec "stat -c '%u:%g' '$3'")"
+    if [ "$got" = "$2" ]; then echo "ok:   $1"
+    else echo "FAIL: $1 — owner is $got, expected $2"; FAILURES=$((FAILURES + 1)); fi
+}
+web_ids="$(cexec 'echo "$(id -u www-data):$(id -g www-data)"')"
+U=/var/www/html/wp-content/uploads
+assert_owner "the upload directory belongs to the web user"       "$web_ids"     "$U"
+assert_owner "so does the directory of the year"                  "$web_ids"     "$U/2026"
+assert_owner "and the directory of the month"                     "$web_ids"     "$U/2026/11"
+assert_owner "a file root owns stays root's"                      "0:0"          "$U/2026/11/root-owned.txt"
+assert_owner "a file of a third user keeps its owner"             "12345:12345"  "$U/2026/11/other-owned.txt"
+assert_owner "a directory below the month is not walked into"     "0:0"          "$U/2026/11/deeper"
+assert_owner "a directory that is no year stays root's"           "0:0"          "$U/plugin-data"
+assert_owner "a year that is a link leaves its target alone"      "0:0"          /tmp/outside
+assert_owner "and what lies behind the link"                      "0:0"          /tmp/outside/11
+if cexec 'grep -q "arithmetic\|octal\|syntax error" /tmp/hook.log'; then
+    echo "FAIL: the hook stumbles over a limit with a leading zero: $(cexec 'cat /tmp/hook.log')"; FAILURES=$((FAILURES + 1))
+else echo "ok:   a limit with a leading zero is read as a decimal number"; fi
+if cexec 'grep -q "Handed /var/www/html/wp-content/uploads over" /tmp/hook.log'; then echo "ok:   the hook says what it hands over"
+else echo "FAIL: the hook does not say that it hands the directory over: $(cexec 'cat /tmp/hook.log')"; FAILURES=$((FAILURES + 1)); fi
+cexec 'rm -rf /var/www/html/wp-content/uploads/2026 /var/www/html/wp-content/uploads/2027 /var/www/html/wp-content/uploads/plugin-data /tmp/outside /tmp/hook.log'
+
+echo "=== The start waits for a database that does not answer, up to its limit"
+# WordPress is installed by the application hook, once per container start.
+# With a wp-config.php that names a database that does not answer, the hook
+# must ask again instead of running the installer against nothing, say that
+# it waits, and after WORDPRESS_DB_WAIT_TIMEOUT let the container start.
+# Containers of their own: the first one has no wp-config.php, and its start
+# is over.
+DBWAIT_CONFIG="$(mktemp)"
+dbwait_log=""
+# dbwait_start <container> <db-host> - start a container whose wp-config.php
+# names <db-host>, with a wait of 8 seconds; its log goes to $dbwait_log once
+# nginx is up, which is after the application hook.
+dbwait_start() {
+    local name="$1" host="$2" i
+    cat > "$DBWAIT_CONFIG" <<PHP
+<?php
+define( 'DB_NAME', 'wordpress' );
+define( 'DB_USER', 'wordpress' );
+define( 'DB_PASSWORD', 'not-a-real-password' );
+define( 'DB_HOST', '$host' );
+\$table_prefix = 'wp_';
+if ( ! defined( 'ABSPATH' ) ) {
+    define( 'ABSPATH', __DIR__ . '/' );
+}
+require_once ABSPATH . 'wp-settings.php';
+PHP
+    chmod 0644 "$DBWAIT_CONFIG"
+    docker create --name "$name" -e WORDPRESS_DB_WAIT_TIMEOUT=8 "$IMAGE" >/dev/null
+    docker cp "$DBWAIT_CONFIG" "$name:/var/www/html/wp-config.php" >/dev/null
+    docker start "$name" >/dev/null
+    for i in $(seq 1 90); do
+        if docker exec "$name" sh -c 'curl -s -o /dev/null http://localhost/favicon.ico' 2>/dev/null; then break; fi
+        [ "$i" = 90 ] && { echo "FAIL: nginx of $name did not come up after the database wait"; FAILURES=$((FAILURES + 1)); }
+        sleep 1
+    done
+    dbwait_log="$(docker logs "$name" 2>&1)"
+}
+# assert_log <description> <"present"|"absent"> <needle>
+assert_log() {
+    if grep -qF -- "$3" <<<"$dbwait_log"; then
+        if [ "$2" = present ]; then echo "ok:   $1"
+        else echo "FAIL: $1 — the log has '$3'"; FAILURES=$((FAILURES + 1)); fi
+    else
+        if [ "$2" = absent ]; then echo "ok:   $1"
+        else echo "FAIL: $1 — the log lacks '$3'"; FAILURES=$((FAILURES + 1)); fi
+    fi
+}
+
+# A port nobody listens at: the connection is refused at once.
+dbwait_start "$NAME-dbwait" 127.0.0.1:3306
+# Not the seconds waited so far: the first try may cross a second's boundary.
+assert_log "refused: the hook says that it waits for the database" present "Waiting for the database ("
+assert_log "refused: the wait names its limit"                     present " s of at most 8 s)"
+assert_log "refused: the wait ends at its limit"                   present "The database did not answer within 8 s"
+assert_log "refused: the log names what WordPress could not reach" present "Error establishing a database connection"
+assert_log "refused: the installer is not run against no database" absent  "Running Wordpress installer"
+assert_log "refused: the container starts after the wait"          present "ready to handle connections"
+
+# A server that takes the connection and then says nothing, as a database
+# proxy without its database does. The first container's nginx is one: it
+# waits for a request, a MySQL client waits for the server's greeting. The
+# connect timeout does not end such a try; the limit on the process does,
+# and with a wait of 8 seconds the first try already uses it up.
+stall_host="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$NAME")"
+stall_started=$(date +%s)
+dbwait_start "$NAME-dbstall" "$stall_host:80"
+stall_took=$(( $(date +%s) - stall_started ))
+assert_log "silent server: a try is cut off"                       present "No answer within"
+assert_log "silent server: the wait ends at its limit"             present "The database did not answer within 8 s"
+assert_log "silent server: the installer is not run"               absent  "Running Wordpress installer"
+# nginx would hold the connection for a minute; one try of eight seconds and
+# the container's own start fit into forty.
+if [ "$stall_took" -le 40 ]; then echo "ok:   silent server: the container starts after ${stall_took} s"
+else echo "FAIL: silent server: the container needed ${stall_took} s to start"; FAILURES=$((FAILURES + 1)); fi
 
 echo
 if [ "$FAILURES" -gt 0 ]; then
