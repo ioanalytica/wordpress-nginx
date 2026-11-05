@@ -195,10 +195,11 @@ for example in "$(dirname "$0")"/../../examples/*/values.yaml; do
     same_render "example ${example#"$(dirname "$0")"/../../}" -f "$example"
 done
 
-echo "=== The image trackers keep the schema's defaults"
-# The trackers change a pinned image in values.yaml. The schema repeats the
-# default, so a tracker that left it alone would open a pull request this
-# very test fails on. scripts/schema-default.sh is their step for it.
+echo "=== A changed image pin reaches the schema's default"
+# The Dragonfly tracker and Renovate change a pinned image in values.yaml.
+# The schema repeats the default, so a pull request that left it alone fails
+# this very test. scripts/schema-default.sh sets it: the tracker calls it,
+# and Renovate's pull requests say to run it.
 PKG_TMP="$(mktemp -d)"
 trap 'rm -rf "$PKG_TMP"' EXIT
 REPO="$(dirname "$0")/../.."
@@ -214,7 +215,7 @@ for key in sys.argv[2].split("."):
 print(value)
 ' "$CHART/values.yaml" "$1"
 }
-for key in metrics.image.tag memcached.image; do
+for key in metrics.image.tag memcached.image mariadb.image; do
     if "$SET_DEFAULT" "$key" "$(pin "$key")" "$PKG_TMP/schema.json" \
        && cmp -s "$PKG_TMP/schema.json" "$CHART/values.schema.json"; then
         ok "setting $key to its present default changes nothing"
@@ -237,14 +238,24 @@ if "$SET_DEFAULT" metrics.image.nope x "$PKG_TMP/schema.json" 2>/dev/null \
 else
     ok "a key without a text default is refused"
 fi
-# SC2016: the needles are the workflows' own text, variables and all.
+# SC2016: the needle is the workflow's own text, variables and all.
 # shellcheck disable=SC2016
-if grep -qF 'scripts/schema-default.sh metrics.image.tag "${NEW}"' "$REPO/.github/workflows/image-version-check.yml" \
-   && grep -qF 'scripts/schema-default.sh memcached.image "docker.dragonflydb.io/dragonflydb/dragonfly:${NEW}"' \
+if grep -qF 'scripts/schema-default.sh memcached.image "docker.dragonflydb.io/dragonflydb/dragonfly:${NEW}"' \
         "$REPO/.github/workflows/dragonfly-version-check.yml"; then
-    ok "both trackers set the schema's default with their bump"
+    ok "the Dragonfly tracker sets the schema's default with its bump"
 else
-    fail "a tracker changes a pinned image in values.yaml without scripts/schema-default.sh"
+    fail "dragonfly-version-check.yml changes memcached.image in values.yaml without scripts/schema-default.sh"
+fi
+if python3 -c '
+import json, sys
+rules = json.load(open(sys.argv[1]))["packageRules"]
+sys.exit(0 if any(r.get("matchFileNames") == ["chart/values.yaml"]
+                  and any("scripts/schema-default.sh" in note for note in r.get("prBodyNotes", []))
+                  for r in rules) else 1)
+' "$REPO/.github/renovate.json"; then
+    ok "Renovate's pull requests for values.yaml say to set the schema's default"
+else
+    fail ".github/renovate.json has no note on scripts/schema-default.sh for chart/values.yaml"
 fi
 
 echo "=== The packaged chart carries the schema"

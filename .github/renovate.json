@@ -117,6 +117,11 @@
       "prBodyNotes": ["This changes an image the chart pins: add a line under `## Unreleased` in chart/CHANGELOG.md before merging."]
     },
     {
+      "description": "chart/values.schema.json repeats the default of every value, and chart/tests/schema-test.sh fails while the two files disagree. Renovate changes the pin in values.yaml alone.",
+      "matchFileNames": ["chart/values.yaml"],
+      "prBodyNotes": ["The job `chart-template-test` fails until `chart/values.schema.json` has the new default as well: run `scripts/schema-default.sh <key> <value>` on this branch, for example `scripts/schema-default.sh metrics.image.tag {{{newVersion}}}` or `scripts/schema-default.sh mariadb.image mariadb:{{{newVersion}}}`."]
+    },
+    {
       "description": "A new MariaDB series upgrades the data directory of an existing installation on its first start: a deliberate move, approved on the dashboard.",
       "matchFileNames": ["chart/values.yaml", "chart/Chart.yaml"],
       "matchDepNames": ["mariadb"],

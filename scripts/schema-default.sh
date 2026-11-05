@@ -4,9 +4,10 @@
 #
 # The schema repeats the default of every value, and
 # chart/tests/schema-test.sh fails when one differs from chart/values.yaml.
-# A change of a default by hand edits both files. The image trackers
-# (.github/workflows/image-version-check.yml, dragonfly-version-check.yml)
-# change a pinned tag in values.yaml with sed and call this for the schema.
+# A change of a default by hand edits both files. For a pinned image this
+# script does the schema's half: .github/workflows/dragonfly-version-check.yml
+# calls it with its bump, and Renovate, which changes values.yaml alone, says
+# in its pull requests to run it (.github/renovate.json).
 #
 #   scripts/schema-default.sh KEY VALUE [FILE]
 #       KEY is the value's path in values.yaml, such as metrics.image.tag.
