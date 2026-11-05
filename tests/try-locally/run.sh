@@ -281,12 +281,14 @@ same_as_page "the two plugins are installed and active" "## 3. " 2 "$out"
 out="$(page_out "## 4. " 1)"
 echo "$out"
 expect "the index holds the first post and the sample page" '^\{"total":2,"posts":1,"pages":1,' "$out"
-expect "the search finds the first post" '^\{"total":1,"results":\[\{"id":1,"type":"post",.*"title":"Hello world!"' "$out"
+expect "the search finds the first post, with its text" \
+  '^\{"total":1,"results":\[\{"id":1,"type":"post",.*"title":"Hello world!",.*"content":"Welcome to WordPress\. ' "$out"
 out="$(page_out "## 4. " 2)"
 echo "$out"
 expect "WP-CLI creates the post" '^Success: Created post [0-9]+\.$' "$out"
 expect "the reindex takes the generated key" '^\{"status":"ok","entries":3\}$' "$out"
-expect "the search finds the new post" '^\{"total":1,"results":\[\{.*"title":"Notes from k3d"' "$out"
+expect "the search finds the new post, with its text" \
+  '^\{"total":1,"results":\[\{.*"title":"Notes from k3d",.*"content":"Traefik routes the requests and MariaDB keeps the posts\."' "$out"
 # The endpoint is reachable through the Ingress: the key the chart hands the
 # sidecar must be what opens it, and nothing else.
 code="$("$CURL" -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST "$SITE/idx/api/reindex")"
@@ -321,7 +323,7 @@ finding="$(page_block "## 6. " "" 3 | head -n 1)"
 watcher="/api/v1/namespaces/$PAGE_NAMESPACE/services/$PAGE_RELEASE-wordpress-nginx-fim:fim-metrics/proxy/metrics"
 echo "=== ${SECONDS}s, waiting for the running watcher's next scan"
 deadline=$((SECONDS + 180))
-until metrics="$(kubectl get --raw "$watcher" 2>&1)" && grep -qxF -- "$finding" <<<"$metrics"; do
+until metrics="$(kubectl get --raw "$watcher" --request-timeout=20s 2>&1)" && grep -qxF -- "$finding" <<<"$metrics"; do
   if [ "$SECONDS" -ge "$deadline" ]; then
     echo "$metrics" >&2
     fail "the running watcher did not report the PHP file within 3 minutes"
