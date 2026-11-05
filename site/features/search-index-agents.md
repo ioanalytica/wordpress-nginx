@@ -17,8 +17,8 @@ agent together with the address of the index.
    `idx.service.port` (default 3000), under the same base path.
 2. **The reference.** <IdxLink file="API_PROMPT.md" /> describes the
    endpoints, their parameters and the entry format in about seventy lines. The
-   link, like the plain-text one below, points at the wordpress-idx release
-   this chart version deploys.
+   link, like the plain-text one below, points at the wordpress-idx source
+   this repository builds the sidecar's image from.
 
 The search and statistics endpoints need no credentials. The index holds what
 the site publishes anyway: published posts and pages, and approved comments.

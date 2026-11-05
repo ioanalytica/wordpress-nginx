@@ -288,7 +288,7 @@ echo "=== The workflow runs on every file the site shows, and only main publishe
 equal "pushes and pull requests run on the same paths" "$(trigger_paths push)" "$(trigger_paths pull_request)"
 check "the paths are found" [ -n "$(trigger_paths push)" ]
 sources=$({ included | sed 's/#.*//'; sed -nE "s/.*resolve\(repoRoot, '([^']+)'\).*/\1/p" "$SITE/.vitepress/config.mts"; } | sort -u)
-check "the site's sources are found" grep -qx 'chart/Chart.yaml' <<<"$sources"
+check "the site's sources are found" grep -qx 'wordpress-idx' <<<"$sources"
 for file in 'site/**' .github/workflows/site.yml $sources; do
     grep -qxF "$file" <<<"$(trigger_paths push)" || fail "$file is in no paths filter of site.yml"
 done

@@ -1,8 +1,9 @@
 <!-- Copyright IO ANALYTICA. SPDX-License-Identifier: Apache-2.0 -->
 <!--
-  A link to a file of wordpress-idx at the release the chart pins
-  (idxImageTag in chart/Chart.yaml), so the page describes the sidecar the
-  chart deploys. `raw` links to the file's plain text, for an agent to fetch.
+  A link to a file of wordpress-idx at the commit this repository pins as a
+  submodule, which a release builds the sidecar's image from, so the page
+  describes the sidecar the chart deploys. `raw` links to the file's plain
+  text, for an agent to fetch.
 -->
 <script setup lang="ts">
 import { computed } from 'vue';
@@ -13,8 +14,8 @@ const props = defineProps<{ file: string; raw?: boolean }>();
 const { theme } = useData<ThemeConfig>();
 const href = computed(() =>
   props.raw
-    ? `https://raw.githubusercontent.com/ioanalytica/wordpress-idx/${theme.value.idxVersion}/${props.file}`
-    : `https://github.com/ioanalytica/wordpress-idx/blob/${theme.value.idxVersion}/${props.file}`,
+    ? `https://raw.githubusercontent.com/ioanalytica/wordpress-idx/${theme.value.idxRef}/${props.file}`
+    : `https://github.com/ioanalytica/wordpress-idx/blob/${theme.value.idxRef}/${props.file}`,
 );
 </script>
 

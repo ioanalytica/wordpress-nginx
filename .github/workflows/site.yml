@@ -2,7 +2,8 @@ name: Docs site
 
 # The documentation site (site/, VitePress) on GitHub Pages: pull requests
 # build it, pushes to main build and publish it. The site shows parts of other
-# files, so a change to any of them runs this workflow too;
+# files and links to the pinned commit of the wordpress-idx submodule, so a
+# change to any of them runs this workflow too;
 # site/tests/site-test.sh keeps the two lists of paths complete and equal.
 on:
   push:
@@ -14,7 +15,7 @@ on:
       - "SECURITY.md"
       - "chart/README.md"
       - "chart/CHANGELOG.md"
-      - "chart/Chart.yaml"
+      - "wordpress-idx"
       - "examples/k3d/README.md"
       - "icon.png"
       - ".github/workflows/site.yml"
@@ -26,7 +27,7 @@ on:
       - "SECURITY.md"
       - "chart/README.md"
       - "chart/CHANGELOG.md"
-      - "chart/Chart.yaml"
+      - "wordpress-idx"
       - "examples/k3d/README.md"
       - "icon.png"
       - ".github/workflows/site.yml"
