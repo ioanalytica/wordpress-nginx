@@ -21,7 +21,7 @@ k3s 1.36.
 ## What you need
 
 - Docker, with about 2 GB of memory to spare
-- [k3d](https://k3d.io), `kubectl` 1.31 or later, [Helm](https://helm.sh) 3.8
+- [k3d](https://k3d.io), `kubectl` 1.35 or later, [Helm](https://helm.sh) 3.8
   or later, `curl` and `openssl`
 - port 8080 free on the host
 

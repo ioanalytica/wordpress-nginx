@@ -254,7 +254,8 @@ title="$(sed -n 's/^wordpressBlogName: *//p' "$EXAMPLES/values.yaml")"
 # Into a variable first: grep -q ends at the first match, and curl, still
 # writing into the closed pipe, would fail the pipeline.
 html="$(curl -fsS --max-time 30 "$SITE/")"
-grep -qF "<title>$title</title>" <<<"$html" || fail "the front page is not titled '$title'"
+# The start of the title: WordPress appends the tagline when the site has one.
+grep -qF "<title>$title" <<<"$html" || fail "the front page is not titled '$title'"
 echo "ok:   the front page is titled '$title'"
 
 # The page sends the reader to wp-login.php with the user it names and the
@@ -297,11 +298,6 @@ echo "ok:   the reindex endpoint refuses a missing and a wrong key"
 # 5. File-integrity monitoring
 out="$(page_out "## 5. " 1)"
 same_as_page "a scan of the new installation has no findings" "## 5. " 1 "$out"
-# The page scans by hand. The watcher's own loop is what a Prometheus would
-# read: its metrics endpoint must answer, with a finished scan behind it.
-metrics="$(kubectl get --raw "/api/v1/namespaces/$PAGE_NAMESPACE/services/$PAGE_RELEASE-wordpress-nginx-fim:fim-metrics/proxy/metrics")"
-expect "the running watcher has finished a scan of its own" '^wp_fim_last_scan_timestamp_seconds [1-9]' "$metrics"
-expect "the running watcher reports no findings" '^wp_fim_violations 0$' "$metrics"
 
 # 6. A PHP file under uploads
 out="$(page_out "## 6. " 1)"
@@ -316,6 +312,23 @@ echo "$out"
 expect "the refused request is logged" '^\[php-allowlist\] 403 [^ ]+ "GET /wp-content/uploads/demo\.php HTTP/1\.1" ' "$out"
 out="$(page_out "## 6. " 3)"
 same_as_page "the watcher reports the PHP file" "## 6. " 3 "$out"
+# The page scans by hand, which leaves the running watcher's metrics as they
+# are. What a Prometheus would read comes from the watcher's own loop: its
+# next scan, at most one interval away, must report the file as well. Asked
+# here and not earlier: a scan from before WordPress was installed says
+# nothing about the installation.
+finding="$(page_block "## 6. " "" 3 | head -n 1)"
+watcher="/api/v1/namespaces/$PAGE_NAMESPACE/services/$PAGE_RELEASE-wordpress-nginx-fim:fim-metrics/proxy/metrics"
+echo "=== ${SECONDS}s, waiting for the running watcher's next scan"
+deadline=$((SECONDS + 180))
+until metrics="$(kubectl get --raw "$watcher" 2>&1)" && grep -qxF -- "$finding" <<<"$metrics"; do
+  if [ "$SECONDS" -ge "$deadline" ]; then
+    echo "$metrics" >&2
+    fail "the running watcher did not report the PHP file within 3 minutes"
+  fi
+  sleep 5
+done
+echo "ok:   the running watcher reports the PHP file on its own"
 out="$(page_out "## 6. " 4)"
 same_as_page "without the files the scan is clean again" "## 6. " 4 "$out"
 

@@ -274,7 +274,8 @@ echo
 echo "=== chart.sh: which chart, and where the image comes from"
 # Stand-ins for helm, docker and git, steered by the environment: helm logs
 # its arguments and lays out what `helm pull --untar` would; docker knows the
-# image or not; git says whether HEAD is a merge and whether docker/ differs.
+# image, does not know it, or cannot reach the registry; git says whether
+# HEAD is a merge and whether docker/ differs.
 mkdir -p "$TMP/bin" "$TMP/runner"
 cat >"$TMP/bin/helm" <<'EOF'
 #!/bin/sh
@@ -286,7 +287,11 @@ EOF
 cat >"$TMP/bin/docker" <<'EOF'
 #!/bin/sh
 [ "$1 $2" = "manifest inspect" ] || { echo "unexpected: docker $*" >&2; exit 2; }
-[ "$STUB_PUBLISHED" = yes ]
+case "$STUB_PUBLISHED" in
+  yes) echo '{}' ;;
+  no) echo "manifest unknown" >&2; exit 1 ;;
+  *) echo "Get https://ghcr.io/v2/: dial tcp: connection refused" >&2; exit 1 ;;
+esac
 EOF
 cat >"$TMP/bin/git" <<'EOF'
 #!/bin/sh
@@ -326,6 +331,12 @@ chart_sh "" checkout pull_request yes yes yes
 chart_sh "" checkout pull_request yes no no
 [ "$(get build)" = "$image is not in the registry" ] \
   && ok "a pull request whose image is not published: built from the checkout" || bad "gives: $out"
+# A registry that cannot be reached is neither: the step fails rather than
+# test a rebuilt image in place of the published one.
+if PATH="$TMP/bin:$PATH" HELM_LOG="$TMP/helm.log" RUNNER_TEMP="$TMP/runner" VERSION="" CHOICE=checkout \
+   EVENT=pull_request STUB_MERGE=yes STUB_DOCKER_CHANGED=no STUB_PUBLISHED=down "$HERE/chart.sh" >/dev/null 2>&1; then
+  bad "a registry that cannot be reached reads as an image to build"
+else ok "a registry that cannot be reached fails the step"; fi
 chart_sh "" checkout pull_request no no yes
 [ -n "$(get build)" ] && ok "a checkout that is no merge commit: built from the checkout" || bad "gives: $out"
 chart_sh "" checkout workflow_dispatch no no yes

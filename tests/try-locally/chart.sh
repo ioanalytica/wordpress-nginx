@@ -30,8 +30,11 @@
 
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CHART_REF="oci://ghcr.io/ioanalytica/charts/wordpress-nginx"
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+ROOT="$TRY_ROOT"
+CHART_REF="$PAGE_CHART"
 IMAGE_REPO="ghcr.io/ioanalytica/wordpress-nginx"
 
 dir=""
@@ -56,8 +59,14 @@ elif [ "${CHOICE:-}" = checkout ]; then
     build="the checkout is no merge commit, so docker/ cannot be compared with the base"
   elif ! git -C "$ROOT" diff --quiet 'HEAD^1' HEAD -- docker/; then
     build="the pull request changes docker/"
-  elif ! docker manifest inspect "$image" >/dev/null 2>&1; then
-    build="$image is not in the registry"
+  else
+    # Only an image the registry says it does not have is built here. Any
+    # other answer fails the step (unpublished, in lib.sh): a registry that
+    # cannot be reached must not turn a run with the published image into
+    # one with a rebuilt image. An assignment of its own: inside a test,
+    # the failure would be lost.
+    missing="$(unpublished "$image")"
+    [ -z "$missing" ] || build="$image is not in the registry"
   fi
 fi
 
