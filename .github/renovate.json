@@ -121,6 +121,14 @@
       "matchFileNames": ["site/**"],
       "groupName": "documentation site",
       "schedule": ["* 0-5 1 * *"]
+    },
+    {
+      "description": "The override in site/package.json keeps VitePress 1 on a vite 6 that has the fixes. A new vite major comes with a VitePress release that asks for it, not on its own.",
+      "matchManagers": ["npm"],
+      "matchFileNames": ["site/**"],
+      "matchDepNames": ["vite"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
     }
   ]
 }
