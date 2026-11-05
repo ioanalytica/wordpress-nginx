@@ -1017,6 +1017,11 @@ default security context constraints, cannot run the image.
 
 <!-- #region upgrading -->
 
+### To 7.1.410
+
+* **Back the database up before the upgrade.** With `mariadb.enabled` and the chart's default `mariadb.image`, the bundled MariaDB moves from 12.2 to 12.3 and starts on the existing data directory. It updates its system tables at that first start, and MariaDB does not support going back to the earlier series. An installation that sets `mariadb.image` itself keeps its image, and an external database is not affected.
+* **The search is ready a little later after the upgrade.** With `idx.enabled`, the sidecar builds its index anew once, at its first start with this version. Nothing has to be done by hand.
+
 ### To 7.1.409
 
 * **The search sidecar's image carries the chart version as its tag.** It is built by this project's release from now on: with `idx.enabled`, the chart runs `ghcr.io/ioanalytica/wordpress-idx:7.1.409`, where it ran a `1.x.y` tag before. An installation that takes the image from its default repository needs nothing. One that points `idx.image.registry` or `idx.image.repository` at a mirror copies the image there under the chart version before it upgrades; `idx.image.digest` still wins over the tag.

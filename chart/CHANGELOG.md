@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 7.1.410
 
 * **The bundled MariaDB moves to 12.3.3**, the current long-term series; the 12.2 image is no longer updated. An installation with `mariadb.enabled` starts the new series on its existing data directory at the upgrade. Back the database up first: MariaDB does not support going back to the earlier series.
   * **The image updates its system tables itself.** The chart sets `MARIADB_AUTO_UPGRADE`, so the first start on data of an earlier series runs `mariadb-upgrade` before the server takes connections, and keeps a copy of the old system tables in the data directory. Until now a change of series left the server on the old system tables until someone ran `mariadb-upgrade` by hand.
@@ -12,6 +12,9 @@
   * Hardening: the index holds only posts and pages that are public without a password.
   * The sidecar tries its index build again every 5 seconds until it succeeds. A database that answered late, or a WordPress that had not created its tables yet, left it without an index until it was restarted.
   * The plugin's search form follows `idx.basePath`; it called the sidecar under `/idx` whatever the path was.
+
+### Project and CI
+
 * The template test checks `MARIADB_AUTO_UPGRADE` on the rendered Deployment.
 
 ## 7.1.409
