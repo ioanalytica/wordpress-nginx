@@ -25,9 +25,13 @@ fi
 #
 # One question must not take long: PHP gives a connection a minute by default,
 # and a Service without a server behind it may not answer at all. Five
-# seconds per try, for this question alone.
+# seconds for the connection, for this question alone. That does not bound a
+# server that takes the connection and then says nothing, so the process as a
+# whole gets a limit too: is_installed SECONDS. A try that was cut off counts
+# as a database that does not answer.
 is_installed() {
-  in-app web-do php -d default_socket_timeout=5 /usr/local/bin/wp-cli --allow-root core is-installed 2>&1
+  timeout "$1" in-app web-do php -d default_socket_timeout=5 \
+    /usr/local/bin/wp-cli --allow-root core is-installed 2>&1
 }
 
 db_wait="${WORDPRESS_DB_WAIT_TIMEOUT:-300}"
@@ -36,12 +40,21 @@ started="$(date +%s)"
 said=-30
 installed=""
 while [ -z "$installed" ]; do
-  if out="$(is_installed)"; then
+  # A try ends with the wait at the latest, and gets 15 seconds at most and
+  # 5 at least: WP-CLI needs a moment to load WordPress.
+  left=$(( db_wait - ( $(date +%s) - started ) ))
+  [ "$left" -le 15 ] || left=15
+  [ "$left" -ge 5 ] || left=5
+  out="$(is_installed "$left")"
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
     installed=yes
     break
   fi
-  case "$out" in
+  case "$rc:$out" in
     *"Error establishing a database connection"*) ;;
+    # Cut off by timeout: 124 from coreutils, 143 from BusyBox.
+    124:*|143:*) out="No answer within ${left} s to the question whether WordPress is installed." ;;
     *) installed=no; break ;;
   esac
   waited=$(( $(date +%s) - started ))
@@ -80,12 +93,17 @@ esac
 # An installation made by an image that still ran the installer as root keeps
 # its upload directory with root as the owner. Hand over what root owns
 # there, and nothing else: the check costs one stat on a volume in order, and
-# files that belong to another user on purpose stay as they are. Depth first,
-# so the directory itself comes last: a run that was cut short is taken up
-# again at the next start.
+# files that belong to another user on purpose stay as they are. The
+# directory itself comes last, and only when everything below it went well:
+# its owner is what the next start looks at, so a run that was cut short or
+# failed half-way is taken up again.
 uploads="${APP_PATH:-/var/www/html}/wp-content/uploads"
 if [ -d "$uploads" ] && [ "$(stat -c '%u' "$uploads" 2>/dev/null)" = "0" ]; then
   debug-echo -i "Handing $uploads over to $APP_USER …"
-  find "$uploads" -depth -user 0 -exec chown -h "$APP_USER:$APP_GROUP" {} + \
-    || debug-echo -w "Could not change the owner of $uploads; uploads will fail until it belongs to $APP_USER."
+  if find "$uploads" -mindepth 1 -user 0 -exec chown -h "$APP_USER:$APP_GROUP" {} + \
+      && chown -h "$APP_USER:$APP_GROUP" "$uploads"; then
+    :
+  else
+    debug-echo -w "Could not change the owner of everything in $uploads; uploads will fail until it belongs to $APP_USER."
+  fi
 fi

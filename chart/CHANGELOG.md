@@ -6,7 +6,7 @@
 * **The first start waits for the database.** WordPress installs itself when its container first starts, once; a database that was not up at that moment left a running pod with a site that was never installed, until the pod was restarted. The image's start hook now tells "not installed" from "no database" and asks again until the database answers, for up to `WORDPRESS_DB_WAIT_TIMEOUT` seconds (300; `0` does not wait; set it through `extraEnvVars`). It asks WordPress's own configuration, so the wait holds for the bundled MariaDB, an external database, a `wp-config.php` of the user's own and a database proxy in a sidecar. No chart template and no value changes.
   * An installed site loses nothing by waiting: a pod that cannot reach its database is not ready either way, its readiness probe needs the database. With the default liveness probe the kubelet starts a waiting container again before the limit, so a database that stays away shows in the pod's restarts and in its log.
   * Past the limit the container starts without the database, as before, and says so; a new installation is then made at its next start.
-* The k3d run of "Try it locally" uploads a file through wp-admin and installs a second release whose database is away at the first start; the smoke test checks the wait and its limit.
+* The k3d run of "Try it locally" uploads a file through wp-admin and installs a second release whose database is away at the first start; the smoke test checks the wait and its limit, for a database that refuses the connection and for one that takes it and says nothing, and the repair of an upload directory that belongs to root.
 
 ## 7.1.408
 
