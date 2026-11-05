@@ -170,8 +170,8 @@ has "the example Ingress is for localhost" "  hostname: localhost" "$(cat "$VALU
 
 echo
 echo "=== The example sets known keys and no secret, the page has no link that needs GitHub"
-# The template test checks the same, but its workflow does not run on a
-# change to the example alone, and helm ignores a key it does not know.
+# Helm ignores a key it does not know. The template test checks the same;
+# here a wrong key stops the workflow before it creates a cluster.
 if unknown="$(python3 "$TRY_ROOT/chart/tests/check-example-keys.py" "$TRY_ROOT/chart/values.yaml" "$VALUES" 2>&1)" \
     && [ -z "$unknown" ]; then ok "examples/k3d/values.yaml sets only keys the chart knows"
 else bad "examples/k3d/values.yaml sets keys the chart does not know: $(tr '\n' ' ' <<<"$unknown")"; fi
