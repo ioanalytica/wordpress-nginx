@@ -186,6 +186,12 @@ else bad "relative links: $(tr '\n' ' ' <<<"$links")"; fi
 repo_links="$(grep -oE 'https://github\.com/ioanalytica/wordpress-nginx[^) ]*' "$PAGE" || true)"
 if [ -z "$repo_links" ]; then ok "no link into the repository's GitHub pages"
 else bad "links that only work on GitHub: $(tr '\n' ' ' <<<"$repo_links")"; fi
+# The site's page is this page, by include and whole: what the site shows is
+# what the run has tested.
+site_page="$TRY_ROOT/site/guide/try-locally.md"
+body="$(awk 'NR == 1 && $0 == "---" { front = 1; next } front && $0 == "---" { front = 0; next } !front && NF' "$site_page" 2>/dev/null || true)"
+if [ "$body" = '<!--@include: ../../examples/k3d/README.md-->' ]; then ok "the site's page includes the page, and nothing else"
+else bad "site/guide/try-locally.md is not the include of the page alone: $body"; fi
 
 echo
 echo "=== The workflow runs when what the run reads changes"
