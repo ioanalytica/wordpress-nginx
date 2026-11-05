@@ -11,3 +11,4 @@
 - [ ] The region comments of the READMEs (`<!-- #region … -->`) are still around their sections
 - [ ] The chart version is either unchanged or raised in every place, with its `chart/CHANGELOG.md` entry (see [CONTRIBUTING.md](https://github.com/ioanalytica/wordpress-nginx/blob/main/CONTRIBUTING.md#versions-and-releases))
 - [ ] A security fix is worded as hardening, without describing how an earlier release could be attacked
+- [ ] Every commit is signed off (`git commit -s`, see [CONTRIBUTING.md](https://github.com/ioanalytica/wordpress-nginx/blob/main/CONTRIBUTING.md#sign-your-commits-dco))

@@ -82,7 +82,8 @@ A pull request is easiest to review when it:
   by these names;
 - uses the commit style of the history: a plain imperative summary
   (`Add …`, `Fix …`, `Let …`), with the reason in the body. The commit that
-  raises the chart version starts with `Version <chart version>: `.
+  raises the chart version starts with `Version <chart version>: `;
+- has every commit signed off, see [Sign your commits (DCO)](#sign-your-commits-dco).
 
 Code, comments, documentation and commit messages are in English.
 
@@ -171,6 +172,15 @@ site/tests/site-test.sh
 (cd site && npm run build)
 site/scripts/check-links.sh site/.vitepress/dist
 ```
+
+## Sign your commits (DCO)
+
+Every commit must carry a `Signed-off-by` line, certifying the
+[Developer Certificate of Origin](https://developercertificate.org/): that you
+wrote the change or otherwise have the right to submit it under the project's
+license. `git commit -s` adds the line from your git name and e-mail.
+
+There is no contributor license agreement.
 
 ## License
 
