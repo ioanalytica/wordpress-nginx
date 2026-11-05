@@ -53,7 +53,7 @@ features:
 A release is one WordPress Deployment. Its container runs NGINX and PHP-FPM
 from the `wordpress-nginx` image, whose tag is the chart version. WordPress
 itself is part of the image; `wp-content` and the site's own `nginx.conf` live
-on the release's volume, and the chart writes `wp-config.php` on every start.
+on the release's volume, and the chart writes `wp-config.php` every time a pod starts.
 An init container prepares the volume and reports `.htaccess` files that NGINX
 would not honour.
 

@@ -67,6 +67,19 @@ page_of() {
   return 0
 }
 
+# has_anchor FILE ANCHOR — whether an element of FILE is the target of the
+# fragment ANCHOR: by its id or, as browsers still accept, its name. A
+# fragment may be percent-encoded (markdown-it encodes one that is not plain
+# ASCII), so it is compared as written and decoded.
+has_anchor() {
+  local a decoded
+  decoded=$(printf '%b' "${2//%/\\x}")
+  for a in "$2" "$decoded"; do
+    grep -qF -e " id=\"$a\"" -e " name=\"$a\"" "./$1" && return 0
+  done
+  return 1
+}
+
 absent="" missing=""
 while IFS=$sep read -r page href; do
   [ -n "$page" ] || continue
@@ -80,7 +93,7 @@ while IFS=$sep read -r page href; do
     file=$(page_of "$(site_path "/$(dirname "$page")" "$path")")
     if [ -z "$file" ]; then absent+="$page: $href"$'\n'; continue; fi
   fi
-  [ -z "$anchor" ] || grep -qF -- " id=\"$anchor\"" "./$file" || missing+="$page: $href"$'\n'
+  [ -z "$anchor" ] || has_anchor "$file" "$anchor" || missing+="$page: $href"$'\n'
 done <<<"$links"
 
 # report PREFIX LINES — print each line with PREFIX on stderr.

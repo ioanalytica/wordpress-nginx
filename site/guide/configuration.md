@@ -14,8 +14,8 @@ page covers the settings most sites change first.
 
 <!--@include: ../../chart/README.md#wordpress-settings-->
 
-The chart writes `wp-config.php` on every container start, so a constant that
-a plugin adds to the file is gone after the next restart. The generated file
+The chart writes `wp-config.php` every time a pod starts, so a constant that
+a plugin adds to the file is gone with the next pod. The generated file
 evaluates the environment variable `WORDPRESS_CONFIG_EXTRA`; set constants of
 your own there, through `extraEnvVars`:
 

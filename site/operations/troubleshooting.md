@@ -39,8 +39,8 @@ credentials are otherwise sent with STARTTLS only. See [Mail](/features/mail).
 ## The page cache stops working after a restart
 
 WordPress loads a page cache only while the constant `WP_CACHE` is true, and
-the chart writes `wp-config.php` on every start, so a constant that a cache
-plugin wrote there is gone. Set `wordpressWpCache: true`; see
+the chart writes `wp-config.php` every time a pod starts, so a constant that a
+cache plugin wrote there is gone with the next pod. Set `wordpressWpCache: true`; see
 [Cache](/features/cache#page-cache-and-wp-cache).
 
 ## W3 Total Cache is not configured
