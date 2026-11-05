@@ -54,11 +54,34 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - run: echo "${{ github.event.pull_request.title }}"
+  two:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions: write-all
+    steps:
+      - run: "true"
+  three:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+      pages: read
+    steps:
+      - run: "true"
+  four:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      id-token: write
+    steps:
+      - run: "true"
 EOF
 out="$(python3 "$HERE/check-workflows.py" "$WORK/bad" 2>&1 || true)"
 for needle in "not pinned by a commit SHA" "has no '# vX.Y.Z' comment" "no timeout-minutes" \
               "not on a pinned runner image" "contents: write for every job" \
-              "expression inside the run script" "keeps its token" "without a '# renovate:' line"; do
+              "expression inside the run script" "keeps its token" "without a '# renovate:' line" \
+              "has permissions: write-all" \
+              "more than one job can get an OIDC token: bad.yml: job three; bad.yml: job four"; do
     if grep -qF -- "$needle" <<<"$out"; then ok "the checker reports: $needle"
     else fail "the checker misses: $needle"; fi
 done

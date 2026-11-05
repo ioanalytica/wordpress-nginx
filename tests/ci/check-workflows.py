@@ -11,8 +11,9 @@ One line per broken rule, exit status 1 if there is any:
 - a job runs on a pinned runner image, not on a `-latest` label
 - the workflow's own permissions are none or read-only; a job that writes
   asks for it itself
-- at most one job of the repository can get an OIDC token (id-token: write)
-  besides the Pages deployment
+- no job has `permissions: write-all`, and at most one job of the repository
+  can get an OIDC token (id-token: write) besides the one that deploys the
+  documentation site with actions/deploy-pages
 - a run script contains no ${{ }} expression: a value reaches it through
   env, where the shell cannot read it as code
 - a checkout leaves no token in .git/config, unless a later step of the job
@@ -72,7 +73,7 @@ def check(path, problems, oidc_jobs):
     if top is None:
         problems.append(f"{name}: no permissions at the top of the workflow")
     elif isinstance(top, str):
-        if top not in ("read-all", "{}"):
+        if top != "read-all":
             problems.append(f"{name}: the workflow's permissions are '{top}'")
     else:
         for scope, level in top.items():
@@ -88,10 +89,15 @@ def check(path, problems, oidc_jobs):
         for runner in runners(job):
             if not isinstance(runner, str) or not RUNNER.match(runner):
                 problems.append(f"{where} runs on '{runner}', not on a pinned runner image")
-        permissions = job.get("permissions") or {}
-        if isinstance(permissions, dict) and permissions.get("id-token") == "write" and "pages" not in permissions:
-            oidc_jobs.append(where)
         steps = job.get("steps") or []
+        permissions = job.get("permissions") or {}
+        if permissions == "write-all":
+            problems.append(f"{where} has permissions: write-all")
+        elif isinstance(permissions, dict) and permissions.get("id-token") == "write":
+            # The Pages deployment proves the run's identity to Pages with
+            # its token; every other job with one counts.
+            if not any(str(step.get("uses", "")).startswith("actions/deploy-pages@") for step in steps):
+                oidc_jobs.append(where)
         pushes = any("create-pull-request" in str(step.get("uses", "")) for step in steps)
         for step in steps:
             label = step.get("name") or step.get("id") or step.get("uses") or "a step"
