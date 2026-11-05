@@ -69,6 +69,7 @@ STRICT_LISTS = {
 
 
 def types(node):
+    """The types a schema entry accepts, as a list."""
     t = node.get("type")
     return t if isinstance(t, list) else [t]
 
@@ -90,6 +91,7 @@ def lookup(mapping, path):
 
 
 def schema_node(schema, path):
+    """The schema entry of the value at path, or None when it has none."""
     node = schema
     for key in path:
         node = (node.get("properties") or {}).get(key)
@@ -99,6 +101,8 @@ def schema_node(schema, path):
 
 
 def main():
+    """Compare the schema of the chart in argv[1] with its values.yaml and
+    templates; print the problems and return 1 if there are any."""
     chart = sys.argv[1]
     text = open(f"{chart}/values.yaml").read()
     values = yaml.safe_load(text)
@@ -144,6 +148,8 @@ def main():
     # Every key of values.yaml is in the schema. A map the schema treats as
     # one value (resources, annotations) is not descended into.
     def uncovered(mapping, path=()):
+        """Report each key of mapping, a part of values.yaml, that the schema
+        lacks, descending where the schema has a section."""
         for key, value in mapping.items():
             node = schema_node(schema, path + (key,))
             if node is None:
@@ -156,6 +162,8 @@ def main():
     # Permissive: no key is required and none refused for not being listed,
     # the two lists of rules excepted.
     def strictness(node, where, inside_strict_items=False):
+        """Report `required` and `additionalProperties: false` at node and
+        below it, the item schemas of STRICT_ITEMS excepted."""
         if isinstance(node, dict):
             if not inside_strict_items and ("required" in node or node.get("additionalProperties") is False):
                 problems.append(f"required or additionalProperties: false at {where or 'the top level'}")
@@ -172,6 +180,8 @@ def main():
     found = {}
 
     def enums(node, where):
+        """Collect every enum at node and below it into `found`, keyed by the
+        value's path."""
         if isinstance(node, dict):
             if "enum" in node:
                 found[where] = node["enum"]
