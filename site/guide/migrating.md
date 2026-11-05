@@ -90,7 +90,9 @@ image has to start as root; see
 
 ## Accepted, without effect
 
-These keys exist so that a values file carries over, and nothing reads them:
+These keys exist so that a values file carries over, and none of them has an
+effect: the chart passes some to the container as environment variables the
+image does not read, and no template reads the others.
 
 | Key | Instead |
 |---|---|
