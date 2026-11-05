@@ -27,13 +27,18 @@ metrics:
 
 The chart's NetworkPolicy, which is on by default, does not list the
 exporter's port. Where the cluster enforces network policies, admit the
-scrape:
+scrape, and only from where Prometheus runs; here that is the namespace
+`monitoring`:
 
 ```yaml
 networkPolicy:
   extraIngress:
     - ports:
         - port: 9113
+      from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
 ```
 
 Without the Prometheus Operator, the Service's `prometheus.io/scrape`

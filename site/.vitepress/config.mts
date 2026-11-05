@@ -29,6 +29,9 @@ export default defineConfigWithTheme<ThemeConfig>({
   description:
     'A Helm chart and image for WordPress on NGINX and PHP-FPM on Kubernetes, with the values keys of the Bitnami WordPress chart, hardening, file-integrity monitoring and a full-text search sidecar.',
   cleanUrls: true,
+  // No `base`: the site is served from the root of its own domain (siteUrl in
+  // links.ts), set as the custom domain in the repository's Pages settings,
+  // not from the project path under github.io.
   head: [['link', { rel: 'icon', type: 'image/png', href: '/favicon.png' }]],
   markdown: {
     config(md) {
