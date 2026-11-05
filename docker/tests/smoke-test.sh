@@ -422,12 +422,18 @@ echo "=== The start hands an upload directory that belongs to root to the web us
 # An installation made while the installer still ran as root has its upload
 # directory with root as the owner. The application hook repairs that; here
 # it is run once more in the running container, on a tree made for it. What
-# belongs to a third user stays as it is.
+# belongs to a third user stays as it is. A limit with a leading zero, which
+# the shell would take for an octal number, must not stop the hook either.
 cexec '
 u=/var/www/html/wp-content/uploads
 mkdir -p $u/2026/11 && echo x > $u/2026/11/root-owned.txt && echo x > $u/2026/11/other-owned.txt
 chown -R root:root $u && chown 12345:12345 $u/2026/11/other-owned.txt
-WORDPRESS_DB_WAIT_TIMEOUT=0 DISABLE_GREETING=1 /etc/hooks/application/init-wordpress >/tmp/hook.log 2>&1 || true'
+WORDPRESS_DB_WAIT_TIMEOUT=08 DISABLE_GREETING=1 /etc/hooks/application/init-wordpress >/tmp/hook.log 2>&1 || true'
+# The hook hands the tree over in the background and returns before that.
+for i in $(seq 1 30); do
+    cexec 'grep -q "belongs to www-data now" /tmp/hook.log' && break
+    sleep 1
+done
 # assert_owner <description> <expected user:group, numeric> <path below uploads>
 assert_owner() {
     local got
@@ -440,6 +446,9 @@ assert_owner "the upload directory belongs to the web user"   "$web_ids"     .
 assert_owner "so does a directory below it"                   "$web_ids"     2026/11
 assert_owner "and a file root owned"                          "$web_ids"     2026/11/root-owned.txt
 assert_owner "a file of a third user keeps its owner"         "12345:12345"  2026/11/other-owned.txt
+if cexec 'grep -q "arithmetic\|octal\|syntax error" /tmp/hook.log'; then
+    echo "FAIL: the hook stumbles over a limit with a leading zero: $(cexec 'cat /tmp/hook.log')"; FAILURES=$((FAILURES + 1))
+else echo "ok:   a limit with a leading zero is read as a decimal number"; fi
 if cexec 'grep -q "Handing /var/www/html/wp-content/uploads over" /tmp/hook.log'; then echo "ok:   the hook says what it hands over"
 else echo "FAIL: the hook does not say that it hands the directory over: $(cexec 'cat /tmp/hook.log')"; FAILURES=$((FAILURES + 1)); fi
 cexec 'rm -rf /var/www/html/wp-content/uploads/2026 /tmp/hook.log'

@@ -36,12 +36,17 @@ is_installed() {
 
 db_wait="${WORDPRESS_DB_WAIT_TIMEOUT:-300}"
 case "$db_wait" in ''|*[!0-9]*) db_wait=300 ;; esac
+# Without leading zeros: the shell would read 08 as an octal number, and fail.
+db_wait="${db_wait#"${db_wait%%[!0]*}"}"
+db_wait="${db_wait:-0}"
 started="$(date +%s)"
 said=-30
 installed=""
 while [ -z "$installed" ]; do
   # A try ends with the wait at the latest, and gets 15 seconds at most and
-  # 5 at least: WP-CLI needs a moment to load WordPress.
+  # 5 at least: WP-CLI needs a moment to load WordPress, and a try that is
+  # cut off before that says nothing about the database. So the wait can
+  # outlast a limit below 5 seconds, or its last seconds, by that much.
   left=$(( db_wait - ( $(date +%s) - started ) ))
   [ "$left" -le 15 ] || left=15
   [ "$left" -ge 5 ] || left=5
@@ -97,13 +102,20 @@ esac
 # directory itself comes last, and only when everything below it went well:
 # its owner is what the next start looks at, so a run that was cut short or
 # failed half-way is taken up again.
+#
+# In the background: on a large tree on a slow volume the walk can take
+# longer than a liveness probe allows a start, and a container that is
+# started again would begin the walk anew, for ever. The site is served
+# meanwhile; uploads work once the walk is through.
 uploads="${APP_PATH:-/var/www/html}/wp-content/uploads"
 if [ -d "$uploads" ] && [ "$(stat -c '%u' "$uploads" 2>/dev/null)" = "0" ]; then
-  debug-echo -i "Handing $uploads over to $APP_USER …"
-  if find "$uploads" -mindepth 1 -user 0 -exec chown -h "$APP_USER:$APP_GROUP" {} + \
-      && chown -h "$APP_USER:$APP_GROUP" "$uploads"; then
-    :
-  else
-    debug-echo -w "Could not change the owner of everything in $uploads; uploads will fail until it belongs to $APP_USER."
-  fi
+  debug-echo -i "Handing $uploads over to $APP_USER, in the background …"
+  (
+    if find "$uploads" -mindepth 1 -user 0 -exec chown -h "$APP_USER:$APP_GROUP" {} + \
+        && chown -h "$APP_USER:$APP_GROUP" "$uploads"; then
+      debug-echo -i "$uploads belongs to $APP_USER now."
+    else
+      debug-echo -w "Could not change the owner of everything in $uploads; uploads will fail until it belongs to $APP_USER."
+    fi
+  ) &
 fi

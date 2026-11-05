@@ -118,7 +118,7 @@ import_image() {
 # taken away, WordPress is started, has to wait, and has to end up installed
 # once MariaDB is back.
 late_database() {
-  local ns=late release=late chart="${CHART:-$PAGE_CHART}" deadline log
+  local ns=late release=late chart="${CHART:-$PAGE_CHART}" deadline log restarts
   local db="deployment/late-wordpress-nginx-mariadb" wp="deployment/late-wordpress-nginx"
   echo "=== ${SECONDS}s, a first start with the database away"
   # shellcheck disable=SC2086 # the extra flags are words of their own
@@ -152,6 +152,12 @@ late_database() {
     || fail "the installer did not run once the database was back"
   kubectl -n "$ns" exec "$wp" -c wordpress -- wp core is-installed \
     || fail "WordPress is not installed after its database came back"
+  # The container that waited is the one that installed: a wait that hung
+  # until the kubelet started the container again would pass the checks
+  # above as well.
+  restarts="$(kubectl -n "$ns" get pods -l "app.kubernetes.io/name=wordpress-nginx,app.kubernetes.io/instance=late" \
+    -o jsonpath='{.items[0].status.containerStatuses[?(@.name=="wordpress")].restartCount}')"
+  [ "$restarts" = 0 ] || fail "the WordPress container was started ${restarts:-?} more time(s) while it waited"
   echo "ok:   once the database is back, WordPress installs itself and the pod gets ready"
 }
 

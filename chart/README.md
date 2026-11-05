@@ -154,7 +154,7 @@ It is WordPress's own configuration that is asked, so the wait holds for the
 bundled MariaDB, for `externalDatabase.*`, for a `wp-config.php` of your own
 and for a database proxy in a sidecar alike. The limit is
 `WORDPRESS_DB_WAIT_TIMEOUT` seconds (300; `0` does not wait), set through
-`extraEnvVars`. With the default liveness probe the kubelet starts the
+`extraEnvVars`; a single try takes up to five seconds beyond it. With the default liveness probe the kubelet starts the
 container again before the limit, so a database that stays away shows in the
 pod's restarts. Past the limit the container starts without the database, as
 it did before; a new installation is then made at its next start.
