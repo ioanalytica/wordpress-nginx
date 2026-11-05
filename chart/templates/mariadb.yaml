@@ -71,6 +71,19 @@ metadata:
   {{- end }}
 spec:
   replicas: 1
+  # One server per data directory: the old pod is taken down before a new
+  # one is created, never the other way round. The default would start the
+  # new server next to the old one, on the same files, and cannot finish at
+  # all where the volume attaches to one node at a time.
+  # It stays a rolling update on purpose. The strategy Recreate says the
+  # same, but an existing Deployment cannot move to it: Kubernetes refuses
+  # the change while the rolling update's defaults are set, and a server-side
+  # apply cannot take them away.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "common.names.name" . }}-mariadb
@@ -111,6 +124,13 @@ spec:
                   key: mariadb-password
             - name: MARIADB_DATABASE
               value: {{ .Values.mariadb.auth.database | quote }}
+            # A data directory written by an earlier MariaDB series: the
+            # image runs mariadb-upgrade on it before the server takes
+            # connections, after saving the old system tables next to the
+            # data. Without it the server runs on the old system tables until
+            # someone runs mariadb-upgrade by hand.
+            - name: MARIADB_AUTO_UPGRADE
+              value: "1"
           ports:
             - name: mysql
               containerPort: 3306

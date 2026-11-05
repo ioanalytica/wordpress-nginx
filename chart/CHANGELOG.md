@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+* **The bundled MariaDB moves to 12.3.3**, the current long-term series; the 12.2 image is no longer updated. An installation with `mariadb.enabled` starts the new series on its existing data directory at the upgrade. Back the database up first: MariaDB does not support going back to the earlier series.
+  * **The image updates its system tables itself.** The chart sets `MARIADB_AUTO_UPGRADE`, so the first start on data of an earlier series runs `mariadb-upgrade` before the server takes connections, and keeps a copy of the old system tables in the data directory. Until now a change of series left the server on the old system tables until someone ran `mariadb-upgrade` by hand.
+  * **The database's pod is replaced, not doubled.** The Deployment takes the old pod down before it creates the new one (`maxSurge: 0`, `maxUnavailable: 1`). Until now it started the new server beside the old one on the same data directory, and could not finish at all where the volume attaches to one node at a time. The database is away for the seconds between the two.
+  * An installation with an external database (`mariadb.enabled: false`) is not affected, and neither is one that sets `mariadb.image` itself.
+* The template test checks both settings on the rendered Deployment.
+
 ## 7.1.409
 
 * **A new installation can store uploads.** The image installed WordPress as root, and the installer left `wp-content/uploads` with root as its owner, so the first upload in wp-admin failed with "The uploaded file could not be moved". The installer now runs as the web user. An installation made by an earlier version is repaired on its next start: `wp-content/uploads` and the year and month directories below it are handed to the web user where root owns them. Files, other directories and symbolic links are left alone. Sites that brought their uploads along were not affected.

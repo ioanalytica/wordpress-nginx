@@ -995,6 +995,39 @@ fim_refuses "a digest YAML read as a number"     --set-json 'fim.baseline={"salt
 fim_refuses "a digest of the wrong length"       --set-json 'fim.baseline={"salts.php":["abc"]}'
 
 echo
+echo "=== The bundled MariaDB takes over an existing data directory"
+# A new MariaDB series starts on the data of the earlier one. Two settings
+# make that safe: the image updates its system tables itself, and the old
+# pod is taken down before the new one is created. Both were tried on a
+# cluster (12.2.2 to 12.3.3), as an upgrade of an installed release: the
+# strategy must be one an existing Deployment can be changed to, which
+# Recreate is not. This pins them on the rendered Deployment.
+mariadb_upgrade=$(helm template tst "$CHART" 2>&1 | python3 -c '
+import sys, yaml
+problems = []
+for d in yaml.safe_load_all(sys.stdin):
+    if not d or d.get("kind") != "Deployment" or d["metadata"]["name"] != "tst-wordpress-nginx-mariadb":
+        continue
+    strategy = d["spec"].get("strategy") or {}
+    if strategy.get("type") != "RollingUpdate" or strategy.get("rollingUpdate") != {"maxSurge": 0, "maxUnavailable": 1}:
+        problems.append("strategy is not a rolling update with maxSurge 0 and maxUnavailable 1")
+    env = {e["name"]: e.get("value") for e in d["spec"]["template"]["spec"]["containers"][0]["env"]}
+    if env.get("MARIADB_AUTO_UPGRADE") != "1":
+        problems.append("MARIADB_AUTO_UPGRADE is not \"1\"")
+    break
+else:
+    problems.append("no MariaDB Deployment rendered")
+print("; ".join(problems))
+' 2>&1) || mariadb_upgrade="render failed"
+if [ -z "$mariadb_upgrade" ]; then
+    echo "ok:   the database's pod is taken down first and updates its system tables"
+else
+    echo "FAIL: the bundled MariaDB — $mariadb_upgrade"
+    FAILURES=$((FAILURES + 1))
+fi
+expect "an external database renders no MariaDB" absent "MARIADB_AUTO_UPGRADE" \
+    --set mariadb.enabled=false --set externalDatabase.host=db.example.com
+
 echo "=== The examples render, with keys the chart knows"
 # examples/ lives next to the chart in the repository and is not part of the
 # packaged chart, so a chart tested on its own has none. An example that no

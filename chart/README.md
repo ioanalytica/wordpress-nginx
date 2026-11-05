@@ -116,7 +116,7 @@ The chart can deploy an internal MariaDB instance or connect to an external data
 ```yaml
 mariadb:
   enabled: true
-  image: "mariadb:12.2.2-noble"
+  image: "mariadb:12.3.3-noble"
   auth:
     rootPassword: "secretroot"
     database: wordpress
