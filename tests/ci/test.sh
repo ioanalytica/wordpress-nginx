@@ -423,8 +423,9 @@ has() {
 has "the file is JSON with the Renovate schema"  '."$schema" == "https://docs.renovatebot.com/renovate-schema.json"'
 has "actions are pinned by digest"               '.extends | index("helpers:pinGitHubActionDigestsToSemver")'
 has "its commits are signed off"                 '.commitBody == "Signed-off-by: {{{gitAuthor}}}"'
-has "the sidecar's image does not wait for a release date GHCR does not give" \
-    'any(.packageRules[]; .matchPackageNames == ["ghcr.io/ioanalytica/wordpress-idx"] and .minimumReleaseAgeBehaviour == "timestamp-optional")'
+has "the wordpress-idx submodule moves by hand"     '."git-submodules".enabled == false'
+has "no rule is left for the sidecar's image, which a release builds" \
+    '[.. | strings | select(test("ioanalytica/wordpress-idx"))] | length == 0'
 has "Dragonfly stays with its own workflow"      '[.packageRules[] | select(.enabled == false) | .matchPackageNames[]?] | index("docker.dragonflydb.io/dragonflydb/dragonfly")'
 has "the common chart dependency stays manual"   '.helmv3.enabled == false'
 has "only the chart's own values file is read"   '."helm-values".managerFilePatterns == ["/^chart/values\\.yaml$/"]'
