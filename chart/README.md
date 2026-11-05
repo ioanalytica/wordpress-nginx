@@ -1019,7 +1019,7 @@ default security context constraints, cannot run the image.
 
 ### To 7.1.410
 
-* **Back the database up before the upgrade.** With `mariadb.enabled`, the bundled MariaDB moves from 12.2 to 12.3 and starts on the existing data directory. It updates its system tables at that first start, and MariaDB does not support going back to the earlier series. An external database is not affected.
+* **Back the database up before the upgrade.** With `mariadb.enabled` and the chart's default `mariadb.image`, the bundled MariaDB moves from 12.2 to 12.3 and starts on the existing data directory. It updates its system tables at that first start, and MariaDB does not support going back to the earlier series. An installation that sets `mariadb.image` itself keeps its image, and an external database is not affected.
 * **The search is ready a little later after the upgrade.** With `idx.enabled`, the sidecar builds its index anew once, at its first start with this version. Nothing has to be done by hand.
 
 ### To 7.1.409
