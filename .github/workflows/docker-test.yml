@@ -1,15 +1,19 @@
 name: Docker image smoke test
 
-# Pull requests run both jobs whatever files they touch: there is no `paths`
+# Pull requests run every job whatever files they touch: there is no `paths`
 # filter on that trigger. A workflow skipped by a path filter leaves its
 # checks pending, so a ruleset that requires `smoke-test` and
 # `chart-template-test` would block every pull request outside the filter for
-# good. The two jobs take one to two and a half minutes, less than the review
+# good. The jobs take one to two and a half minutes, less than the review
 # of the pull request, so they are not skipped for changes that cannot affect
 # them either: a list of such changes would have to follow every file the
 # tests come to read.
 #
 # Pushes to main keep the filter. No merge waits for their result.
+#
+# Every job has a time limit: without one, a hung job holds the run for
+# GitHub's default of six hours. The limits are a few times the longest run
+# seen.
 on:
   push:
     branches:
@@ -18,27 +22,33 @@ on:
       - 'docker/**'
       - 'chart/**'
       - 'scripts/**'
-      - '.github/workflows/docker-test.yml'
+      - 'tests/**'
+      - '.github/**'
   pull_request:
 
-# Both jobs only read the repository. The build cache (type=gha) uses the
+# Every job only reads the repository. The build cache (type=gha) uses the
 # runner's own cache token, not GITHUB_TOKEN.
 permissions:
   contents: read
 
 jobs:
   smoke-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # No job pushes anything back, so the token has no business staying
+          # behind in .git/config.
+          persist-credentials: false
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3.10.0
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       - name: Build image
-        uses: docker/build-push-action@v6.18.0
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: ./docker
           platforms: linux/amd64
@@ -51,13 +61,21 @@ jobs:
         run: ./docker/tests/smoke-test.sh wordpress-nginx:smoke-test
 
   chart-template-test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
+      # Pinned: without a version the action asks the GitHub API for the
+      # latest release on every run, and the tests would run on whichever
+      # Helm that happens to be.
       - name: Set up Helm
-        uses: azure/setup-helm@v4
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.1
 
       # chart/charts/ is gitignored, so the common dependency has to be
       # resolved here. It is a public OCI chart, no registry login needed.
@@ -75,3 +93,55 @@ jobs:
 
       - name: Run file-integrity watcher test
         run: ./chart/tests/fim-test.sh
+
+      # The workflows, the Renovate configuration, the CVE scan's accepted
+      # findings and the scripts a release and the scan run.
+      - name: Run CI and release script test
+        run: ./tests/ci/test.sh
+
+  shellcheck:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install shellcheck
+        run: |
+          command -v shellcheck >/dev/null || { sudo apt-get update && sudo apt-get install -y shellcheck; }
+          shellcheck --version
+
+      - name: Run shellcheck
+        run: ./tests/ci/shellcheck.sh
+
+  hadolint:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install hadolint
+        env:
+          # renovate: datasource=github-releases depName=hadolint/hadolint
+          HADOLINT_VERSION: 2.15.1
+          # The sum of hadolint-linux-x86_64 in the release's checksums.sha256,
+          # copied here and not read from the release at run time: a replaced
+          # release would bring its own sums. It moves with the version, by
+          # hand; this step fails until it matches.
+          HADOLINT_SHA256: c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/hadolint" \
+            "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-x86_64"
+          echo "$HADOLINT_SHA256  $RUNNER_TEMP/hadolint" | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/hadolint" /usr/local/bin/hadolint
+          hadolint --version
+
+      # Every Dockerfile of the repository; an `ignore` comment in the file
+      # says why a rule does not apply to a line.
+      - name: Run hadolint
+        run: git ls-files -z '*Dockerfile' '*Dockerfile.*' | xargs -0 hadolint

@@ -5,16 +5,20 @@ on:
     - cron: '0 6 * * 1'  # Mondays at 06:00 UTC (after the daily WordPress check)
   workflow_dispatch:      # Allow manual trigger
 
-permissions:
-  contents: write
-  pull-requests: write
+permissions: {}
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
+    permissions:
+      contents: write        # push the bump branch
+      pull-requests: write   # open the pull request
     steps:
+      # The token stays in .git/config: create-pull-request pushes the
+      # branch with it.
       - name: Checkout
-        uses: actions/checkout@v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Get latest Dragonfly release
         id: upstream
@@ -46,10 +50,11 @@ jobs:
 
       - name: Compare versions
         id: cmp
+        env:
+          latest: ${{ steps.upstream.outputs.latest }}
+          current: ${{ steps.current.outputs.current }}
         run: |
           set -euo pipefail
-          latest="${{ steps.upstream.outputs.latest }}"
-          current="${{ steps.current.outputs.current }}"
           if [ "$latest" = "$current" ]; then
             echo "Already up to date ($current)"
             echo "update=false" >> "$GITHUB_OUTPUT"
@@ -112,7 +117,7 @@ jobs:
 
       - name: Create Pull Request
         if: steps.cmp.outputs.update == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           branch: dragonfly-bump/${{ steps.upstream.outputs.latest }}
           base: main
