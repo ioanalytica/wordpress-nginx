@@ -73,7 +73,9 @@ about PHP, WordPress or a site's plugins.
   [shinsenter/php](https://code.shin.company/php), which follows the PHP
   releases. Because every release build starts from the current base image, a
   new build picks up the PHP release the base image has by then. The changelog
-  names the PHP version of a build where it matters.
+  names the PHP version of a build where it matters. The image stays on one
+  PHP series (8.4 at present); a new series is a deliberate move by the
+  maintainers, because the plugins of a site depend on it.
 - **WordPress core** is covered by the daily tracker above.
 - **Plugins and themes** update through WordPress's own auto-updates. The
   plugins the chart preinstalls are set to auto-update; for everything else it

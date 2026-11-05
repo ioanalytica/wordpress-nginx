@@ -140,11 +140,10 @@
       "groupName": "nginx-prometheus-exporter image"
     },
     {
-      "description": "The base image is a moving tag on purpose: every release build pulls it afresh, and with it the current PHP patch release. Its tag changes only for a new PHP series, a deliberate move, approved on the dashboard.",
+      "description": "The PHP series of the base image moves by hand, never by the bot: the plugins of a site depend on it, and the base image has tags for series PHP has not released. The tag itself is a moving one on purpose: every release build pulls it afresh, and with it the current PHP patch release.",
       "matchManagers": ["dockerfile"],
       "matchDepNames": ["shinsenter/php"],
-      "dependencyDashboardApproval": true,
-      "prBodyNotes": ["A new PHP series in the image: add a line under `## Unreleased` in chart/CHANGELOG.md, and build the image and run docker/tests/smoke-test.sh before merging."]
+      "enabled": false
     },
     {
       "description": "A new major of any other image pin or base image waits for approval on the dashboard.",
