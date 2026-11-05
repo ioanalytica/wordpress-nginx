@@ -1017,6 +1017,17 @@ default security context constraints, cannot run the image.
 
 <!-- #region upgrading -->
 
+### To 7.1.409
+
+* **The search sidecar's image carries the chart version as its tag.** It is built by this project's release from now on: with `idx.enabled`, the chart runs `ghcr.io/ioanalytica/wordpress-idx:7.1.409`, where it ran a `1.x.y` tag before. An installation that takes the image from its default repository needs nothing. One that points `idx.image.registry` or `idx.image.repository` at a mirror copies the image there under the chart version before it upgrades; `idx.image.digest` still wins over the tag.
+* **Helm checks every value against the schema.** `values.schema.json` now covers every value and refuses a value of a kind the chart cannot use, such as a list where the chart reads a single value. `helm template` with the release's values shows before the upgrade whether one of them is refused.
+* **`wordpressExtraConfigContent` takes effect.** A release that has set it, so far without effect, gets its PHP statements evaluated in `wp-config.php`. Check the content first: a statement PHP cannot parse stops every request.
+* `customHTAccessCM` and `metrics.prometheusRule` are gone from `values.yaml`. Neither had an effect, and a values file that still sets them renders as before.
+* **The defaults under `containerSecurityContext` changed.** They apply only with `containerSecurityContext.enabled: true`, which stays off by default. With the earlier defaults (user 1001, a read-only root filesystem, all capabilities dropped) neither container started; the defaults are now what the image runs with: `runAsUser: 0`, `runAsGroup: 0`, `runAsNonRoot: false`, `readOnlyRootFilesystem: false`, `capabilities.drop: []`. A release that enables the context and sets these values itself renders as before.
+* **With `metrics.enabled`, the NetworkPolicy admits the exporter's port**, like the HTTP port: from every source with `networkPolicy.allowExternal: true`, the default. A rule in `networkPolicy.extraIngress` that admitted the scrape is no longer needed; a release whose rule admitted it from selected sources only has the port open to every source now, and `networkPolicy.allowExternal: false` narrows all of the pod's ports.
+* `metrics.serviceMonitor.metricRelabelings` and `metrics.serviceMonitor.selector` take effect: rules and labels set there, so far without effect, reach the ServiceMonitor with this version.
+* Both images and the chart are signed; [Verify a release](../README.md#verify-a-release) has the commands.
+
 ### To 7.1.408
 
 The chart version scheme changed: `7.1.408` follows `7.1.4-7`. The build number moved from a `-N` suffix into the patch component (see [Chart versions](#chart-versions)), so releases are stable SemVer versions and no longer pre-releases. Chart and image are otherwise the same as in `7.1.4-7`; no values changes are required.
