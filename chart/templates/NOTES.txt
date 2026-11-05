@@ -28,11 +28,14 @@ To access your WordPress site from outside the cluster follow the steps below:
 
 {{- if .Values.ingress.enabled }}
 
-1. Get the WordPress URL and associate WordPress hostname to your cluster external IP:
+1. The Ingress publishes your WordPress site under its hostname:
 
-   export CLUSTER_IP=$(minikube ip) # On Minikube. Use: `kubectl cluster-info` on others K8s clusters
-   echo "WordPress URL: http{{ if .Values.ingress.tls }}s{{ end }}://{{ .Values.ingress.hostname }}/"
-   echo "$CLUSTER_IP  {{ .Values.ingress.hostname }}" | sudo tee -a /etc/hosts
+   WordPress URL: http{{ if .Values.ingress.tls }}s{{ end }}://{{ tpl .Values.ingress.hostname $ }}/
+
+   The hostname has to resolve to your ingress controller. The address the
+   Ingress has been given shows in:
+
+   kubectl get ingress --namespace {{ .Release.Namespace }} {{ include "common.names.fullname" . }}
 
 {{- else }}
 {{- $port := .Values.service.ports.http | toString }}

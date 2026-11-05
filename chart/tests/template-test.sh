@@ -874,6 +874,34 @@ fi
 expect "off by default"                          absent  "securityContext:" --show-only templates/deployment.yaml
 check  "security contexts enabled"               --set containerSecurityContext.enabled=true --set podSecurityContext.enabled=true
 
+echo "=== The notes after an install fit any cluster"
+# `helm template` does not print NOTES.txt; a client-side dry run of the
+# install does, and with no kubeconfig it asks no cluster.
+# notes_say <desc> <"present"|"absent"> <needle> <helm args...>
+notes_say() {
+    local desc="$1" mode="$2" needle="$3" out; shift 3
+    out="$(KUBECONFIG=/dev/null helm install tst "$CHART" --dry-run=client -n default "$@" 2>&1)" || {
+        echo "FAIL: $desc — the dry run of the install failed"; FAILURES=$((FAILURES + 1)); return
+    }
+    out="${out#*NOTES:}"
+    if grep -qF -- "$needle" <<<"$out"; then
+        if [ "$mode" = "present" ]; then echo "ok:   $desc"
+        else echo "FAIL: $desc — the notes say '$needle'"; FAILURES=$((FAILURES + 1)); fi
+    else
+        if [ "$mode" = "absent" ]; then echo "ok:   $desc"
+        else echo "FAIL: $desc — the notes do not say '$needle'"; FAILURES=$((FAILURES + 1)); fi
+    fi
+}
+WITH_INGRESS=(--set ingress.enabled=true --set ingress.hostname=blog.example.com)
+notes_say "with an Ingress the notes give the site's URL"  present "WordPress URL: http://blog.example.com/" "${WITH_INGRESS[@]}"
+notes_say "with TLS the URL is https"                      present "WordPress URL: https://blog.example.com/" "${WITH_INGRESS[@]}" --set ingress.tls=true
+notes_say "a templated hostname is rendered"               present "WordPress URL: http://tst.example.com/" \
+        --set ingress.enabled=true --set-json 'ingress.hostname="{{ .Release.Name }}.example.com"'
+notes_say "they name the Ingress to look at"               present "kubectl get ingress --namespace default tst-wordpress-nginx" "${WITH_INGRESS[@]}"
+notes_say "they assume no particular cluster"              absent  "minikube" "${WITH_INGRESS[@]}"
+notes_say "they ask for no change to /etc/hosts"           absent  "/etc/hosts" "${WITH_INGRESS[@]}"
+notes_say "without an Ingress they follow the Service"     present "kubectl get svc --namespace default" 
+
 echo "=== File-integrity watcher renders what it claims"
 # fim_check <desc> <deployment|sidecar> <helm args...>: the structural checks
 # plus check-fim.py - the pinned wp-config.php digest must equal the bytes
