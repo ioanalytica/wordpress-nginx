@@ -190,16 +190,16 @@ assert "uploads PHP executes in off mode" 200 /wp-content/uploads/shell.php UPLO
 
 echo "=== Denied paths: image default is inert"
 cexec '
-mkdir -p /var/www/html/wp-content/uploads/dlm_uploads /var/www/html/wp-content/themes/config-1785900943/assets
+mkdir -p /var/www/html/wp-content/uploads/dlm_uploads /var/www/html/wp-content/plugins/retired-plugin/assets
 echo "ZIP-CONTENT" > /var/www/html/wp-content/uploads/dlm_uploads/report.zip
-echo "<?php echo \"BACKDOOR\";" > /var/www/html/wp-content/themes/config-1785900943/assets/custom-file-4-1785900944.php
+echo "<?php echo \"HONEYPOT-EXECUTED\";" > /var/www/html/wp-content/plugins/retired-plugin/assets/callback.php
 '
 assert "dlm_uploads served by default"   200 /wp-content/uploads/dlm_uploads/report.zip ZIP-CONTENT
 
 echo "=== Denied paths: as the chart renders them"
 cexec 'cat > /etc/nginx/denied-paths.d/10-chart.conf <<EOF
 "~*^/wp-content/uploads/dlm_uploads(/|\$)" 403;
-"~*^/wp-content/themes/config-1785900943/" 418;
+"~*^/wp-content/plugins/retired-plugin/" 418;
 EOF'
 reload_nginx
 # The directory rule must hold for extensions the static-file location matches.
@@ -209,9 +209,9 @@ assert "denied dir: directory itself"     403 /wp-content/uploads/dlm_uploads/
 assert "denied dir: no prefix overreach"  404 /wp-content/uploads/dlm_uploads_other/x.zip
 # The honeypot status must survive the PHP allowlist, which would answer 403
 # for this .php path if it ran first.
-assert "honeypot answers 418, not 403"    418 /wp-content/themes/config-1785900943/assets/custom-file-4-1785900944.php
+assert "honeypot answers 418, not 403"    418 /wp-content/plugins/retired-plugin/assets/callback.php
 assert "unrelated uploads unaffected"     404 /wp-content/uploads/other.zip
-assert_not_executed "honeypot never reaches PHP" /wp-content/themes/config-1785900943/assets/custom-file-4-1785900944.php BACKDOOR
+assert_not_executed "honeypot never reaches PHP" /wp-content/plugins/retired-plugin/assets/callback.php HONEYPOT-EXECUTED
 assert_not_executed "denied dir: dot segment"      "/wp-content/uploads/dlm_uploads/../dlm_uploads/report.zip" ZIP-CONTENT
 assert_not_executed "denied dir: double slash"     "/wp-content//uploads/dlm_uploads/report.zip" ZIP-CONTENT
 assert_not_executed "denied dir: uppercase"        "/wp-content/uploads/DLM_UPLOADS/report.zip" ZIP-CONTENT
@@ -244,13 +244,13 @@ assert_gone "browser: 301 to the target root"      301 forum.example.com / "$BRO
 assert_gone "browser: path is not preserved"       301 forum.example.com /viewtopic.php "$BROWSER" https://example.com/
 assert_gone "canonical host: crawler unaffected"   200 localhost / "$CRAWLER"
 assert "canonical host: allowlist still enforces"  403 /wp-content/uploads/shell.php
-# The honeypot must keep answering 418 on a retired host: probers of a
-# removed backdoor ban themselves whatever hostname they use.
+# The honeypot must keep answering 418 on a retired host: probers ban
+# themselves whatever hostname they use.
 cexec 'cat > /etc/nginx/denied-paths.d/10-chart.conf <<EOF
-"~*^/wp-content/themes/config-1785900943/" 418;
+"~*^/wp-content/plugins/retired-plugin/" 418;
 EOF'
 reload_nginx
-assert_gone "honeypot outranks gone on a retired host" 418 forum.example.com /wp-content/themes/config-1785900943/assets/custom-file-4-1785900944.php "$CRAWLER"
+assert_gone "honeypot outranks gone on a retired host" 418 forum.example.com /wp-content/plugins/retired-plugin/assets/callback.php "$CRAWLER"
 cexec 'rm /etc/nginx/denied-paths.d/10-chart.conf /etc/nginx/gone-hosts.d/10-chart.conf'
 cexec 'echo "# php allowlist disabled" > /etc/nginx/custom.d/00-php-allowlist.conf'
 reload_nginx

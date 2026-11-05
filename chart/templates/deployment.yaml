@@ -121,21 +121,6 @@ spec:
           args:
             - -ec
             - |
-              ENVVARS="WORDPRESS_DB_NAME WORDPRESS_DB_USER WORDPRESS_DB_PASSWORD WORDPRESS_DB_HOST WORDPRESS_DB_CHARSET WORDPRESS_DB_COLLATE WORDPRESS_TABLE_PREFIX WORDPRESS_SCHEME WORDPRESS_DEBUG WORDPRESS_CONFIG_EXTRA WORDPRESS_EMAIL WORDPRESS_PLUGINS WORDPRESS_EXTRA_WP_CONFIG_CONTENT"
-
-              echo "Checking environment for required settings …"
-
-              for var in $ENVVARS; do
-                # Use eval to get the value of the variable
-                eval "value=\$$var"
-
-                if [ -z "$value" ]; then
-                  echo "Checking $var: x - Please check!"
-                else
-                  echo "Checking $var: ✓"
-                fi
-              done
-
               echo "Checking mounted volume …"
 
               if [ ! -d /wordpress/wp-content ]; then
@@ -544,8 +529,6 @@ spec:
           env:
             - name: ALLOW_EMPTY_PASSWORD
               value: {{ ternary "yes" "no" .Values.allowEmptyPassword | quote }}
-            - name: WORDPRESS_SKIP_BOOTSTRAP
-              value: {{ ternary "yes" "no" .Values.wordpressSkipInstall | quote }}
             {{- if or .Values.wordpressConfiguration .Values.existingWordPressConfigurationSecret }}
             # Override the default data to persist omiting wp-config.php from the list since
             # it is mounted as a read-only file from a Secret
@@ -593,8 +576,17 @@ spec:
             - name: WORDPRESS_HOSTNAME
               value: {{ tpl .Values.ingress.hostname $ | quote }}
             {{- end }}
-            - name: WORDPRESS_EXTRA_WP_CONFIG_CONTENT
+            {{- /*
+            The generated wp-config.php evaluates WORDPRESS_CONFIG_EXTRA.
+            An entry of that name in extraEnvVars keeps the say: a
+            server-side apply refuses a container with two variables of one
+            name, and a release that sets the variable itself must render
+            what it rendered before.
+            */}}
+            {{- if and .Values.wordpressExtraConfigContent (not (include "wordpress.extraEnvVarsSetConfigExtra" .)) }}
+            - name: WORDPRESS_CONFIG_EXTRA
               value: {{ .Values.wordpressExtraConfigContent | quote }}
+            {{- end }}
             - name: WORDPRESS_PLUGINS
               value: {{ join "," .Values.wordpressPlugins | quote }}
             - name: WORDPRESS_OVERRIDE_DATABASE_SETTINGS

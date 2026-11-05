@@ -208,7 +208,7 @@
           "default": []
         },
         "debug": {
-          "description": "Specify if debug values should be set",
+          "description": "Has no effect; kept for values files written for the Bitnami WordPress chart",
           "type": [
             "boolean",
             "integer",
@@ -251,7 +251,7 @@
       "default": "user@example.com"
     },
     "wordpressFirstName": {
-      "description": "WordPress user first name",
+      "description": "Has no effect: the image's installer sets no first name",
       "type": [
         "string",
         "number"
@@ -259,7 +259,7 @@
       "default": "FirstName"
     },
     "wordpressLastName": {
-      "description": "WordPress user last name",
+      "description": "Has no effect: the image's installer sets no last name",
       "type": [
         "string",
         "number"
@@ -291,7 +291,7 @@
       "default": "http"
     },
     "wordpressSkipInstall": {
-      "description": "Skip wizard installation",
+      "description": "Does not skip the installation; only `wordpressConfiguration` and `existingWordPressConfigurationSecret` require it to be `true`",
       "type": [
         "boolean",
         "integer",
@@ -300,7 +300,7 @@
       "default": false
     },
     "wordpressExtraConfigContent": {
-      "description": "Add extra content to the default wp-config.php file",
+      "description": "PHP statements the generated wp-config.php evaluates before it loads WordPress, for constants and settings of your own",
       "type": [
         "string",
         "number"
@@ -350,7 +350,7 @@
       "default": null
     },
     "wordpressPlugins": {
-      "description": "Array of plugins to install and activate. Can be specified as `all` or `none`.",
+      "description": "Has no effect; use `wordpressPreinstallPlugins` to install and activate plugins",
       "type": [
         "string",
         "array"
@@ -358,7 +358,7 @@
       "default": "none"
     },
     "nginxConfiguration": {
-      "description": "The content for your custom nginx.conf file (advanced feature)",
+      "description": "Has no effect on NGINX: the content is rendered into a ConfigMap that no container mounts",
       "type": [
         "string",
         "number"
@@ -366,7 +366,7 @@
       "default": ""
     },
     "existingNginxConfigurationConfigMap": {
-      "description": "The name of an existing secret with your custom nginx.conf file (advanced feature)",
+      "description": "Has no effect on NGINX: the ConfigMap is referenced by a pod volume that no container mounts",
       "type": [
         "string",
         "number"
@@ -618,7 +618,7 @@
       "default": ""
     },
     "allowEmptyPassword": {
-      "description": "Allow the container to be started with blank passwords",
+      "description": "Has no effect: the image does not read it",
       "type": [
         "boolean",
         "integer",
@@ -627,21 +627,13 @@
       "default": true
     },
     "overrideDatabaseSettings": {
-      "description": "Allow overriding the database settings persisted in wp-config.php",
+      "description": "Has no effect: wp-config.php is written anew for every pod and takes the database settings from the values each time",
       "type": [
         "boolean",
         "integer",
         "string"
       ],
       "default": false
-    },
-    "customHTAccessCM": {
-      "description": "The name of an existing ConfigMap with custom htaccess rules",
-      "type": [
-        "string",
-        "number"
-      ],
-      "default": ""
     },
     "command": {
       "description": "Override default container command (useful when using custom images)",
@@ -694,7 +686,7 @@
       "type": "object",
       "properties": {
         "enable": {
-          "description": "Whether to enable WordPress Multisite configuration.",
+          "description": "Has no effect: the image does not set up WordPress Multisite",
           "type": [
             "boolean",
             "integer",
@@ -703,7 +695,7 @@
           "default": false
         },
         "host": {
-          "description": "WordPress Multisite hostname/address. This value is mandatory when enabling Multisite mode.",
+          "description": "Has no effect, see `multisite.enable`",
           "type": [
             "string",
             "number"
@@ -711,7 +703,7 @@
           "default": ""
         },
         "networkType": {
-          "description": "WordPress Multisite network type to enable. Allowed values: `subfolder`, `subdirectory` or `subdomain`.",
+          "description": "Has no effect, see `multisite.enable`",
           "type": [
             "string",
             "number"
@@ -719,7 +711,7 @@
           "default": "subdomain"
         },
         "enableNipIoRedirect": {
-          "description": "Whether to enable IP address redirection to nip.io wildcard DNS. Useful when running on an IP address with subdomain network type.",
+          "description": "Has no effect, see `multisite.enable`",
           "type": [
             "boolean",
             "integer",
@@ -1073,12 +1065,12 @@
           "default": {}
         },
         "runAsUser": {
-          "description": "Set containers' Security Context runAsUser",
+          "description": "Set containers' Security Context runAsUser; the image needs 0",
           "type": [
             "integer",
             "string"
           ],
-          "default": 1001
+          "default": 0
         },
         "runAsGroup": {
           "description": "Set containers' Security Context runAsGroup",
@@ -1086,16 +1078,16 @@
             "integer",
             "string"
           ],
-          "default": 1001
+          "default": 0
         },
         "runAsNonRoot": {
-          "description": "Set container's Security Context runAsNonRoot",
+          "description": "Set container's Security Context runAsNonRoot; the image does not start with `true`",
           "type": [
             "boolean",
             "integer",
             "string"
           ],
-          "default": true
+          "default": false
         },
         "privileged": {
           "description": "Set container's Security Context privileged",
@@ -1107,13 +1099,13 @@
           "default": false
         },
         "readOnlyRootFilesystem": {
-          "description": "Set container's Security Context readOnlyRootFilesystem",
+          "description": "Set container's Security Context readOnlyRootFilesystem; the image does not start with `true`",
           "type": [
             "boolean",
             "integer",
             "string"
           ],
-          "default": true
+          "default": false
         },
         "allowPrivilegeEscalation": {
           "description": "Set container's Security Context allowPrivilegeEscalation",
@@ -1129,7 +1121,7 @@
           "type": "object",
           "properties": {
             "drop": {
-              "description": "List of capabilities to be dropped",
+              "description": "List of capabilities to be dropped; the image does not start with `ALL`",
               "type": [
                 "array",
                 "object",
@@ -1137,9 +1129,7 @@
               ],
               "maxProperties": 0,
               "maxLength": 0,
-              "default": [
-                "ALL"
-              ]
+              "default": []
             }
           }
         },
@@ -1570,7 +1560,7 @@
           "default": "ImplementationSpecific"
         },
         "apiVersion": {
-          "description": "Force Ingress API version (automatically detected if not set)",
+          "description": "Has no effect: the Ingress API version is always detected from the cluster",
           "type": [
             "string",
             "number"
@@ -1715,7 +1705,7 @@
           "default": "ImplementationSpecific"
         },
         "apiVersion": {
-          "description": "Force Ingress API version (automatically detected if not set)",
+          "description": "Has no effect: the Ingress API version is always detected from the cluster",
           "type": [
             "string",
             "number"
@@ -1775,7 +1765,7 @@
           "default": false
         },
         "selfSigned": {
-          "description": "Create a TLS secret for this ingress record using self-signed certificates generated by Helm",
+          "description": "Add a TLS entry for `secondaryIngress.hostname` to the Ingress. No certificate is generated for it: provide the secret `<hostname>-tls` yourself",
           "type": [
             "boolean",
             "integer",
@@ -1816,7 +1806,7 @@
           "default": []
         },
         "secrets": {
-          "description": "Custom TLS certificates as secrets",
+          "description": "Has no effect: the chart creates TLS secrets from `ingress.secrets` only, which may name the secret of this Ingress as well",
           "type": [
             "array",
             "object",
@@ -2549,18 +2539,17 @@
               "default": ""
             },
             "selector": {
-              "description": "Prometheus instance selector labels",
+              "description": "Labels the Prometheus instance selects its ServiceMonitors by; added to the ServiceMonitor's labels",
               "type": [
                 "object",
                 "array",
                 "string"
               ],
               "maxItems": 0,
-              "maxLength": 0,
               "default": {}
             },
             "labels": {
-              "description": "Additional labels that can be used so PodMonitor will be discovered by Prometheus",
+              "description": "Additional labels of the ServiceMonitor; a key set here wins over the same key in `selector`",
               "type": [
                 "object",
                 "array",
@@ -2599,51 +2588,6 @@
                 "string"
               ],
               "default": false
-            }
-          }
-        },
-        "prometheusRule": {
-          "title": "PrometheusRule for the exporter",
-          "type": "object",
-          "properties": {
-            "enabled": {
-              "description": "if `true`, creates a Prometheus Operator PrometheusRule (also requires `metrics.enabled` to be `true` and `metrics.prometheusRule.rules`)",
-              "type": [
-                "boolean",
-                "integer",
-                "string"
-              ],
-              "default": false
-            },
-            "namespace": {
-              "description": "Namespace for the PrometheusRule Resource (defaults to the Release Namespace)",
-              "type": [
-                "string",
-                "number"
-              ],
-              "default": ""
-            },
-            "additionalLabels": {
-              "description": "Additional labels that can be used so PrometheusRule will be discovered by Prometheus",
-              "type": [
-                "object",
-                "array",
-                "string"
-              ],
-              "maxItems": 0,
-              "maxLength": 0,
-              "default": {}
-            },
-            "rules": {
-              "description": "Prometheus Rule definitions",
-              "type": [
-                "array",
-                "object",
-                "string"
-              ],
-              "maxProperties": 0,
-              "maxLength": 0,
-              "default": []
             }
           }
         }

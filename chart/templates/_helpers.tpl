@@ -301,6 +301,26 @@ first 28 bits of its SHA-256, plus one, since W3TC treats 0 as unset.
 {{- end -}}
 
 {{/*
+True when extraEnvVars has an entry named WORDPRESS_CONFIG_EXTRA. Given as
+text for the template engine, extraEnvVars is searched for the name.
+*/}}
+{{- define "wordpress.extraEnvVarsSetConfigExtra" -}}
+{{- if kindIs "string" .Values.extraEnvVars -}}
+{{- if regexMatch "name:\\s*[\"']?WORDPRESS_CONFIG_EXTRA[\"']?\\s*(\n|$)" .Values.extraEnvVars -}}
+{{- true -}}
+{{- end -}}
+{{- else -}}
+{{- range .Values.extraEnvVars -}}
+{{- if kindIs "map" . -}}
+{{- if eq (toString .name) "WORDPRESS_CONFIG_EXTRA" -}}
+{{- true -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return the value for the WP_CACHE constant in wp-config.php.
 An unset wordpressWpCache follows wordpressConfigureCache; an explicit
 true/false wins. Note that "default" is unusable here - it would treat an

@@ -19,7 +19,6 @@ A production-ready Helm chart for deploying WordPress with NGINX on Kubernetes. 
 - **Horizontal Pod Autoscaling** with CPU/memory targets
 - **Network Policies** for pod-level firewall rules
 - **Dual Ingress** support (primary + secondary for wp-admin restrictions)
-- **OpenShift** compatibility via automatic security context adaptation
 - **Resource presets** (nano through 2xlarge) for quick sizing
 
 <!-- #endregion features -->
@@ -95,10 +94,14 @@ The available versions are listed in the [CHANGELOG](CHANGELOG.md).
 | `wordpressEmail` | WordPress admin email | `user@example.com` |
 | `wordpressBlogName` | Blog name | `User's Blog!` |
 | `wordpressScheme` | URL scheme (`http`/`https`) | `http` |
-| `wordpressSkipInstall` | Skip the installation wizard | `false` |
+| `wordpressExtraConfigContent` | PHP statements the generated `wp-config.php` evaluates, for constants of your own | `""` |
 | `wordpressConfigureCache` | Auto-configure W3 Total Cache | `false` |
 | `wordpressCacheInstanceId` | W3 Total Cache instance id (cache key prefix) | derived from namespace and release |
-| `wordpressPlugins` | Plugins to activate (`all`, `none`, or list) | `none` |
+| `wordpressPreinstallPlugins` | Plugins installed and activated on every start, see [Preinstalled plugins](#preinstalled-plugins) | `two-factor` |
+
+WordPress is installed by the image, not by a value: on every start it checks
+the database, creates the site with the settings above where there is none,
+and leaves an existing one as it is.
 
 <!-- #endregion wordpress-settings -->
 
@@ -259,8 +262,10 @@ it follows along. Set it explicitly when running a different page cache plugin
 without that integration, or to force page caching off regardless.
 
 Note the same regeneration applies to any other constant a plugin writes into
-`wp-config.php`. If you depend on one, put it in `WORDPRESS_CONFIG_EXTRA`
-rather than relying on the plugin's edit to persist.
+`wp-config.php`. If you depend on one, put it in `wordpressExtraConfigContent`
+rather than relying on the plugin's edit to persist. Chart versions up to
+7.1.408 do not read that value; there, set the environment variable
+`WORDPRESS_CONFIG_EXTRA` through `extraEnvVars`.
 
 <!-- #endregion cache -->
 
@@ -416,7 +421,7 @@ kubectl logs deploy/<release>-wordpress-nginx | grep '\[rest-hardening\]'
 
 <!-- #region nginx-changes -->
 
-`nginxConfiguration`, `nginxCustomServerBlockAddition`, `phpExecutionAllowlist`,
+`nginxCustomServerBlockAddition`, `phpExecutionAllowlist`,
 `restApiHardening`, `nginx.deniedPaths` and `redirect.goneHosts` all render
 into ConfigMaps that are mounted with `subPath`; the post-init scripts
 (`wordpressPreinstallPlugins`, `wordpressConfigureCache`,
@@ -432,6 +437,11 @@ Deployment spec stayed byte-identical, no rollout was triggered, and running
 pods kept the previous configuration indefinitely. If you are on such a version
 and a configuration change appears to have no effect, `kubectl rollout restart`
 the deployment.
+
+`nginxConfiguration` and `existingNginxConfigurationConfigMap` do not belong
+to this list: their ConfigMap is rendered, but no container mounts it, so the
+image's `nginx.conf` stays in place. Additions to the server block go into
+`nginxCustomServerBlockAddition`.
 
 <!-- #endregion nginx-changes -->
 
@@ -978,17 +988,25 @@ When using multiple replicas, ensure the PVC access mode supports `ReadWriteMany
 
 ```yaml
 podSecurityContext:
-  enabled: true
-  fsGroup: 1001
+  enabled: true     # fsGroup 1001
 
 containerSecurityContext:
-  enabled: true
-  runAsUser: 1001
-  runAsNonRoot: true
-  readOnlyRootFilesystem: true
+  enabled: true     # no privilege escalation, seccomp profile RuntimeDefault
 ```
 
-OpenShift compatibility is handled automatically via `global.compatibility.openshift.adaptSecurityContext`.
+The image has to start as root: its init system refuses any other user and
+writes to the root filesystem while starting, and the init container sets the
+owner of the files it creates on the volume. `containerSecurityContext`
+therefore keeps `runAsUser: 0`, a
+writable root filesystem and the container runtime's default capabilities.
+What `enabled: true` adds is `allowPrivilegeEscalation: false`,
+`privileged: false` and the `RuntimeDefault` seccomp profile, for the
+WordPress container and the init container alike.
+
+With `runAsNonRoot: true`, a `runAsUser` other than 0,
+`readOnlyRootFilesystem: true` or all capabilities dropped the pod does not
+start. A cluster that admits no root containers, such as OpenShift with its
+default security context constraints, cannot run the image.
 
 <!-- #endregion security-context -->
 

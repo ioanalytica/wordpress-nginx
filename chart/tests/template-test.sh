@@ -715,6 +715,105 @@ endpoint_has "the documented key wins over it"            metricRelabelings "$DR
         --set-json "metrics.serviceMonitor.metricRelabelings=$DROP" \
         --set-json "metrics.serviceMonitor.relabellings=$SITE"
 
+# selector and labels both end up as labels of the ServiceMonitor, which is
+# what a Prometheus selects it by. A key named in both must render once: a
+# second one makes the manifest invalid for a strict YAML parser.
+SM=("${METRICS[@]}" --set metrics.serviceMonitor.enabled=true --show-only templates/servicemonitor.yaml)
+expect "selector labels the ServiceMonitor"      present "prometheus: main" "${SM[@]}" \
+        --set metrics.serviceMonitor.selector.prometheus=main
+expect "labels wins over selector"               present "release: mine" "${SM[@]}" \
+        --set metrics.serviceMonitor.selector.release=theirs --set metrics.serviceMonitor.labels.release=mine
+expect "the overruled selector label is gone"    absent  "release: theirs" "${SM[@]}" \
+        --set metrics.serviceMonitor.selector.release=theirs --set metrics.serviceMonitor.labels.release=mine
+check  "selector and labels naming one key"      "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true \
+        --set metrics.serviceMonitor.selector.release=theirs --set metrics.serviceMonitor.labels.release=mine
+
+echo "=== NetworkPolicy admits the ports the pod declares"
+# extraContainerPorts entries are container ports (name, containerPort); the
+# policy needs the number. Rendering the entry itself gave a port the API
+# server refuses, so the release could not be installed.
+EXTRA_PORT=(--set-json 'extraContainerPorts=[{"name":"status","containerPort":9090}]')
+expect "an extra container port is admitted"     present "- port: 9090" "${EXTRA_PORT[@]}" "${NETPOL[@]}"
+expect "the entry is not rendered as a map"      absent  "map[" "${EXTRA_PORT[@]}" "${NETPOL[@]}"
+check  "extra container port"                    "${EXTRA_PORT[@]}"
+
+echo "=== Extra wp-config.php content reaches the generated file"
+# The generated wp-config.php evaluates WORDPRESS_CONFIG_EXTRA and nothing
+# else. wordpressExtraConfigContent used to be passed under a name nothing
+# reads.
+EXTRA_CONFIG=(--set-json 'wordpressExtraConfigContent="define( \"WP_POST_REVISIONS\", 10 );"')
+expect "no content, no variable"                 absent  'name: WORDPRESS_CONFIG_EXTRA'
+expect "content becomes WORDPRESS_CONFIG_EXTRA"  present 'name: WORDPRESS_CONFIG_EXTRA' "${EXTRA_CONFIG[@]}"
+expect "the content is the variable's value"     present 'value: "define( \"WP_POST_REVISIONS\", 10 );"' "${EXTRA_CONFIG[@]}"
+expect "the unread variable is gone"             absent  'WORDPRESS_EXTRA_WP_CONFIG_CONTENT' "${EXTRA_CONFIG[@]}"
+expect "wp-config.php evaluates the variable"    present "getenv_docker('WORDPRESS_CONFIG_EXTRA', '')"
+# A release may set the variable itself through extraEnvVars. That entry
+# stays the only one: two variables of one name in a container are refused
+# by a server-side apply.
+config_extra_entries() {
+    helm template tst "$CHART" "${EXTRA_CONFIG[@]}" "$@" 2>/dev/null | grep -c -- '- name: WORDPRESS_CONFIG_EXTRA$' || true
+}
+for form in list text; do
+    case "$form" in
+        list) OWN=(--set-json 'extraEnvVars=[{"name":"WORDPRESS_CONFIG_EXTRA","value":"own_statement();"}]') ;;
+        text) OWN=(--set-string $'extraEnvVars=- name: WORDPRESS_CONFIG_EXTRA\n  value: own_statement();') ;;
+    esac
+    if [ "$(config_extra_entries "${OWN[@]}")" = 1 ]; then
+        echo "ok:   an extraEnvVars entry of that name stays the only one ($form)"
+    else
+        echo "FAIL: WORDPRESS_CONFIG_EXTRA renders $(config_extra_entries "${OWN[@]}") times with extraEnvVars as a $form"
+        FAILURES=$((FAILURES + 1))
+    fi
+    expect "the extraEnvVars entry keeps its value ($form)" present 'value: own_statement();' "${EXTRA_CONFIG[@]}" "${OWN[@]}"
+    expect "the value is not rendered next to it ($form)"  absent  'WP_POST_REVISIONS' "${EXTRA_CONFIG[@]}" "${OWN[@]}"
+done
+expect "another extraEnvVars entry changes nothing" present 'name: WORDPRESS_CONFIG_EXTRA' "${EXTRA_CONFIG[@]}" \
+        --set-json 'extraEnvVars=[{"name":"OTHER","value":"x"}]'
+check  "extra config content"                    "${EXTRA_CONFIG[@]}"
+# Variables the image never read are not passed any more.
+expect "no variable for wordpressSkipInstall"    absent  'WORDPRESS_SKIP_BOOTSTRAP' --set wordpressSkipInstall=true
+# The init container has no environment to check; the block that claimed to
+# check it printed a check mark for every name.
+expect "init script checks no environment"       absent  'Checking environment for required settings'
+
+echo "=== Security contexts render what the image starts with"
+# The image has to start as root, with a writable root filesystem and the
+# runtime's default capabilities; the init container sets file owners. The
+# defaults of containerSecurityContext must therefore be a context the pod
+# starts with, so that enabled=true alone is usable. What starts was tried on
+# a cluster; this pins the defaults to it.
+security_contexts=$(helm template tst "$CHART" --set containerSecurityContext.enabled=true \
+        --set podSecurityContext.enabled=true 2>&1 | python3 -c '
+import json, sys, yaml
+want = {"seLinuxOptions": {}, "runAsUser": 0, "runAsGroup": 0, "runAsNonRoot": False, "privileged": False,
+        "readOnlyRootFilesystem": False, "allowPrivilegeEscalation": False,
+        "capabilities": {"drop": []}, "seccompProfile": {"type": "RuntimeDefault"}}
+problems = []
+for d in yaml.safe_load_all(sys.stdin):
+    if not d or d.get("kind") != "Deployment" or d["metadata"]["name"] != "tst-wordpress-nginx":
+        continue
+    spec = d["spec"]["template"]["spec"]
+    if (spec.get("securityContext") or {}).get("fsGroup") != 1001:
+        problems.append("pod securityContext has no fsGroup 1001")
+    containers = {c["name"]: c for c in spec["initContainers"] + spec["containers"]}
+    for name in ("prepare-base-dir", "wordpress"):
+        got = containers[name].get("securityContext")
+        if got != want:
+            problems.append(name + ": " + json.dumps(got, sort_keys=True))
+    break
+else:
+    problems.append("no WordPress Deployment rendered")
+print("; ".join(problems))
+' 2>&1) || security_contexts="render failed"
+if [ -z "$security_contexts" ]; then
+    echo "ok:   enabled contexts keep root, a writable root filesystem and the default capabilities"
+else
+    echo "FAIL: security contexts differ from what the image starts with — $security_contexts"
+    FAILURES=$((FAILURES + 1))
+fi
+expect "off by default"                          absent  "securityContext:" --show-only templates/deployment.yaml
+check  "security contexts enabled"               --set containerSecurityContext.enabled=true --set podSecurityContext.enabled=true
+
 echo "=== File-integrity watcher renders what it claims"
 # fim_check <desc> <deployment|sidecar> <helm args...>: the structural checks
 # plus check-fim.py - the pinned wp-config.php digest must equal the bytes

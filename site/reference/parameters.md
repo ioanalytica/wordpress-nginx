@@ -24,7 +24,7 @@ This page says which part of the documentation covers which group of values.
 | `nginx.deniedPaths`, `nginx.htaccessPolicy` | [Denied paths and .htaccess](/security/denied-paths) |
 | `fim` | [File-integrity monitoring](/security/file-integrity-monitoring) |
 | `networkPolicy`, `automountServiceAccountToken` | [Security overview](/security/) |
-| `nginxConfiguration`, `nginxCustomServerBlockAddition` | [Applying NGINX configuration changes](/operations/nginx-changes) |
+| `nginxCustomServerBlockAddition`, `nginxConfiguration` (which has no effect) | [Applying NGINX configuration changes](/operations/nginx-changes) |
 
 The remaining values (labels and annotations, scheduling, probes, the
 Service, extra volumes, containers and environment variables) keep the names
