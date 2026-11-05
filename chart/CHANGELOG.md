@@ -2,7 +2,7 @@
 
 ## 7.1.408
 
-* **Chart versions are stable SemVer versions now.** The build number moved from a `-N` suffix into the patch component: for WordPress `x.y.z` and build `N` the version is `x.y.P` with `P = z * 100 + N`. `7.1.408` follows `7.1.4-7`, and the first version for WordPress 7.1.5 will be `7.1.500`. SemVer reads a `-N` suffix as a pre-release, so Helm needed `--devel` and version ranges never matched a release. `appVersion` remains the plain WordPress version, and the chart version remains the image tag. "Chart versions" in the README has the scheme with examples, "To 7.1.408" the upgrade notes.
+* **Chart versions are stable SemVer versions now.** The build number moved from a `-N` suffix into the patch component: for WordPress `x.y.z` and build `N` the version is `x.y.P` with `P = z * 100 + N`. `7.1.408` follows `7.1.4-7`, and the first version for WordPress 7.1.5 will be `7.1.500`. SemVer reads a `-N` suffix as a pre-release, so Helm needed `--devel`, and a version range matched a release only if it named a pre-release itself. `appVersion` remains the plain WordPress version, and the chart version remains the image tag. "Chart versions" in the README has the scheme with examples, "To 7.1.408" the upgrade notes.
   * Earlier versions and their image tags stay published unchanged, and every version of the new scheme sorts above them. A deployment that pins an exact version changes the pin to the new form with its next upgrade.
   * `--devel` is no longer needed; the install commands in both READMEs dropped it.
 * No changes to templates, values or the Dockerfile. As with every release, the image is built on the base image and Alpine packages current at release time.

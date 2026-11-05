@@ -13,8 +13,8 @@
 #
 # The chart version is also the image tag. It is a plain SemVer version: a
 # suffix such as the -N of the earlier scheme (7.1.4-7) would make every
-# release a pre-release, which Helm skips without --devel and version ranges
-# never match.
+# release a pre-release, which Helm skips without --devel and a version range
+# matches only if it names a pre-release itself.
 #
 #   scripts/chart-version.sh first WORDPRESS_VERSION
 #       print the first chart version for a WordPress release (x.y or x.y.z)
