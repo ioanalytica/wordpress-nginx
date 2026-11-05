@@ -4,7 +4,7 @@ The chart in a throwaway [k3d](https://k3d.io) cluster on one machine, with
 nothing outside it: WordPress on NGINX, the bundled MariaDB, the full-text
 search sidecar and the file-integrity watcher. It takes about two minutes,
 most of them for pulling the images (about 430 MB). Tested with k3d 5.9 and
-k3s 1.36.
+k3s 1.37.
 
 > **A cluster to try the chart in.** The site's files and its database live
 > in the k3d node container and are gone with the cluster. The site is served
@@ -28,7 +28,7 @@ k3s 1.36.
 ## 1. A cluster
 
 ```sh
-k3d cluster create wordpress-nginx --image rancher/k3s:v1.36.6-k3s1 -p "127.0.0.1:8080:80@loadbalancer"
+k3d cluster create wordpress-nginx --image rancher/k3s:v1.37.1-k3s1 -p "127.0.0.1:8080:80@loadbalancer"
 ```
 
 The image is the k3s this page is tested with; without it, the k3s depends on
