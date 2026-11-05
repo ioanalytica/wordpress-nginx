@@ -1,8 +1,14 @@
 # WordPress-NGINX Helm Chart
 
+<!-- #region intro -->
+
 A production-ready Helm chart for deploying WordPress with NGINX on Kubernetes. Developed by [IO ANALYTICA](https://ioanalytica.com).
 
+<!-- #endregion intro -->
+
 ## Features
+
+<!-- #region features -->
 
 - **NGINX** as web server (instead of Apache) with PHP-FPM
 - **Internal or external MariaDB** database
@@ -16,13 +22,21 @@ A production-ready Helm chart for deploying WordPress with NGINX on Kubernetes. 
 - **OpenShift** compatibility via automatic security context adaptation
 - **Resource presets** (nano through 2xlarge) for quick sizing
 
+<!-- #endregion features -->
+
 ## Prerequisites
+
+<!-- #region prerequisites -->
 
 - Kubernetes 1.19+
 - Helm 3.8+ (OCI registry support)
 - PV provisioner support in the underlying infrastructure (if persistence is enabled)
 
+<!-- #endregion prerequisites -->
+
 ## Quick Start
+
+<!-- #region install -->
 
 The chart is published to an OCI registry. Helm installs from it directly; there is no `helm repo add` step:
 
@@ -37,7 +51,11 @@ helm dependency build ./chart
 helm install my-wordpress ./chart
 ```
 
+<!-- #endregion install -->
+
 ### Chart versions
+
+<!-- #region chart-versions -->
 
 The chart version names the WordPress release the chart ships and the chart's build on that release, and it is also the image tag. For WordPress `x.y.z` and build `N`, the version is `x.y.P` with `P = z * 100 + N`; `appVersion` is the plain WordPress version.
 
@@ -62,9 +80,13 @@ Versions up to `7.1.4-7` had the form `x.y.z-N`, which SemVer reads as a pre-rel
 
 The available versions are listed in the [CHANGELOG](CHANGELOG.md).
 
+<!-- #endregion chart-versions -->
+
 ## Configuration
 
 ### WordPress Settings
+
+<!-- #region wordpress-settings -->
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
@@ -78,7 +100,11 @@ The available versions are listed in the [CHANGELOG](CHANGELOG.md).
 | `wordpressCacheInstanceId` | W3 Total Cache instance id (cache key prefix) | derived from namespace and release |
 | `wordpressPlugins` | Plugins to activate (`all`, `none`, or list) | `none` |
 
+<!-- #endregion wordpress-settings -->
+
 ### Database (MariaDB)
+
+<!-- #region database -->
 
 The chart can deploy an internal MariaDB instance or connect to an external database.
 
@@ -114,7 +140,11 @@ externalDatabase:
   database: wordpress
 ```
 
+<!-- #endregion database -->
+
 ### Cache (Dragonfly)
+
+<!-- #region cache -->
 
 The chart can deploy an internal [Dragonfly](https://www.dragonflydb.io/) instance (which serves both Redis and Memcached protocols simultaneously) or connect to an external cache server.
 
@@ -212,7 +242,11 @@ Note the same regeneration applies to any other constant a plugin writes into
 `wp-config.php`. If you depend on one, put it in `WORDPRESS_CONFIG_EXTRA`
 rather than relying on the plugin's edit to persist.
 
+<!-- #endregion cache -->
+
 ### Preinstalled plugins
+
+<!-- #region plugins -->
 
 `wordpressPreinstallPlugins` declares plugins the pod installs, activates
 and sets to auto-update. The default preinstalls
@@ -245,7 +279,11 @@ Semantics worth knowing:
   pod starts normally.
 * Set `wordpressPreinstallPlugins: []` to disable.
 
+<!-- #endregion plugins -->
+
 ### PHP Execution Allowlist
+
+<!-- #region php-execution-allowlist -->
 
 Since **7.1.0-2** NGINX only executes PHP for known WordPress entry points:
 `index.php`, `wp-login.php`, `wp-cron.php`, `wp-comments-post.php`,
@@ -281,7 +319,11 @@ that may need an allow entry up front:
 grep -rl "wp-load\.php" wp-content/plugins/ --include="*.php"
 ```
 
+<!-- #endregion php-execution-allowlist -->
+
 ### REST API and Author Enumeration Hardening
+
+<!-- #region rest-api-hardening -->
 
 **Opt-in, off by default.** Read the limitations below before enabling it.
 
@@ -348,7 +390,11 @@ To see what enabling the NGINX rules would refuse before turning them on, set
 kubectl logs deploy/<release>-wordpress-nginx | grep '\[rest-hardening\]'
 ```
 
+<!-- #endregion rest-api-hardening -->
+
 ### Applying NGINX configuration changes
+
+<!-- #region nginx-changes -->
 
 `nginxConfiguration`, `nginxCustomServerBlockAddition`, `phpExecutionAllowlist`,
 `restApiHardening`, `nginx.deniedPaths` and `redirect.goneHosts` all render
@@ -367,7 +413,11 @@ pods kept the previous configuration indefinitely. If you are on such a version
 and a configuration change appears to have no effect, `kubectl rollout restart`
 the deployment.
 
+<!-- #endregion nginx-changes -->
+
 ### Denied Paths and `.htaccess`
+
+<!-- #region denied-paths -->
 
 `nginx.deniedPaths` declares directories or URL patterns NGINX refuses for
 every caller. Rules render into a ConfigMap mounted at
@@ -496,7 +546,11 @@ reads it, or lets PHP run in that directory — PHP that exists or PHP added
 later — no PHP deny there is credited to the allowlist. The check matches file content,
 never evaluates it; the first directive line goes into the log as data.
 
+<!-- #endregion denied-paths -->
+
 ### Ingress
+
+<!-- #region ingress -->
 
 ```yaml
 ingress:
@@ -659,7 +713,11 @@ curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' -A 'Mozilla/5.0 (X11; L
 Once the crawl volume has died down, delete the DNS record and remove the
 entry.
 
+<!-- #endregion ingress -->
+
 ### Security Response Headers
+
+<!-- #region security-headers -->
 
 Security headers are **edge policy** and this chart deliberately does not set
 them on the pod. They belong on the ingress, next to TLS termination and any
@@ -732,7 +790,11 @@ so on a hardened ingress-nginx the per-site route is closed and the only
 built-in alternative is the controller-global `add-headers` ConfigMap, which
 applies the same headers to every site behind that controller.
 
+<!-- #endregion security-headers -->
+
 ### Search Index (wordpress-idx)
+
+<!-- #region search-index -->
 
 An optional FlexSearch-based full-text search sidecar:
 
@@ -756,7 +818,11 @@ updates, while the search keeps working, since that runs in the visitor's
 browser. Override the constant via `WORDPRESS_CONFIG_EXTRA` if the sidecar does
 not share the pod.
 
+<!-- #endregion search-index -->
+
 ### File-Integrity Monitoring
+
+<!-- #region file-integrity-monitoring -->
 
 An optional watcher mounts the site's volume read-only, polls it every
 `fim.interval` seconds and reports findings as Prometheus metrics
@@ -812,6 +878,8 @@ its rule in the `rule` label; `values.yaml` lists them all.
   ReadWriteMany, it is scheduled next to WordPress; ReadWriteOncePod and setups
   without persistence need `mode: sidecar`.
 
+<!-- #endregion file-integrity-monitoring -->
+
 ### Metrics & Monitoring
 
 ```yaml
@@ -826,6 +894,8 @@ metrics:
 ```
 
 ### Resources
+
+<!-- #region resources -->
 
 Resources can be set explicitly or via presets:
 
@@ -853,7 +923,11 @@ resources:
 | xlarge | 2.0 | 4Gi |
 | 2xlarge | 4.0 | 8Gi |
 
+<!-- #endregion resources -->
+
 ### Autoscaling
+
+<!-- #region autoscaling -->
 
 ```yaml
 autoscaling:
@@ -866,7 +940,11 @@ autoscaling:
 
 When using multiple replicas, ensure the PVC access mode supports `ReadWriteMany`.
 
+<!-- #endregion autoscaling -->
+
 ### Security Context
+
+<!-- #region security-context -->
 
 ```yaml
 podSecurityContext:
@@ -882,7 +960,11 @@ containerSecurityContext:
 
 OpenShift compatibility is handled automatically via `global.compatibility.openshift.adaptSecurityContext`.
 
+<!-- #endregion security-context -->
+
 ## Upgrading
+
+<!-- #region upgrading -->
 
 ### To 7.1.408
 
@@ -944,8 +1026,14 @@ Version 6.9.4-9 removes all Bitnami chart dependencies. Key changes:
 - **Default credentials**: Database defaults changed from `bitnami_wordpress`/`bn_wordpress` to `wordpress`/`wp_user`.
 - **Common chart**: Switched from `bitnami/common` to `ioanalytica/common`.
 
+<!-- #endregion upgrading -->
+
 ## License
+
+<!-- #region license -->
 
 Apache-2.0 — see [LICENSE](../LICENSE)
 
 The WordPress software deployed by this chart is licensed under GPL-2.0+.
+
+<!-- #endregion license -->
