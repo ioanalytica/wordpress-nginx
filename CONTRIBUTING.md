@@ -37,8 +37,10 @@ Thanks for helping. Bug reports, questions and pull requests are all welcome.
 
 The tests are shell scripts. They need `helm`, `docker`, `jq`,
 [`yq`](https://github.com/mikefarah/yq) (the Go one, not the Python wrapper of
-the same name) and Python 3 with PyYAML. Each block of commands starts in the
-repository root.
+the same name) and Python 3 with PyYAML; the checks of the scripts and
+Dockerfiles need [shellcheck](https://www.shellcheck.net/) and
+[hadolint](https://github.com/hadolint/hadolint) as well. Each block of
+commands starts in the repository root.
 
 ### Chart
 
@@ -85,8 +87,8 @@ git ls-files -z '*Dockerfile' | xargs -0 hadolint
   release and the daily scan run, against a stand-in for the registry. It
   reads the search sidecar's version from the submodule and needs the chart's
   dependencies, like the chart tests.
-- `shellcheck.sh` runs [shellcheck](https://www.shellcheck.net/) over every
-  shell script, `hadolint` checks the Dockerfiles.
+- `shellcheck.sh` runs shellcheck over every shell script, `hadolint` checks
+  the Dockerfiles.
 
 Continuous integration runs all three blocks on every pull request, as the
 jobs `chart-template-test`, `smoke-test`, `shellcheck` and `hadolint` of
@@ -203,11 +205,14 @@ chart and images at the candidate's version, without moving `latest`. A fix
 goes to `main` by pull request, and the next candidate, `-rc.2`, on the new
 head. The release is then tagged on the commit its last candidate tested.
 
-Tag and push as steps of their own, once the commit is on `origin/main`:
+Tag the release pull request's merge commit by its hash, not whatever
+`origin/main` is by then, and push the tag as a step of its own:
 
 ```sh
 git fetch origin
-git tag <version> origin/main
+git merge-base --is-ancestor <commit> origin/main   # the commit is on main
+git rev-parse '<version>-rc.1^{commit}'             # after a candidate: the same commit
+git tag <version> <commit>
 git push origin <version>
 ```
 
