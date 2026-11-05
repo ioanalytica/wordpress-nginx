@@ -13,13 +13,6 @@
   * An installation that points `idx.image.registry` or `idx.image.repository` at a mirror has to have the image there under the chart version, where the chart asked for a `1.x.y` tag before. `idx.image.digest` still wins over the tag.
   * The image's labels `org.opencontainers.image.version` and `org.opencontainers.image.revision` name the wordpress-idx version and commit. The tags `1.x.y` up to `1.3.7` stay as they are; a later wordpress-idx version gets its `1.x.y` tag from the first release that builds it.
 * **The chart carries its metadata for Artifact Hub.** `artifacthub.io/*` annotations replace `category`, `licenses`, `images`, `imageTag` and `idxImageTag` in `Chart.yaml`; the templates take the image tags from the chart version itself. The images list names every image the chart can run, and `home` is the documentation site.
-
-### Project and CI
-
-* A release candidate `x.y.P-rc.N` can be tagged on the commit of its release: it runs the whole release, publishes chart and images at the candidate's version, and leaves `latest` where it is. A version that is in the registry already is refused before anything is built.
-* The GitHub Release takes its notes from this changelog's entry for the version.
-* "Try it locally" builds the sidecar's image from the submodule when the registry does not have it yet, as it does for the WordPress image, and runs after every release against what the release published. On a pull request it builds an image whose source has changed since the release the chart names, also when an earlier pull request made the change, so the page is always tested with the images the next release would publish.
-* Renovate keeps the entries of the third-party images in the chart's images list in step with their pins; the wordpress-idx submodule moves by hand.
 * **`containerSecurityContext.enabled: true` gives a pod that starts.** The image has to start as root, with a writable root filesystem and the container runtime's default capabilities, and the init container sets the owner of the files it creates. The defaults of `containerSecurityContext` were those of the Bitnami chart (user 1001, `runAsNonRoot`, a read-only root filesystem, all capabilities dropped), with which neither container starts. They are now `runAsUser: 0`, `runAsGroup: 0`, `runAsNonRoot: false`, `readOnlyRootFilesystem: false` and `capabilities.drop: []`, so that enabling the context adds what the image can run with: `allowPrivilegeEscalation: false`, `privileged: false` and the `RuntimeDefault` seccomp profile.
   * The context stays off by default. A release that enables it and sets these five values itself renders as before.
   * Tried on a cluster with the context enabled alone and together with `podSecurityContext.enabled`; the template test pins the defaults.
@@ -38,6 +31,13 @@
 * The init container no longer prints "Checking environment for required settings". It has no environment to check, and the block printed a check mark for every name whatever was set.
 * `image.pullSecrets` is a key of `values.yaml` again, with the default `[]` its documentation gave; it was commented out there. The exporter's probes (`metrics.livenessProbe`, `metrics.readinessProbe`, `metrics.startupProbe` and their `custom*` counterparts), `metrics.containerSecurityContext.seLinuxOptions`, `externalDatabase.databaseCharset` and `externalDatabase.databaseCollation` are documented now. No change in behaviour.
 * Documentation: the `nginx.deniedPaths` example uses neutral paths; the "Metrics & Monitoring" section of the README shows the exporter the chart ships; `smtpPort` says that msmtp's default port is 465 with `smtpProtocol: ssl`; `wp-config.php` is described as written once per pod, by the init container, not on every container start; and the README no longer lists OpenShift compatibility, which an image that starts as root does not have without further permissions.
+
+### Project and CI
+
+* A release candidate `x.y.P-rc.N` can be tagged on the commit of its release: it runs the whole release, publishes chart and images at the candidate's version, and leaves `latest` where it is. A version that is in the registry already is refused before anything is built.
+* The GitHub Release takes its notes from this changelog's entry for the version.
+* "Try it locally" builds the sidecar's image from the submodule when the registry does not have it yet, as it does for the WordPress image, and runs after every release against what the release published. On a pull request it builds an image whose source has changed since the release the chart names, also when an earlier pull request made the change, so the page is always tested with the images the next release would publish.
+* Renovate keeps the entries of the third-party images in the chart's images list in step with their pins; the wordpress-idx submodule moves by hand.
 * Changes between releases are collected in this section. A pull request that changes the chart or the image adds its lines here and leaves the version alone; the release pull request sets the version and turns the section into the version's entry (`scripts/changelog-release.sh`). The pull request of the WordPress release tracker does the same, and the template test fails when the version of `Chart.yaml` is not the newest one in this file.
 
 ## 7.1.408
