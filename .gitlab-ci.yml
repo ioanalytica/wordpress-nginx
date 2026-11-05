@@ -1,3 +1,0 @@
-include:
-  - project: 'io/devops/pipelines'
-    file: 'chart-ci.yaml'

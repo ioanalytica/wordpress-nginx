@@ -2,6 +2,8 @@
 
 A production-ready WordPress stack for Kubernetes, built on NGINX and PHP-FPM. Developed by [IO ANALYTICA](https://ioanalytica.com).
 
+Documentation: [wordpress-nginx.ioanalytica.com](https://wordpress-nginx.ioanalytica.com)
+
 ## Components
 
 ### [Helm Chart](chart/)
@@ -10,11 +12,14 @@ Deploys WordPress with NGINX on Kubernetes. Supports Memcached, Redis, and Drago
 
 ```bash
 helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx \
+  --set mariadb.enabled=false \
   --set externalDatabase.host=mydb.example.com \
   --set externalDatabase.password=secret \
   --set ingress.enabled=true \
   --set ingress.hostname=blog.example.com
 ```
+
+This example uses a database server of your own: `mariadb.enabled=false` switches the bundled MariaDB off, and the `externalDatabase.*` values are read only then. Without the three database values the chart deploys its own MariaDB next to WordPress.
 
 The chart version is also the image tag. It names the WordPress release the chart ships and the chart's build on it: `7.1.408` is build 8 on WordPress 7.1.4 (see [Chart versions](chart/README.md#chart-versions)).
 
@@ -48,4 +53,6 @@ Issues, questions in [Discussions](https://github.com/ioanalytica/wordpress-ngin
 
 Copyright &copy; 2024-2026 [IO ANALYTICA](https://ioanalytica.com).
 
-Licensed under the GNU General Public License v3.0. See [LICENSE](LICENSE) for details.
+Licensed under the Apache License, Version 2.0. See [LICENSE](LICENSE) for details.
+
+WordPress itself, which the image contains and the chart deploys, is licensed under the GNU General Public License, version 2 or later.
