@@ -277,11 +277,29 @@ else
     printf '%s\n' "$out" | sed 's/^/      /'
 fi
 signer="$(sed -n "s/^  SIGNER: '\(.*\)'$/\1/p" "$RELEASE")"
-if [ -n "$signer" ] && grep -qF -- "--certificate-identity-regexp '$signer'" "$ROOT/README.md"; then
-    ok "the README verifies with the identity the release signs and checks with"
+# shellcheck disable=SC2016 # the README's and the workflow's own variables
+if [ -n "$signer" ] && grep -qF -- "--certificate-identity \"$signer\$version\"" "$ROOT/README.md" \
+   && grep -qF -- '--certificate-identity "$SIGNER$GITHUB_REF_NAME"' "$RELEASE"; then
+    ok "the README verifies with the identity the release signs and checks with: the workflow at the version's tag"
 else
-    fail "README.md does not give cosign verify the workflow's SIGNER, '$signer'"
+    fail "README.md and release.yml do not verify with the same identity, '$signer' followed by the version"
 fi
+
+echo "=== Latest is the release with the highest version"
+IS_LATEST="$ROOT/scripts/release-is-latest.sh"
+# latest <desc> <expected> <version> <published versions, one a line>
+latest() {
+    local got
+    got="$("$IS_LATEST" "$3" <<<"$4" 2>&1)" || true
+    if [ "$got" = "$2" ]; then ok "$1"; else fail "$1 — expected $2, got '$got'"; fi
+}
+latest "the first release of all"                 true  7.1.409 ""
+latest "a release above every published one"      true  7.1.409 "7.1.408${nl}7.1.4-7${nl}7.1.4-6"
+latest "a re-run of the newest release"           true  7.1.409 "7.1.409${nl}7.1.408"
+latest "a late re-run of an older release"        false 7.1.409 "7.1.410${nl}7.1.409${nl}7.1.408"
+latest "a release of the next WordPress release"  true  7.1.500 "7.1.499${nl}7.1.4-7"
+latest "a version of the earlier scheme"          false 7.1.4-7 "7.1.408"
+latest "a release candidate"                      false 7.1.410-rc.1 "7.1.409"
 
 echo "=== The CVE scan covers every image the chart can run"
 IMAGES="$ROOT/scripts/cve-scan-images.sh"

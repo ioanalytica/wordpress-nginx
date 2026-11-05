@@ -58,18 +58,25 @@ images and the chart are in the registry under their digests alone, so no tag
 names an artifact that is not signed yet.
 
 Resolve the tag once and use the digest from then on, so that what you read
-afterwards belongs to what you verified. With
+afterwards belongs to what you verified. The identity names the release's
+tag, so the check also fails for a tag that was pointed at the image of
+another release. With
 [cosign](https://docs.sigstore.dev/cosign/system_config/installation/) 3:
 
 ```sh
 # Signed: ghcr.io/ioanalytica/wordpress-nginx, ghcr.io/ioanalytica/wordpress-idx
 # and ghcr.io/ioanalytica/charts/wordpress-nginx
+version=<version>
 repo=ghcr.io/ioanalytica/wordpress-nginx
-digest=$(docker buildx imagetools inspect "$repo:<version>" --format '{{json .Manifest}}' | jq -r .digest)
+digest=$(docker buildx imagetools inspect "$repo:$version" --format '{{json .Manifest}}' | jq -r .digest)
 cosign verify "$repo@$digest" \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-  --certificate-identity-regexp '^https://github\.com/ioanalytica/wordpress-nginx/\.github/workflows/release\.yml@refs/tags/'
+  --certificate-identity "https://github.com/ioanalytica/wordpress-nginx/.github/workflows/release.yml@refs/tags/$version"
 ```
+
+For `latest`, which names no version, `--certificate-identity-regexp` with
+the same address up to `@refs/tags/`, written as a regular expression,
+accepts any release of this project; the output names the tag that signed.
 
 The SBOM and the provenance of an image, per platform:
 

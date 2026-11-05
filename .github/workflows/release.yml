@@ -21,9 +21,10 @@ permissions: {}
 env:
   REGISTRY: ghcr.io
   OWNER: ioanalytica
-  # Whom a release's signatures name (the sign job): this workflow, run for a
-  # tag. The README ("Verify a release") gives users the same expression.
-  SIGNER: '^https://github\.com/ioanalytica/wordpress-nginx/\.github/workflows/release\.yml@refs/tags/'
+  # Whom a release's signatures name (the sign job): this workflow, run for
+  # the release's tag, which follows this prefix. The README ("Verify a
+  # release") gives users the same identity.
+  SIGNER: 'https://github.com/ioanalytica/wordpress-nginx/.github/workflows/release.yml@refs/tags/'
 
 jobs:
   # Green tests are a precondition for publishing: everything below that
@@ -292,7 +293,7 @@ jobs:
           cosign sign --yes "$WORDPRESS" "$IDX" "$CHART"
           cosign verify "$WORDPRESS" "$IDX" "$CHART" \
             --certificate-oidc-issuer https://token.actions.githubusercontent.com \
-            --certificate-identity-regexp "$SIGNER" >/dev/null
+            --certificate-identity "$SIGNER$GITHUB_REF_NAME" >/dev/null
 
   # The tags of the release, set once its digests are signed: each image's
   # tags from build-image.yml (the version, and `latest` for a release),
@@ -391,6 +392,17 @@ jobs:
           path: ${{ runner.temp }}/chart
       - name: Release notes from the changelog
         run: scripts/changelog-section.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
+      # Latest is the release with the highest version, not the one whose
+      # job ran last: a late re-run of an older release's failed job must
+      # not take it back from a newer release.
+      - name: Is this the newest release?
+        id: newest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          published="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases" --jq '.[] | select(.draft or .prerelease | not) | .tag_name')"
+          latest="$(scripts/release-is-latest.sh "$GITHUB_REF_NAME" <<<"$published")"
+          echo "latest=$latest" | tee -a "$GITHUB_OUTPUT"
       - name: Create GitHub Release
         uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
         with:
@@ -403,7 +415,7 @@ jobs:
           # A version with a -suffix is a release candidate, never the
           # repository's Latest release.
           prerelease: ${{ contains(github.ref_name, '-') }}
-          make_latest: ${{ !contains(github.ref_name, '-') }}
+          make_latest: ${{ steps.newest.outputs.latest }}
 
   # The page "Try it locally" against what this tag published: the chart at
   # the tag's version, pulled from the registry and installed with the images
