@@ -175,7 +175,7 @@ a PHP file has no business. Put one there, next to a text file, and request
 both:
 
 ```sh
-kubectl -n wordpress exec deployment/demo-wordpress-nginx -c wordpress -- sh -c '
+kubectl -n wordpress exec deployment/demo-wordpress-nginx -c wordpress -- sh -ec '
   cd /var/www/html/wp-content/uploads
   echo "<?php echo 6 * 7;" > demo.php
   echo "a text file" > demo.txt'
