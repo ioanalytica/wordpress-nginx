@@ -28,7 +28,7 @@ k3s 1.36.
 ## 1. A cluster
 
 ```sh
-k3d cluster create wordpress-nginx --image rancher/k3s:v1.36.6-k3s1 -p "127.0.0.1:8080:80@loadbalancer"
+k3d cluster create wordpress-nginx --image rancher/k3s:v1.37.1-k3s1 -p "127.0.0.1:8080:80@loadbalancer"
 ```
 
 The image is the k3s this page is tested with; without it, the k3s depends on
