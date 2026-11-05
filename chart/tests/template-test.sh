@@ -82,6 +82,17 @@ for name in wordpress-nginx wordpress-idx; do
         FAILURES=$((FAILURES + 1))
     fi
 done
+# appVersion is the WordPress release in the image. The tracker raises both
+# together; a bump by hand that forgets one would ship a chart that names
+# another WordPress than its image holds.
+wp_version=$(sed -n 's/^ENV WP_VERSION=//p' "$(dirname "$0")/../../docker/Dockerfile")
+chart_app_version=$(sed -n 's/^appVersion: *//p' "$CHART/Chart.yaml" | tr -d '"')
+if [ -n "$wp_version" ] && [ "$wp_version" = "$chart_app_version" ]; then
+    echo "ok:   appVersion is the WordPress version of the image, $wp_version"
+else
+    echo "FAIL: appVersion is '$chart_app_version', the Dockerfile's WP_VERSION is '$wp_version'"
+    FAILURES=$((FAILURES + 1))
+fi
 # An override of the sidecar's image keeps working: registry and repository
 # are taken from the values, a digest wins over the tag.
 expect "an idx.image override names the registry and repository" present \

@@ -26,14 +26,19 @@ Thanks for helping. Bug reports, questions and pull requests are all welcome.
 | `docker/` | The image: `Dockerfile`, the files it adds in `rootfs/`, and its tests in `tests/` |
 | `examples/k3d/` | The page "Try it locally" and its values file |
 | `tests/try-locally/` | The run of that page in a k3d cluster, and its guard test |
+| `tests/ci/` | The tests of the workflows and of the scripts a release runs |
+| `wordpress-idx/` | The search sidecar's source, a git submodule; a release builds the sidecar's image from it |
 | `scripts/chart-version.sh` | The version scheme, see [Versions and releases](#versions-and-releases) |
+| `scripts/` | Besides that, the scripts of the release workflow and the daily scan |
 | `site/` | The documentation site, see [The documentation site](#the-documentation-site) |
 | `.github/workflows/` | The tests, the release build, the daily scan and the version trackers |
 
 ## Running the tests
 
-The tests are shell scripts. They need `helm`, `docker` and Python 3 with
-PyYAML. Each block of commands starts in the repository root.
+The tests are shell scripts. They need `helm`, `docker`, `jq`,
+[`yq`](https://github.com/mikefarah/yq) (the Go one, not the Python wrapper of
+the same name) and Python 3 with PyYAML. Each block of commands starts in the
+repository root.
 
 ### Chart
 
@@ -66,8 +71,25 @@ docker build -t wordpress-nginx:test ./docker
 The smoke test starts the image and probes it: the PHP execution allowlist,
 denied paths, the REST API hardening and the mail wrapper.
 
-Continuous integration runs both blocks on every pull request, as the jobs
-`chart-template-test` and `smoke-test` of
+### Workflows and release scripts
+
+```sh
+git submodule update --init
+./tests/ci/test.sh
+./tests/ci/shellcheck.sh
+git ls-files -z '*Dockerfile' | xargs -0 hadolint
+```
+
+- `test.sh` holds every workflow to the project's rules (actions pinned by
+  commit, a time limit per job, least permissions) and tests the scripts a
+  release and the daily scan run, against a stand-in for the registry. It
+  reads the search sidecar's version from the submodule and needs the chart's
+  dependencies, like the chart tests.
+- `shellcheck.sh` runs [shellcheck](https://www.shellcheck.net/) over every
+  shell script, `hadolint` checks the Dockerfiles.
+
+Continuous integration runs all three blocks on every pull request, as the
+jobs `chart-template-test`, `smoke-test`, `shellcheck` and `hadolint` of
 [`.github/workflows/docker-test.yml`](.github/workflows/docker-test.yml).
 
 ### Try it locally
@@ -194,7 +216,7 @@ pull request it opens for a new one is such a release pull request, and the
 three points hold for it as well: whoever merges it sees to it that the lines
 under `## Unreleased` stand under the new version's heading. It also raises
 `WP_VERSION` in `docker/Dockerfile` and `appVersion` in `chart/Chart.yaml`,
-which no test compares with each other.
+which the template test holds equal.
 
 The search sidecar is the git submodule `wordpress-idx`; a release builds its
 image from the commit the submodule is pinned to. Moving the pin is a change

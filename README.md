@@ -74,9 +74,11 @@ cosign verify "$repo@$digest" \
   --certificate-identity "https://github.com/ioanalytica/wordpress-nginx/.github/workflows/release.yml@refs/tags/$version"
 ```
 
-For `latest`, which names no version, `--certificate-identity-regexp` with
-the same address up to `@refs/tags/`, written as a regular expression,
-accepts any release of this project; the output names the tag that signed.
+The version in the identity is the release's, the chart version, also where
+an image has another tag: `latest`, or a `1.x.y` tag of the sidecar (below).
+For those, `--certificate-identity-regexp` with the same address up to
+`@refs/tags/`, written as a regular expression, accepts any release of this
+project, and the output names the release that signed.
 
 The SBOM and the provenance of an image, per platform:
 
