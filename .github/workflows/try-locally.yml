@@ -10,8 +10,9 @@ name: Try it locally
 # image the chart names is published; otherwise it is built from the
 # checkout and loaded into the cluster, so a change to the image, or a chart
 # version whose image does not exist yet, is tested before the release
-# (tests/try-locally/chart.sh decides). The search sidecar's image is always
-# the registry's.
+# (tests/try-locally/chart.sh decides). The same goes for the search
+# sidecar's image and the wordpress-idx submodule it is built from: the
+# chart version is the tag of both images.
 #
 # A release pipeline can call this workflow with the version it has just
 # published: the chart is then pulled from the registry and installed with
@@ -30,6 +31,7 @@ on:
     paths:
       - 'chart/**'
       - 'docker/**'
+      - 'wordpress-idx'
       - 'examples/k3d/**'
       - 'site/guide/try-locally.md'
       - 'tests/try-locally/**'
@@ -75,10 +77,13 @@ jobs:
     timeout-minutes: 30
     steps:
       # Two commits deep: a pull request is checked out as its merge into
-      # the base branch, and chart.sh compares docker/ with the first parent.
+      # the base branch, and chart.sh compares docker/ and the submodule
+      # with the first parent. With the submodule: the search sidecar's
+      # image is built from it when the registry does not have it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 2
+          submodules: true
           persist-credentials: false
 
       # Pinned: without a version the action asks the GitHub API for the
@@ -122,7 +127,7 @@ jobs:
           echo "$out" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
-        if: steps.chart.outputs.build != ''
+        if: steps.chart.outputs.build != '' || steps.chart.outputs.idx_build != ''
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
       # Under the name the chart asks for, into the runner's Docker daemon;
@@ -141,8 +146,21 @@ jobs:
           tags: ${{ steps.chart.outputs.image }}
           cache-from: type=gha
 
+      # The sidecar's image, likewise, from the submodule. It is small and
+      # built without a cache.
+      - name: Build the search sidecar's image from the submodule
+        if: steps.chart.outputs.idx_build != ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./wordpress-idx
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          tags: ${{ steps.chart.outputs.idx_image }}
+
       - name: The page, end to end
         env:
           CHART: ${{ steps.chart.outputs.dir }}
           IMAGE: ${{ steps.chart.outputs.build != '' && steps.chart.outputs.image || '' }}
-        run: tests/try-locally/run.sh ${IMAGE:+--import "$IMAGE"} ${CHART:+"$CHART"}
+          IDX_IMAGE: ${{ steps.chart.outputs.idx_build != '' && steps.chart.outputs.idx_image || '' }}
+        run: tests/try-locally/run.sh ${IMAGE:+--import "$IMAGE"} ${IDX_IMAGE:+--import "$IDX_IMAGE"} ${CHART:+"$CHART"}

@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Dependency update pull requests for wordpress-nginx: GitHub Actions and the tools the workflows install, the Dockerfiles' base images, the third-party images the chart pins, the documentation site's npm packages. WordPress and Dragonfly have their own workflows (wp-version-check.yml, dragonfly-version-check.yml). tests/ci/test.sh guards what the bot updates and what stays manual.",
+  "description": "Dependency update pull requests for wordpress-nginx: GitHub Actions and the tools the workflows install, the Dockerfiles' base images, the third-party images the chart pins, the documentation site's npm packages. WordPress and Dragonfly have their own workflows (wp-version-check.yml, dragonfly-version-check.yml), and the wordpress-idx submodule moves by hand. tests/ci/test.sh guards what the bot updates and what stays manual.",
   "extends": ["config:recommended", "helpers:pinGitHubActionDigestsToSemver"],
   "timezone": "Europe/Berlin",
   "schedule": ["* 0-5 * * 1"],
@@ -10,7 +10,11 @@
   "semanticCommits": "disabled",
   "commitBody": "Signed-off-by: {{{gitAuthor}}}",
   "configMigration": true,
-  "ignorePaths": ["**/node_modules/**", "chart/tests/**", "docker/tests/**", "site/tests/**", "tests/**"],
+  "ignorePaths": ["**/node_modules/**", "chart/tests/**", "docker/tests/**", "site/tests/**", "tests/**", "wordpress-idx/**"],
+  "git-submodules": {
+    "description": "The wordpress-idx pin moves by hand: each move is a change to the search sidecar's image, with its line in chart/CHANGELOG.md.",
+    "enabled": false
+  },
   "helm-values": {
     "description": "The image pins of the chart's own values file only, not of examples or fixtures.",
     "managerFilePatterns": ["/^chart/values\\.yaml$/"]
@@ -30,14 +34,20 @@
     },
     {
       "customType": "regex",
-      "description": "The search sidecar's image tag, at both of its spots in chart/Chart.yaml: the tag the templates read and the entry of the images list.",
+      "description": "The entries of the third-party images in the list Artifact Hub reads (artifacthub.io/images in chart/Chart.yaml), under the names the helm-values manager gives the same images in chart/values.yaml, so that one pull request moves both spots; the template test fails when they differ.",
       "managerFilePatterns": ["/^chart/Chart\\.yaml$/"],
       "matchStrings": [
-        "\\n  idxImageTag: \"(?<currentValue>[^\"\\s]+)\"",
-        "\\n      image: ghcr\\.io/ioanalytica/wordpress-idx:(?<currentValue>\\S+)"
+        "\\n      image: (?<depName>docker\\.io/nginx/nginx-prometheus-exporter):(?<currentValue>\\S+)",
+        "\\n      image: docker\\.io/(?<depName>mariadb):(?<currentValue>\\S+)"
       ],
-      "depNameTemplate": "ghcr.io/ioanalytica/wordpress-idx",
       "datasourceTemplate": "docker"
+    },
+    {
+      "customType": "regex",
+      "description": "Runner labels of a job matrix (build-image.yml, release.yml): the github-actions manager reads runners in runs-on only.",
+      "managerFilePatterns": ["/^\\.github/workflows/[^/]+\\.ya?ml$/"],
+      "matchStrings": [" runner: (?<depName>ubuntu)-(?<currentValue>\\d+\\.\\d+(?:-arm)?)\\b"],
+      "datasourceTemplate": "github-runners"
     },
     {
       "customType": "regex",
@@ -61,6 +71,12 @@
       "groupName": "GitHub Actions"
     },
     {
+      "description": "The runner labels of a matrix go with the runs-on ones; a new major shares their branch by its name.",
+      "matchDatasources": ["github-runners"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "GitHub Actions"
+    },
+    {
       "description": "A new digest under the same version means a release tag was moved: approve it on the dashboard after a look at the commit.",
       "matchManagers": ["github-actions"],
       "matchUpdateTypes": ["digest"],
@@ -75,6 +91,10 @@
     {
       "matchDepNames": ["hadolint/hadolint"],
       "prBodyNotes": ["The job `hadolint` fails until `HADOLINT_SHA256` in .github/workflows/docker-test.yml is the sum of `hadolint-linux-x86_64` in https://github.com/hadolint/hadolint/releases/download/v{{{newVersion}}}/checksums.sha256."]
+    },
+    {
+      "matchDepNames": ["oras-project/oras"],
+      "prBodyNotes": ["The job `oras` fails until `ORAS_SHA256` in .github/actions/setup-oras/action.yml is the sum of `oras_{{{newVersion}}}_linux_amd64.tar.gz` in https://github.com/oras-project/oras/releases/download/v{{{newVersion}}}/oras_{{{newVersion}}}_checksums.txt."]
     },
     {
       "description": "The k3d of the job try-locally.yml; its pull request runs that job.",
@@ -103,10 +123,21 @@
     },
     {
       "description": "A new MariaDB series upgrades the data directory of an existing installation on its first start: a deliberate move, approved on the dashboard.",
-      "matchFileNames": ["chart/values.yaml"],
+      "matchFileNames": ["chart/values.yaml", "chart/Chart.yaml"],
       "matchDepNames": ["mariadb"],
       "matchUpdateTypes": ["major", "minor"],
       "dependencyDashboardApproval": true
+    },
+    {
+      "description": "One pull request per image moves its pin in chart/values.yaml and its entry in chart/Chart.yaml.",
+      "matchFileNames": ["chart/values.yaml", "chart/Chart.yaml"],
+      "matchDepNames": ["mariadb"],
+      "groupName": "MariaDB image"
+    },
+    {
+      "matchFileNames": ["chart/values.yaml", "chart/Chart.yaml"],
+      "matchDepNames": ["docker.io/nginx/nginx-prometheus-exporter"],
+      "groupName": "nginx-prometheus-exporter image"
     },
     {
       "description": "The base image is a moving tag on purpose: every release build pulls it afresh, and with it the current PHP patch release. Its tag changes only for a new PHP series, a deliberate move, approved on the dashboard.",
@@ -117,7 +148,7 @@
     },
     {
       "description": "A new major of any other image pin or base image waits for approval on the dashboard.",
-      "matchManagers": ["dockerfile", "helm-values"],
+      "matchFileNames": ["docker/**", "chart/values.yaml", "chart/Chart.yaml"],
       "matchUpdateTypes": ["major"],
       "dependencyDashboardApproval": true
     },

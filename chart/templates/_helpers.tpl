@@ -7,10 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 
 {{/*
 Return the proper WordPress image name.
-Tag is read from Chart.yaml annotation "imageTag" (single source of truth).
+The tag is the chart version: a release builds the image and the chart
+together and tags both with it.
 */}}
 {{- define "wordpress.image" -}}
-{{- $imageRoot := merge (dict "tag" (index .Chart.Annotations "imageTag")) .Values.image -}}
+{{- $imageRoot := merge (dict "tag" .Chart.Version) .Values.image -}}
 {{- include "common.images.image" (dict "imageRoot" $imageRoot "global" .Values.global) -}}
 {{- end -}}
 
@@ -558,10 +559,11 @@ Return the SMTP Secret Name
 
 {{/*
 Return the proper wordpress-idx image name.
-Tag is read from Chart.yaml annotation "idxImageTag" (single source of truth).
+The tag is the chart version: a release builds the sidecar's image from the
+wordpress-idx submodule, together with the chart, and tags both with it.
 */}}
 {{- define "wordpress.idx.image" -}}
-{{- $imageRoot := merge (dict "tag" (index .Chart.Annotations "idxImageTag")) .Values.idx.image -}}
+{{- $imageRoot := merge (dict "tag" .Chart.Version) .Values.idx.image -}}
 {{- include "common.images.image" (dict "imageRoot" $imageRoot "global" .Values.global) -}}
 {{- end -}}
 

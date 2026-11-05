@@ -82,7 +82,7 @@ diagnosticMode:
 image:
   registry: ghcr.io
   repository: ioanalytica/wordpress-nginx
-  ## tag is managed via Chart.yaml annotation "imageTag" — do not set here
+  ## the tag is the chart version — do not set it here
   digest: ""
   ## Specify a imagePullPolicy
   ## ref: https://kubernetes.io/docs/concepts/containers/images/#pre-pulled-images
@@ -1313,7 +1313,8 @@ idx:
   image:
     registry: ghcr.io
     repository: ioanalytica/wordpress-idx
-    ## tag is managed via Chart.yaml annotation "idxImageTag" — do not set here
+    ## the tag is the chart version: a release builds this image together
+    ## with the chart — do not set it here
     pullPolicy: IfNotPresent
   ## @param idx.port wordpress-idx container port
   ##

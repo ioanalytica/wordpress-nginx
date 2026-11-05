@@ -7,6 +7,19 @@
   * An installed site loses nothing by waiting: a pod that cannot reach its database is not ready either way, its readiness probe needs the database. With the default liveness probe the kubelet starts a waiting container again before the limit, so a database that stays away shows in the pod's restarts and in its log.
   * Past the limit the start goes on as before, and the log says so; a new installation is then made at the container's next start.
 * The k3d run of "Try it locally" uploads a file through wp-admin and installs a second release whose database is away at the first start; the smoke test checks the wait and its limit, for a database that refuses the connection and for one that takes it and says nothing, and the hand-over of upload directories that belong to root.
+* **Releases are signed.** A release builds both images for each platform, pushes them and the chart to the registry under their digests, signs all three with [Sigstore](https://www.sigstore.dev/) cosign (keyless), and sets the version tags and `latest` only once the signatures are in place. Every platform of an image carries an SPDX SBOM and SLSA provenance. "Verify a release" in the repository's README has the commands.
+* **The search sidecar's image carries the chart version as its tag.** `ghcr.io/ioanalytica/wordpress-idx` is now built by this project's release, from the wordpress-idx source pinned as a git submodule (wordpress-idx 1.3.7 at this point), signed with it, and tagged like the chart. With `idx.enabled` the chart runs `wordpress-idx:<chart version>`.
+  * An installation that takes the image from its default repository needs nothing: the upgrade pulls the new tag.
+  * An installation that points `idx.image.registry` or `idx.image.repository` at a mirror has to have the image there under the chart version, where the chart asked for a `1.x.y` tag before. `idx.image.digest` still wins over the tag.
+  * The image's labels `org.opencontainers.image.version` and `org.opencontainers.image.revision` name the wordpress-idx version and commit. The tags `1.x.y` up to `1.3.7` stay as they are; a later wordpress-idx version gets its `1.x.y` tag from the first release that builds it.
+* **The chart carries its metadata for Artifact Hub.** `artifacthub.io/*` annotations replace `category`, `licenses`, `images`, `imageTag` and `idxImageTag` in `Chart.yaml`; the templates take the image tags from the chart version itself. The images list names every image the chart can run, and `home` is the documentation site.
+
+### Project and CI
+
+* A release candidate `x.y.P-rc.N` can be tagged on the commit of its release: it runs the whole release, publishes chart and images at the candidate's version, and leaves `latest` where it is. A version that is in the registry already is refused before anything is built.
+* The GitHub Release takes its notes from this changelog's entry for the version.
+* "Try it locally" builds the sidecar's image from the submodule when the registry does not have it yet, as it does for the WordPress image, and runs after every release against what the release published.
+* Renovate keeps the entries of the third-party images in the chart's images list in step with their pins; the wordpress-idx submodule moves by hand.
 
 ## 7.1.408
 

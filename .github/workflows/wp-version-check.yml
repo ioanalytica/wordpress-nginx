@@ -80,13 +80,14 @@ jobs:
           set -euo pipefail
           # New WordPress version => the build number starts over at 0.
           # WP_VERSION/appVersion track the raw upstream string; the chart version
-          # and image tag are CHART_VERSION. appVersion is quoted so a numeric
-          # value like "7.1" stays a YAML string, not a float.
+          # is CHART_VERSION, and with it the tag of both images of this
+          # project in the list Artifact Hub reads. appVersion is quoted so a
+          # numeric value like "7.1" stays a YAML string, not a float.
           sed -i "s/^ENV WP_VERSION=.*/ENV WP_VERSION=${NEW}/" docker/Dockerfile
           sed -i "s/^version: .*/version: ${CHART_VERSION}/" chart/Chart.yaml
           sed -i "s/^appVersion: .*/appVersion: \"${NEW}\"/" chart/Chart.yaml
-          sed -i "s/^  imageTag: .*/  imageTag: \"${CHART_VERSION}\"/" chart/Chart.yaml
           sed -i "s|^      image: ghcr.io/ioanalytica/wordpress-nginx:.*|      image: ghcr.io/ioanalytica/wordpress-nginx:${CHART_VERSION}|" chart/Chart.yaml
+          sed -i "s|^      image: ghcr.io/ioanalytica/wordpress-idx:.*|      image: ghcr.io/ioanalytica/wordpress-idx:${CHART_VERSION}|" chart/Chart.yaml
           # Prepend a CHANGELOG entry directly under the "# Changelog" header.
           awk -v ver="${CHART_VERSION}" -v wp="$NEW" '
             NR==1 {
@@ -101,7 +102,7 @@ jobs:
           ' chart/CHANGELOG.md > chart/CHANGELOG.md.tmp
           mv chart/CHANGELOG.md.tmp chart/CHANGELOG.md
           echo "----- Dockerfile -----"; grep '^ENV WP_VERSION=' docker/Dockerfile
-          echo "----- Chart.yaml -----"; grep -E '^(version|appVersion):|imageTag:|wordpress-nginx:' chart/Chart.yaml
+          echo "----- Chart.yaml -----"; grep -E '^(version|appVersion):|ioanalytica/wordpress-(nginx|idx):' chart/Chart.yaml
 
       - name: Create Pull Request
         if: steps.cmp.outputs.update == 'true'
@@ -121,13 +122,14 @@ jobs:
 
             Bumped:
             - `docker/Dockerfile` — `WP_VERSION=${{ steps.wp.outputs.latest }}`
-            - `chart/Chart.yaml` — `version` / `imageTag` / `images` → `${{ steps.cmp.outputs.chart_version }}`, `appVersion` → `${{ steps.wp.outputs.latest }}`
+            - `chart/Chart.yaml` — `version` and both images of this project in `artifacthub.io/images` → `${{ steps.cmp.outputs.chart_version }}`, `appVersion` → `${{ steps.wp.outputs.latest }}`
             - `chart/CHANGELOG.md` — new entry
 
-            **After merge, set the tag manually** to trigger the build/push + release:
+            **After the merge, tag the merge commit** to start the release, which builds, signs and publishes both images and the chart. A release candidate first, `${{ steps.cmp.outputs.chart_version }}-rc.1` on the same commit, runs the whole release without moving `latest`:
 
             ```
-            git tag ${{ steps.cmp.outputs.chart_version }} && git push origin ${{ steps.cmp.outputs.chart_version }}
+            git tag ${{ steps.cmp.outputs.chart_version }}
+            git push origin ${{ steps.cmp.outputs.chart_version }}
             ```
 
             WordPress release notes: https://wordpress.org/news/
