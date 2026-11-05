@@ -732,10 +732,36 @@ echo "=== NetworkPolicy admits the ports the pod declares"
 # extraContainerPorts entries are container ports (name, containerPort); the
 # policy needs the number. Rendering the entry itself gave a port the API
 # server refuses, so the release could not be installed.
-EXTRA_PORT=(--set-json 'extraContainerPorts=[{"name":"status","containerPort":9090}]')
-expect "an extra container port is admitted"     present "- port: 9090" "${EXTRA_PORT[@]}" "${NETPOL[@]}"
-expect "the entry is not rendered as a map"      absent  "map[" "${EXTRA_PORT[@]}" "${NETPOL[@]}"
-check  "extra container port"                    "${EXTRA_PORT[@]}"
+EXTRA_PORT=(--set-json 'extraContainerPorts=[{"name":"status","containerPort":9090},{"name":"dns","containerPort":5353,"protocol":"UDP"}]')
+# policy_ports <helm args...>: the ports of the policy's first ingress rule
+# as "port/protocol", in one line; a port without a protocol is TCP to the
+# API server and shows as "port/-".
+policy_ports() {
+    helm template tst "$CHART" "${NETPOL[@]}" "$@" 2>/dev/null | python3 -c '
+import sys, yaml
+doc = yaml.safe_load(sys.stdin)
+print(" ".join("%s/%s" % (p["port"], p.get("protocol", "-")) for p in doc["spec"]["ingress"][0]["ports"]))
+' 2>/dev/null || echo "render failed"
+}
+# policy_admits <desc> <expected ports> <helm args...>
+policy_admits() {
+    local desc="$1" expected="$2" got; shift 2
+    got="$(policy_ports "$@")"
+    if [ "$got" = "$expected" ]; then
+        echo "ok:   $desc"
+    else
+        echo "FAIL: $desc — the policy admits '$got', expected '$expected'"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+policy_admits "extra container ports are admitted, with their protocol" "80/- 443/- 9090/- 5353/UDP" "${EXTRA_PORT[@]}"
+# The Deployment renders the value through the template engine, so text is a
+# form of it; the policy has to read the same entries.
+policy_admits "extra container ports given as template text"            "80/- 443/- 9091/-" \
+        --set-string $'extraContainerPorts=- name: status\n  containerPort: {{ add 9000 91 }}'
+policy_admits "no extra container ports"                                "80/- 443/-"
+check  "extra container ports"                   "${EXTRA_PORT[@]}"
+check  "extra container ports as template text"  --set-string $'extraContainerPorts=- name: status\n  containerPort: {{ add 9000 91 }}'
 
 echo "=== Extra wp-config.php content reaches the generated file"
 # The generated wp-config.php evaluates WORDPRESS_CONFIG_EXTRA and nothing
@@ -750,23 +776,44 @@ expect "wp-config.php evaluates the variable"    present "getenv_docker('WORDPRE
 # A release may set the variable itself through extraEnvVars. That entry
 # stays the only one: two variables of one name in a container are refused
 # by a server-side apply.
-config_extra_entries() {
-    helm template tst "$CHART" "${EXTRA_CONFIG[@]}" "$@" 2>/dev/null | grep -c -- '- name: WORDPRESS_CONFIG_EXTRA$' || true
+# config_extra_values <helm args...>: the value of every WORDPRESS_CONFIG_EXTRA
+# entry of the WordPress container, one per line.
+config_extra_values() {
+    helm template tst "$CHART" "${EXTRA_CONFIG[@]}" "$@" 2>/dev/null | python3 -c '
+import sys, yaml
+for d in yaml.safe_load_all(sys.stdin):
+    if d and d.get("kind") == "Deployment" and d["metadata"]["name"] == "tst-wordpress-nginx":
+        for c in d["spec"]["template"]["spec"]["containers"]:
+            if c["name"] == "wordpress":
+                for e in c.get("env") or []:
+                    if e["name"] == "WORDPRESS_CONFIG_EXTRA":
+                        print(e.get("value"))
+' 2>/dev/null || true
 }
-for form in list text; do
+# The entries are read as the Deployment renders them: a list, text for the
+# template engine, a name with a comment behind it, a templated name.
+for form in "a list" "text" "text with a comment" "a templated name"; do
     case "$form" in
-        list) OWN=(--set-json 'extraEnvVars=[{"name":"WORDPRESS_CONFIG_EXTRA","value":"own_statement();"}]') ;;
-        text) OWN=(--set-string $'extraEnvVars=- name: WORDPRESS_CONFIG_EXTRA\n  value: own_statement();') ;;
+        "a list")              OWN=(--set-json 'extraEnvVars=[{"name":"WORDPRESS_CONFIG_EXTRA","value":"own_statement();"}]') ;;
+        "text")                OWN=(--set-string $'extraEnvVars=- name: WORDPRESS_CONFIG_EXTRA\n  value: own_statement();') ;;
+        "text with a comment") OWN=(--set-string $'extraEnvVars=- name: WORDPRESS_CONFIG_EXTRA # ours\n  value: own_statement();') ;;
+        "a templated name")    OWN=(--set-string $'extraEnvVars=- name: {{ printf "WORDPRESS_%s" "CONFIG_EXTRA" }}\n  value: own_statement();') ;;
     esac
-    if [ "$(config_extra_entries "${OWN[@]}")" = 1 ]; then
-        echo "ok:   an extraEnvVars entry of that name stays the only one ($form)"
+    got="$(config_extra_values "${OWN[@]}")"
+    if [ "$got" = "own_statement();" ]; then
+        echo "ok:   an extraEnvVars entry of that name stays the only one, as $form"
     else
-        echo "FAIL: WORDPRESS_CONFIG_EXTRA renders $(config_extra_entries "${OWN[@]}") times with extraEnvVars as a $form"
+        echo "FAIL: with extraEnvVars as $form, WORDPRESS_CONFIG_EXTRA renders as: ${got:-nothing}"
         FAILURES=$((FAILURES + 1))
     fi
-    expect "the extraEnvVars entry keeps its value ($form)" present 'value: own_statement();' "${EXTRA_CONFIG[@]}" "${OWN[@]}"
-    expect "the value is not rendered next to it ($form)"  absent  'WP_POST_REVISIONS' "${EXTRA_CONFIG[@]}" "${OWN[@]}"
 done
+got="$(config_extra_values)"
+if [ "$got" = 'define( "WP_POST_REVISIONS", 10 );' ]; then
+    echo "ok:   without such an entry the value is the only one"
+else
+    echo "FAIL: WORDPRESS_CONFIG_EXTRA renders as: ${got:-nothing}"
+    FAILURES=$((FAILURES + 1))
+fi
 expect "another extraEnvVars entry changes nothing" present 'name: WORDPRESS_CONFIG_EXTRA' "${EXTRA_CONFIG[@]}" \
         --set-json 'extraEnvVars=[{"name":"OTHER","value":"x"}]'
 check  "extra config content"                    "${EXTRA_CONFIG[@]}"

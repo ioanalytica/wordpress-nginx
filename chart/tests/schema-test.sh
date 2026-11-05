@@ -55,13 +55,15 @@ passes() {
     fi
 }
 
-# refused <path> <helm args...>: the schema refuses the value at <path>
-# (given as /a/b, the way Helm names it), and nothing else.
+# refused <path> <helm args...>: the schema refuses the value at <path>, and
+# nothing else. <path> is given as /a/b/0, the way Helm 4 names it; Helm 3
+# writes a.b.0.
 refused() {
-    local path="$1" out; shift
+    local path="$1" dotted out; shift
+    dotted="${path#/}"; dotted="${dotted//\//.}"
     if out="$(helm template tst "$CHART" "$@" 2>&1)"; then
         fail "rendered, expected the schema to refuse it: $*"
-    elif grep -qF "the schema" <<<"$out" && grep -qF -- "$path" <<<"$out"; then
+    elif grep -qF "the schema" <<<"$out" && { grep -qF -- "$path" <<<"$out" || grep -qF -- "$dotted" <<<"$out"; }; then
         ok "refused by the schema: $*"
     else
         fail "failed, but not at $path of the schema: $*"
@@ -170,9 +172,59 @@ for example in "$(dirname "$0")"/../../examples/*/values.yaml; do
     same_render "example ${example#"$(dirname "$0")"/../../}" -f "$example"
 done
 
-echo "=== The packaged chart carries the schema"
+echo "=== The image trackers keep the schema's defaults"
+# The trackers change a pinned image in values.yaml. The schema repeats the
+# default, so a tracker that left it alone would open a pull request this
+# very test fails on. scripts/schema-default.sh is their step for it.
 PKG_TMP="$(mktemp -d)"
 trap 'rm -rf "$PKG_TMP"' EXIT
+REPO="$(dirname "$0")/../.."
+SET_DEFAULT="$REPO/scripts/schema-default.sh"
+cp "$CHART/values.schema.json" "$PKG_TMP/schema.json"
+# pin <key>: the default of <key> in values.yaml.
+pin() {
+    python3 -c '
+import sys, yaml
+value = yaml.safe_load(open(sys.argv[1]))
+for key in sys.argv[2].split("."):
+    value = value[key]
+print(value)
+' "$CHART/values.yaml" "$1"
+}
+for key in metrics.image.tag memcached.image; do
+    if "$SET_DEFAULT" "$key" "$(pin "$key")" "$PKG_TMP/schema.json" \
+       && cmp -s "$PKG_TMP/schema.json" "$CHART/values.schema.json"; then
+        ok "setting $key to its present default changes nothing"
+    else
+        fail "scripts/schema-default.sh rewrites the schema when setting $key to its present default"
+    fi
+    if "$SET_DEFAULT" "$key" "a-new-pin" "$PKG_TMP/schema.json" \
+       && [ "$(diff "$PKG_TMP/schema.json" "$CHART/values.schema.json" | grep -c '^[<>]')" = 2 ] \
+       && grep -qF '"default": "a-new-pin"' "$PKG_TMP/schema.json"; then
+        ok "a new pin for $key changes one line of the schema"
+    else
+        fail "scripts/schema-default.sh does not change exactly the default of $key"
+    fi
+    cp "$CHART/values.schema.json" "$PKG_TMP/schema.json"
+done
+if "$SET_DEFAULT" metrics.image.nope x "$PKG_TMP/schema.json" 2>/dev/null \
+   || "$SET_DEFAULT" replicaCount 2 "$PKG_TMP/schema.json" 2>/dev/null \
+   || ! cmp -s "$PKG_TMP/schema.json" "$CHART/values.schema.json"; then
+    fail "scripts/schema-default.sh accepts a key without a text default, or changes the file while refusing"
+else
+    ok "a key without a text default is refused"
+fi
+# SC2016: the needles are the workflows' own text, variables and all.
+# shellcheck disable=SC2016
+if grep -qF 'scripts/schema-default.sh metrics.image.tag "${NEW}"' "$REPO/.github/workflows/image-version-check.yml" \
+   && grep -qF 'scripts/schema-default.sh memcached.image "docker.dragonflydb.io/dragonflydb/dragonfly:${NEW}"' \
+        "$REPO/.github/workflows/dragonfly-version-check.yml"; then
+    ok "both trackers set the schema's default with their bump"
+else
+    fail "a tracker changes a pinned image in values.yaml without scripts/schema-default.sh"
+fi
+
+echo "=== The packaged chart carries the schema"
 if helm package "$CHART" -d "$PKG_TMP" >/dev/null 2>&1 \
    && tar -tzf "$PKG_TMP"/wordpress-nginx-*.tgz | grep -qx 'wordpress-nginx/values.schema.json'; then
     ok "values.schema.json is in the package"

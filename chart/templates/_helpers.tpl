@@ -301,20 +301,31 @@ first 28 bits of its SHA-256, plus one, since W3TC treats 0 as unset.
 {{- end -}}
 
 {{/*
-True when extraEnvVars has an entry named WORDPRESS_CONFIG_EXTRA. Given as
-text for the template engine, extraEnvVars is searched for the name.
+A list value as the chart renders it, for templates that read its entries:
+a list, or text for the template engine that renders to one, comes back as
+YAML under the key "items". Read it with
+  (include "wordpress.renderedList" (dict "value" .Values.x "context" $) | fromYaml).items
+The wrapping key is there because fromYaml reads a map, and fromYamlArray is
+not in every Helm 3 release.
+*/}}
+{{- define "wordpress.renderedList" -}}
+items:
+{{- $rendered := include "common.tplvalues.render" (dict "value" .value "context" .context) | trim }}
+{{- if $rendered }}
+{{ $rendered | indent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+True when extraEnvVars has an entry named WORDPRESS_CONFIG_EXTRA. The
+entries are read as the Deployment renders them, so text for the template
+engine and a templated name count as well.
 */}}
 {{- define "wordpress.extraEnvVarsSetConfigExtra" -}}
-{{- if kindIs "string" .Values.extraEnvVars -}}
-{{- if regexMatch "name:\\s*[\"']?WORDPRESS_CONFIG_EXTRA[\"']?\\s*(\n|$)" .Values.extraEnvVars -}}
-{{- true -}}
-{{- end -}}
-{{- else -}}
-{{- range .Values.extraEnvVars -}}
+{{- range (include "wordpress.renderedList" (dict "value" .Values.extraEnvVars "context" $) | fromYaml).items -}}
 {{- if kindIs "map" . -}}
 {{- if eq (toString .name) "WORDPRESS_CONFIG_EXTRA" -}}
 {{- true -}}
-{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
