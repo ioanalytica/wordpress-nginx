@@ -1,5 +1,15 @@
 name: Docker image smoke test
 
+# Pull requests run both jobs whatever files they touch: there is no `paths`
+# filter on that trigger. A workflow skipped by a path filter leaves its
+# checks pending, so a ruleset that requires `smoke-test` and
+# `chart-template-test` would block every pull request outside the filter for
+# good. The two jobs take one to two and a half minutes, less than the review
+# of the pull request, so they are not skipped for changes that cannot affect
+# them either: a list of such changes would have to follow every file the
+# tests come to read.
+#
+# Pushes to main keep the filter. No merge waits for their result.
 on:
   push:
     branches:
@@ -10,11 +20,6 @@ on:
       - 'scripts/**'
       - '.github/workflows/docker-test.yml'
   pull_request:
-    paths:
-      - 'docker/**'
-      - 'chart/**'
-      - 'scripts/**'
-      - '.github/workflows/docker-test.yml'
 
 # Both jobs only read the repository. The build cache (type=gha) uses the
 # runner's own cache token, not GITHUB_TOKEN.
