@@ -156,8 +156,8 @@ and for a database proxy in a sidecar alike. The limit is
 `WORDPRESS_DB_WAIT_TIMEOUT` seconds (300; `0` does not wait), set through
 `extraEnvVars`; a single try takes up to five seconds beyond it. With the default liveness probe the kubelet starts the
 container again before the limit, so a database that stays away shows in the
-pod's restarts. Past the limit the container starts without the database, as
-it did before; a new installation is then made at its next start.
+pod's restarts. Past the limit the start goes on as it did before; a new
+installation is then made at the container's next start.
 
 <!-- #endregion database -->
 
@@ -984,18 +984,6 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 ## Upgrading
 
 <!-- #region upgrading -->
-
-### To 7.1.409
-
-No values change. Two things differ at the next start of a pod:
-
-- While the database does not answer, the WordPress container waits before it
-  goes on, up to five minutes (see
-  [The first start waits for the database](#the-first-start-waits-for-the-database)).
-  An installed site loses nothing by that: a pod that cannot reach its
-  database is not ready either way.
-- If `wp-content/uploads` belongs to root, as an installation made by an
-  earlier version left it, what root owns below it is handed to the web user.
 
 ### To 7.1.408
 

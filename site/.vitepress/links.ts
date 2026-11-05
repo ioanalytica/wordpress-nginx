@@ -21,7 +21,6 @@ const sitePages: Record<string, string> = {
   'chart/CHANGELOG.md': '/reference/changelog',
   'chart/README.md#chart-versions': '/reference/versioning',
   'chart/README.md#php-execution-allowlist': '/security/php-execution-allowlist',
-  'chart/README.md#the-first-start-waits-for-the-database': '/features/database#the-first-start-waits-for-the-database',
   'chart/README.md#to-71408': '/operations/upgrading#to-7-1-408',
   'examples/k3d/README.md': '/guide/try-locally',
 };

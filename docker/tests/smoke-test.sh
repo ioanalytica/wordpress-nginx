@@ -418,40 +418,46 @@ else
 fi
 cexec 'rm -rf /tmp/stub /tmp/msmtp-args /tmp/msmtp-msg /tmp/msg-plain /tmp/msg-folded /tmp/msg-nofrom'
 
-echo "=== The start hands an upload directory that belongs to root to the web user"
+echo "=== The start hands the upload directories that belong to root to the web user"
 # An installation made while the installer still ran as root has its upload
-# directory with root as the owner. The application hook repairs that; here
-# it is run once more in the running container, on a tree made for it. What
-# belongs to a third user stays as it is. A limit with a leading zero, which
-# the shell would take for an octal number, must not stop the hook either.
+# directory, and the year and month below it, with root as the owner. The
+# application hook hands exactly these to the web user; here it is run once
+# more in the running container, on a tree made for it. Files, other
+# directories and what a symbolic link points to stay as they are: the hook
+# runs as root on a tree the web user can write. A limit with a leading
+# zero, which the shell would take for an octal number, must not stop the
+# hook either.
 cexec '
 u=/var/www/html/wp-content/uploads
-mkdir -p $u/2026/11 && echo x > $u/2026/11/root-owned.txt && echo x > $u/2026/11/other-owned.txt
-chown -R root:root $u && chown 12345:12345 $u/2026/11/other-owned.txt
+mkdir -p $u/2026/11 $u/2026/11/deeper $u/plugin-data /tmp/outside/11
+echo x > $u/2026/11/root-owned.txt && echo x > $u/2026/11/other-owned.txt
+ln -s /tmp/outside $u/2027
+chown -R root:root $u /tmp/outside && chown 12345:12345 $u/2026/11/other-owned.txt
 WORDPRESS_DB_WAIT_TIMEOUT=08 DISABLE_GREETING=1 /etc/hooks/application/init-wordpress >/tmp/hook.log 2>&1 || true'
-# The hook hands the tree over in the background and returns before that.
-for i in $(seq 1 30); do
-    cexec 'grep -q "belongs to www-data now" /tmp/hook.log' && break
-    sleep 1
-done
-# assert_owner <description> <expected user:group, numeric> <path below uploads>
+# assert_owner <description> <expected user:group, numeric> <path>
 assert_owner() {
     local got
-    got="$(cexec "stat -c '%u:%g' '/var/www/html/wp-content/uploads/$3'")"
+    got="$(cexec "stat -c '%u:%g' '$3'")"
     if [ "$got" = "$2" ]; then echo "ok:   $1"
     else echo "FAIL: $1 — owner is $got, expected $2"; FAILURES=$((FAILURES + 1)); fi
 }
 web_ids="$(cexec 'echo "$(id -u www-data):$(id -g www-data)"')"
-assert_owner "the upload directory belongs to the web user"   "$web_ids"     .
-assert_owner "so does a directory below it"                   "$web_ids"     2026/11
-assert_owner "and a file root owned"                          "$web_ids"     2026/11/root-owned.txt
-assert_owner "a file of a third user keeps its owner"         "12345:12345"  2026/11/other-owned.txt
+U=/var/www/html/wp-content/uploads
+assert_owner "the upload directory belongs to the web user"       "$web_ids"     "$U"
+assert_owner "so does the directory of the year"                  "$web_ids"     "$U/2026"
+assert_owner "and the directory of the month"                     "$web_ids"     "$U/2026/11"
+assert_owner "a file root owns stays root's"                      "0:0"          "$U/2026/11/root-owned.txt"
+assert_owner "a file of a third user keeps its owner"             "12345:12345"  "$U/2026/11/other-owned.txt"
+assert_owner "a directory below the month is not walked into"     "0:0"          "$U/2026/11/deeper"
+assert_owner "a directory that is no year stays root's"           "0:0"          "$U/plugin-data"
+assert_owner "a year that is a link leaves its target alone"      "0:0"          /tmp/outside
+assert_owner "and what lies behind the link"                      "0:0"          /tmp/outside/11
 if cexec 'grep -q "arithmetic\|octal\|syntax error" /tmp/hook.log'; then
     echo "FAIL: the hook stumbles over a limit with a leading zero: $(cexec 'cat /tmp/hook.log')"; FAILURES=$((FAILURES + 1))
 else echo "ok:   a limit with a leading zero is read as a decimal number"; fi
-if cexec 'grep -q "Handing /var/www/html/wp-content/uploads over" /tmp/hook.log'; then echo "ok:   the hook says what it hands over"
+if cexec 'grep -q "Handed /var/www/html/wp-content/uploads over" /tmp/hook.log'; then echo "ok:   the hook says what it hands over"
 else echo "FAIL: the hook does not say that it hands the directory over: $(cexec 'cat /tmp/hook.log')"; FAILURES=$((FAILURES + 1)); fi
-cexec 'rm -rf /var/www/html/wp-content/uploads/2026 /tmp/hook.log'
+cexec 'rm -rf /var/www/html/wp-content/uploads/2026 /var/www/html/wp-content/uploads/2027 /var/www/html/wp-content/uploads/plugin-data /tmp/outside /tmp/hook.log'
 
 echo "=== The start waits for a database that does not answer, up to its limit"
 # WordPress is installed by the application hook, once per container start.
