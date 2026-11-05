@@ -19,6 +19,11 @@ import yaml
 
 
 def walk(example, chart, path):
+    """Print each key of `example` below `path` that `chart` does not have.
+
+    Descends where both sides hold a map, stops at a free-form (empty) map of
+    the chart, and reports a map given where the chart has none.
+    """
     for key, value in example.items():
         here = path + [str(key)]
         if not isinstance(chart, dict) or key not in chart:
@@ -31,6 +36,7 @@ def walk(example, chart, path):
 
 
 def main():
+    """Compare the example values (second argument) with the chart's (first)."""
     with open(sys.argv[1]) as f:
         chart = yaml.safe_load(f)
     with open(sys.argv[2]) as f:

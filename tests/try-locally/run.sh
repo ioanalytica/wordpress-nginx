@@ -27,6 +27,7 @@ set -euo pipefail
 # shellcheck source=lib.sh
 . "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
+# fail MESSAGE - end the run with MESSAGE; the exit trap reports and cleans up.
 fail() { echo "FAIL: $*" >&2; exit 1; }
 
 # block HEADING N - the page's Nth shell block under HEADING, localized.
@@ -121,6 +122,10 @@ diagnose() {
   kubectl -n kube-system logs deployment/traefik --tail=40 || true
 }
 
+# cleanup - the exit trap: after a failure, show what the cluster holds; then
+# delete the cluster this run created, unless KEEP_CLUSTER is set, and the
+# run's working directory. Keeps the run's exit status, and fails a run that
+# passed if its cluster could not be deleted.
 cleanup() {
   local rc=$?
   if [ -n "$CREATED" ]; then
@@ -147,6 +152,7 @@ IMPORT=""
 HELM_EXTRA=""
 WORK=""
 CREATED=""
+# usage - say how the script is called and exit with 2.
 usage() { echo "usage: $0 [--import IMAGE] [CHART_DIR]" >&2; exit 2; }
 while [ $# -gt 0 ]; do
   case "$1" in

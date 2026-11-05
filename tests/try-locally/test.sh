@@ -22,6 +22,7 @@ FAILURES=0
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# ok DESC, bad DESC - report one check, and count the failed ones.
 ok() { echo "ok:   $1"; }
 bad() { echo "FAIL: $1"; FAILURES=$((FAILURES + 1)); }
 # is DESC COMMAND... - ok when the command succeeds.
@@ -34,6 +35,7 @@ has() {
   if grep -qxF -- "$2" <<<"$3"; then ok "$1"; else bad "$1 - no line '$2'"; fi
 }
 
+# sh_block "HEADING|N" - the page's shell block that an entry of PAGE_BLOCKS names.
 sh_block() { page_block "${1%|*}" sh "${1#*|}"; }
 
 echo "=== The page has the blocks the run takes, and no others"
@@ -318,6 +320,7 @@ chart_sh() {
          VERSION="$1" CHOICE="$2" EVENT="$3" STUB_MERGE="$4" STUB_DOCKER_CHANGED="$5" STUB_PUBLISHED="$6" \
          "$HERE/chart.sh" 2>"$TMP/chart.err")" || { bad "chart.sh failed: $(cat "$TMP/chart.err")"; out=""; }
 }
+# get NAME - one output of the last chart_sh call.
 get() { sed -n "s/^$1=//p" <<<"$out"; }
 
 chart_sh 7.1.408 release workflow_dispatch no no no
