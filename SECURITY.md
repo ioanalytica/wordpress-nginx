@@ -18,6 +18,10 @@ The chart version is also the image tag, so upgrading the chart to the
 [latest release](https://github.com/ioanalytica/wordpress-nginx/releases/latest)
 brings the fixed image with it.
 
+The exception is a release that sets `image.digest`: the digest takes the
+place of the tag, and the release keeps the image it names through a chart
+upgrade. Set the new image's digest with the upgrade, or remove the value.
+
 ## Scope
 
 This policy covers what this repository builds:

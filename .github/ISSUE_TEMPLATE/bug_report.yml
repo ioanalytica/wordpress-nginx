@@ -49,5 +49,5 @@ body:
     id: logs
     attributes:
       label: Logs
-      description: The pod's log around the failure (`kubectl logs`, with `--all-containers` for the init container and sidecars), with secrets removed.
+      description: The log around the failure, with secrets removed. `kubectl logs <pod> -c <container>` prints one container's log; for a pod that does not start, the init container's log says why (`kubectl logs <pod> -c prepare-base-dir`).
       render: text
