@@ -48,6 +48,7 @@ commands starts in the repository root.
 helm dependency update chart/
 helm lint chart/
 ./chart/tests/template-test.sh
+./chart/tests/schema-test.sh
 ./docker/tests/htaccess-test.sh
 ./chart/tests/fim-test.sh
 ```
@@ -58,6 +59,10 @@ helm lint chart/
   `examples/` among them, and checks the manifests. It also checks that the
   version in `chart/Chart.yaml` follows the scheme and agrees with the image
   tags next to it.
+- `schema-test.sh` compares `chart/values.schema.json` with
+  `chart/values.yaml`: every documented value has its entry, with the same
+  default. It also checks that the schema lets through the forms in which
+  values reach the chart, and refuses what the chart cannot use.
 - `htaccess-test.sh` runs the init container's `.htaccess` check, taken from
   the rendered chart, in the image the init container uses.
 - `fim-test.sh` runs the file-integrity watcher against prepared volume trees,
@@ -120,7 +125,11 @@ A pull request is easiest to review when it:
   for the image, in `chart/tests/fim-test.sh` for the file-integrity watcher;
 - documents a new value with a `## @param` comment in `chart/values.yaml` and,
   where it needs more than a line, in the section of `chart/README.md` that
-  covers it;
+  covers it, and gives it its entry in `chart/values.schema.json`, which is
+  written by hand: type, description and the default of `values.yaml`. A
+  changed default is changed in both files. `./chart/tests/schema-test.sh`
+  names what is missing; keep the entry as permissive as its neighbours,
+  since Helm refuses an install whose values the schema does not accept;
 - keeps the `<!-- #region name -->` and `<!-- #endregion name -->` comments of
   the READMEs around their sections: the documentation site shows the sections
   by these names;
@@ -176,11 +185,13 @@ A release is a pull request of its own. It
    `artifacthub.io/images` there, which must equal `version`: the chart
    version is the tag of both images;
 3. turns `## Unreleased` in `chart/CHANGELOG.md` into the heading of that
-   version, so that no line is left under `## Unreleased` when it is merged.
+   version, so that no line is left under `## Unreleased` when it is merged:
+   `scripts/changelog-release.sh <version>`.
 
 `./chart/tests/template-test.sh` fails while the places in `chart/Chart.yaml`
-disagree and on a version outside the scheme. The templates take the image
-tags from the chart version itself.
+disagree, on a version outside the scheme, and when the version is not the
+newest one in the changelog. The templates take the image tags from the
+chart version itself.
 
 After its merge the maintainers push a tag with the version's name on that
 commit, and the release workflow (`.github/workflows/release.yml`) runs:
@@ -218,8 +229,9 @@ git push origin <version>
 
 A workflow asks wordpress.org every day for the current WordPress release. The
 pull request it opens for a new one is such a release pull request, and the
-three points hold for it as well: whoever merges it sees to it that the lines
-under `## Unreleased` stand under the new version's heading. It also raises
+three points hold for it as well: it runs the same script, so the lines under
+`## Unreleased` stand under the new version's heading, below its line for
+the WordPress update. It also raises
 `WP_VERSION` in `docker/Dockerfile` and `appVersion` in `chart/Chart.yaml`,
 which the template test holds equal.
 

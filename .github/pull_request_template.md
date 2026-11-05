@@ -7,7 +7,7 @@
 ## Checklist
 
 - [ ] A test covers the change
-- [ ] New values are documented (`## @param` in `chart/values.yaml`, the section in `chart/README.md`)
+- [ ] New values are documented (`## @param` in `chart/values.yaml`, the section in `chart/README.md`) and have their entry in `chart/values.schema.json`
 - [ ] The region comments of the READMEs (`<!-- #region … -->`) are still around their sections
 - [ ] `chart/CHANGELOG.md` has an entry under `## Unreleased`, if the change touches the chart or the image
 - [ ] The chart version is unchanged; a release pull request raises it (see [CONTRIBUTING.md](https://github.com/ioanalytica/wordpress-nginx/blob/main/CONTRIBUTING.md#versions-and-releases))
