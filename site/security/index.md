@@ -40,8 +40,9 @@ with them enabled is not part of the chart's tests; see
   policy to start from.
 - **Enforcing two-factor authentication** is a decision per site; the chart
   makes it available and does not impose it.
-- **Plugins and themes** are the site's own. The chart installs none besides
-  the two-factor plugin and adds no code to WordPress.
+- **Plugins and themes** are the site's own. By default the chart installs
+  the two-factor plugin and nothing else; with `idx.enabled` it also installs
+  the search plugin that belongs to the sidecar.
 
 ## Releases
 

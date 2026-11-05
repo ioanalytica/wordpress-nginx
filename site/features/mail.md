@@ -23,7 +23,7 @@ Without `smtpHost` every send fails, with a line in the container log:
 | Parameter | Description | Default |
 |---|---|---|
 | `smtpHost` | SMTP relay host | `""` |
-| `smtpPort` | SMTP relay port; empty is msmtp's default, 25 | `""` |
+| `smtpPort` | SMTP relay port. Empty leaves it to msmtp: 25, or 465 with `smtpProtocol: ssl` | `""` |
 | `smtpUser` | SMTP user name. Authentication switches on as soon as a user or a password is set | `""` |
 | `smtpPassword` | SMTP password | `""` |
 | `smtpExistingSecret` | Name of a Secret with the password under the key `smtp-password`; `smtpPassword` is then ignored | `""` |
@@ -35,7 +35,7 @@ Without `smtpHost` every send fails, with a line in the container log:
 
 | `smtpProtocol` | Connection |
 |---|---|
-| `tls` | STARTTLS, usually port 587 |
+| `tls` | STARTTLS; relays usually offer it on port 587, which `smtpPort` has to name |
 | `ssl` | implicit TLS (smtps), port 465 |
 | `none` | unencrypted, even with credentials |
 | `""` (default) | unencrypted without credentials; STARTTLS as soon as `smtpUser` or a password is set |

@@ -65,6 +65,11 @@ security contexts explicitly needs a test first; see
   image (`mariadb.image`) instead of a subchart.
 - **`wordpressConfigureCache`** configures W3 Total Cache only where the
   plugin is already active; it does not install it. See [Cache](/features/cache).
+- **`wordpressExtraConfigContent`** is accepted, but the `wp-config.php` the
+  chart generates does not evaluate it. Constants set that way, such as
+  `DISALLOW_FILE_EDIT`, move to the environment variable
+  `WORDPRESS_CONFIG_EXTRA`, set through `extraEnvVars`; see
+  [Configuration](/guide/configuration#wordpress-settings).
 - **`customHTAccessCM`** is accepted and has no effect, as NGINX reads no
   `.htaccess`.
 - **The ingress annotation `nginx.ingress.kubernetes.io/from-to-www-redirect`**
