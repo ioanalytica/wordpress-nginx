@@ -1,0 +1,14 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question or idea
+    url: https://github.com/ioanalytica/wordpress-nginx/discussions
+    about: Ask and discuss in GitHub Discussions.
+  - name: Security vulnerability
+    url: https://github.com/ioanalytica/wordpress-nginx/security/advisories/new
+    about: Report it privately, never in a public issue.
+  - name: Search API or search plugin
+    url: https://github.com/ioanalytica/wordpress-idx/issues
+    about: The search sidecar is developed in wordpress-idx; this chart deploys it.
+  - name: WordPress, a plugin or a theme
+    url: https://wordpress.org/support/forums/
+    about: Questions about WordPress itself belong to the WordPress support forums.

@@ -1,7 +1,6 @@
 .*
 !.gitignore
 !.gitmodules
-!.gitlab-ci.*
 !.dockerignore
 !.github
 !.coderabbit.yaml
