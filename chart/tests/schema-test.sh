@@ -19,8 +19,8 @@
 #   - an `enum` only for the modes with a fixed set of values;
 #   - text also as a number and numbers also as text, as --set, --set-string
 #     and a quoted value in a values file deliver them; switches also as 0/1
-#     or text; maps and lists also as an empty value of the other kind, and
-#     as text where the chart renders the value as a template.
+#     or text; a list also as a map of entries or as text; a map also as an
+#     empty list, and as text where the chart renders it as a template.
 # It lets such values through; it does not make the chart read them right. A
 # switch given as the text "false" still counts as on in a template's `if`,
 # as it did before the schema listed the switch. The six switches the schema
@@ -108,7 +108,7 @@ passes --set fim.enabled=1
 passes --set idx.enabled=0
 passes --set-string networkPolicy.enabled=true
 
-echo "=== Maps and lists also pass empty, as the other kind, or as template text"
+echo "=== Lists also pass as maps and as text, maps as an empty list or as template text"
 passes --set-json 'tolerations={}'
 passes --set-json 'nodeSelector=[]'
 passes --set-json 'extraEnvVars={}'
@@ -121,11 +121,15 @@ passes --set-string 'tolerations=- operator: Exists'
 passes --set fim.enabled=true --set-string 'fim.tolerations=- operator: Exists'
 passes --set fim.enabled=true --set-string 'fim.nodeSelector=kubernetes.io/os: linux'
 
-# extraDeploy as a map of objects: the chart ranges over the value, so the
+# A list as a map of entries: where the chart ranges over the value, the
 # entries of a map render like those of a list. Releases use the form to
-# merge extra objects from several values files.
+# merge entries from several values files.
 passes --set-json 'extraDeploy={"extra":{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"extra"}}}'
 passes --set-json 'extraDeploy=[{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"extra"}}]'
+passes --set ingress.enabled=true --set-json 'ingress.extraHosts={"alias":{"name":"blog.example.com","path":"/"}}'
+passes --set secondaryIngress.enabled=true --set-json 'secondaryIngress.extraHosts={"alias":{"name":"blog.example.com","path":"/"}}'
+# A list as text, where the template writes the value out as it is.
+passes --set-string 'service.loadBalancerSourceRanges=[10.0.0.0/8\, 192.168.0.0/16]'
 
 echo "=== A key the schema does not list is left to the chart"
 passes --set unknownTopLevel.key=1
@@ -141,7 +145,8 @@ refused /nginx/htaccessPolicy      --set nginx.htaccessPolicy=block
 refused /ingress/enabled           --set-json 'ingress.enabled=["true"]'
 refused /replicaCount              --set-json 'replicaCount=1.5'
 refused /smtpHost                  --set-json 'smtpHost=["mail.example.com"]'
-refused /extraDeploy               --set-json 'extraDeploy="kind: ConfigMap"'
+refused /extraDeploy               --set-json 'extraDeploy=5'
+refused /phpExecutionAllowlist/extraAllowedPaths --set-json 'phpExecutionAllowlist.extraAllowedPaths={"a":"~*^/x\\.php$"}'
 refused /wordpressWpCache          --set-json 'wordpressWpCache="true"'
 # Switches that were limited to true and false before: the text "false"
 # would count as on.

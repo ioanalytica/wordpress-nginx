@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$comment": "Copyright IO ANALYTICA. SPDX-License-Identifier: Apache-2.0",
   "title": "wordpress-nginx",
-  "description": "The values of the wordpress-nginx chart, documented in values.yaml. Helm checks them against this schema on install, upgrade, template and lint. The schema is permissive on purpose: it refuses a mode other than the listed ones, a malformed entry of nginx.deniedPaths or wordpressPreinstallPlugins, and a list or map where the chart reads a single value, or the other way round. Text may come as a number and numbers as text, as --set and --set-string deliver them, and switches as 0/1 or text; the chart reads them as it always did. Keys the schema does not list are left to the chart.",
+  "description": "The values of the wordpress-nginx chart, documented in values.yaml. Helm checks them against this schema on install, upgrade, template and lint. The schema is permissive on purpose. Text may come as a number and numbers as text, as --set and --set-string deliver them, switches as 0/1 or text, a list as a map of entries or as text, and a map as an empty list or, where the chart renders it as a template, as text; the chart reads such values as it always did. It refuses a mode other than the listed ones, a malformed entry of nginx.deniedPaths or wordpressPreinstallPlugins, a list or map where the chart reads a single value, and a single number or switch where it reads a list or map. Keys the schema does not list are left to the chart.",
   "type": "object",
   "properties": {
     "global": {
@@ -24,8 +24,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "defaultStorageClass": {
@@ -117,7 +115,6 @@
         "object",
         "string"
       ],
-      "maxLength": 0,
       "default": []
     },
     "diagnosticMode": {
@@ -140,7 +137,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": [
             "sleep"
           ]
@@ -152,7 +148,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": [
             "infinity"
           ]
@@ -202,8 +197,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "debug": {
@@ -641,7 +634,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "args": {
@@ -651,7 +643,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "extraEnvVars": {
@@ -661,7 +652,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "extraEnvVarsCM": {
@@ -765,7 +755,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "priorityClassName": {
@@ -792,7 +781,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "extraVolumes": {
@@ -802,7 +790,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "extraVolumeMounts": {
@@ -812,7 +799,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "sidecars": {
@@ -822,7 +808,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "initContainers": {
@@ -832,7 +817,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "podLabels": {
@@ -898,8 +882,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         }
       }
@@ -931,7 +913,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "resourcesPreset": {
@@ -982,7 +963,6 @@
         "object",
         "string"
       ],
-      "maxProperties": 0,
       "default": []
     },
     "podSecurityContext": {
@@ -1013,8 +993,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "supplementalGroups": {
@@ -1024,8 +1002,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "fsGroup": {
@@ -1126,8 +1102,6 @@
                 "object",
                 "string"
               ],
-              "maxProperties": 0,
-              "maxLength": 0,
               "default": []
             }
           }
@@ -1503,8 +1477,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "externalTrafficPolicy": {
@@ -1532,7 +1504,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": []
         }
       }
@@ -1626,8 +1597,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "extraPaths": {
@@ -1637,8 +1606,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "extraTls": {
@@ -1648,7 +1615,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": []
         },
         "secrets": {
@@ -1658,8 +1624,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "extraRules": {
@@ -1669,7 +1633,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": []
         }
       }
@@ -1763,8 +1726,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "extraPaths": {
@@ -1774,8 +1735,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "extraTls": {
@@ -1785,7 +1744,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": []
         },
         "secrets": {
@@ -1795,8 +1753,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "extraRules": {
@@ -1806,7 +1762,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": []
         }
       }
@@ -1850,8 +1805,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "goneHosts": {
@@ -1861,8 +1814,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "tls": {
@@ -1872,7 +1823,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": []
         }
       }
@@ -1905,8 +1855,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": [
             "ReadWriteOnce"
           ]
@@ -2147,8 +2095,6 @@
                 "object",
                 "string"
               ],
-              "maxProperties": 0,
-              "maxLength": 0,
               "default": []
             }
           }
@@ -2168,7 +2114,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": []
         },
         "containerPorts": {
@@ -2543,8 +2488,6 @@
                 "object",
                 "string"
               ],
-              "maxProperties": 0,
-              "maxLength": 0,
               "default": []
             },
             "metricRelabelings": {
@@ -2554,8 +2497,6 @@
                 "object",
                 "string"
               ],
-              "maxProperties": 0,
-              "maxLength": 0,
               "default": []
             },
             "honorLabels": {
@@ -2768,8 +2709,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "allowedComponentRootFiles": {
@@ -2779,8 +2718,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "dropins": {
@@ -2801,8 +2738,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "nameMarkers": {
@@ -2812,8 +2747,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "ignorePaths": {
@@ -2823,8 +2756,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "extraPaths": {
@@ -2834,8 +2765,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "baseline": {
@@ -2932,7 +2861,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": []
         },
         "affinity": {
@@ -3059,7 +2987,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": []
         },
         "extraEgress": {
@@ -3069,7 +2996,6 @@
             "object",
             "string"
           ],
-          "maxProperties": 0,
           "default": []
         },
         "ingressNSMatchLabels": {

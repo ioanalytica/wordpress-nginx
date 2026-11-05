@@ -52,6 +52,22 @@ STRICT_SWITCHES = [
 ]
 
 
+# Lists the schema limited to arrays before it listed every value: the two
+# lists of rules and the two lists of NGINX patterns. They stay arrays (an
+# empty map or text counts as empty). Every other list also passes as a map
+# and as text: a template that ranges over a value renders the entries of a
+# map like those of a list, which releases use to merge entries from several
+# values files, and text reaches the manifest where a template writes the
+# value out or renders it. Releases set such forms before the schema knew the
+# values, and Helm refuses an upgrade the schema does not accept.
+STRICT_LISTS = {
+    "phpExecutionAllowlist.extraAllowedPaths",
+    "restApiHardening.extraDeniedPaths",
+    "nginx.deniedPaths",
+    "wordpressPreinstallPlugins",
+}
+
+
 def types(node):
     t = node.get("type")
     return t if isinstance(t, list) else [t]
@@ -167,6 +183,18 @@ def main():
     enums(schema, "")
     if found != ENUMS:
         problems.append(f"enums are {found}, expected {ENUMS}")
+
+    for path, node in props:
+        name = ".".join(path)
+        if "properties" in node or not isinstance(node.get("default"), list):
+            continue
+        limited = "maxProperties" in node or "maxLength" in node
+        if set(types(node)) != {"array", "object", "string"}:
+            problems.append(f"a list must pass as a list, a map or text: {name}")
+        elif name in STRICT_LISTS and not ("maxProperties" in node and "maxLength" in node):
+            problems.append(f"must stay limited to a list (or an empty map or text): {name}")
+        elif name not in STRICT_LISTS and limited:
+            problems.append(f"a list must also pass as a map and as text: {name}")
 
     for name in STRICT_SWITCHES:
         node = schema_node(schema, name.split("."))
