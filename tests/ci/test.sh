@@ -240,6 +240,18 @@ accepts "a later build of the same sidecar version" with_oras "$TAG_ONCE" --keep
 refuses "a registry error while tagging once" env ORAS_FAKE_BROKEN=1 PATH="$HERE/fake-oras:$PATH" "$TAG_ONCE" "$C@sha256:eee" 7.1.410
 refuses "a reference without a digest"  with_oras "$TAG_ONCE" "$C:7.1.409" 7.1.409
 
+# Artifact Hub's repository metadata moves forward only, like latest.
+METADATA="$ROOT/scripts/release-artifacthub-metadata.sh"
+accepts "the first release pushes the metadata"     with_oras "$METADATA" "$C" 12 "$ROOT/artifacthub-repo.yml"
+accepts "a later release replaces it"               with_oras "$METADATA" "$C" 14 "$ROOT/artifacthub-repo.yml"
+accepts "a late re-run of an older release"         with_oras "$METADATA" "$C" 13 "$ROOT/artifacthub-repo.yml"
+[ "$(tagged "$C" artifacthub.io)" = "sha256:pushed-by-run-14" ] && ok "the later run's metadata stays" \
+    || fail "an older run replaced the metadata: $(tagged "$C" artifacthub.io)"
+accepts "a re-run of the same release pushes again" with_oras "$METADATA" "$C" 14 "$ROOT/artifacthub-repo.yml"
+refuses "a registry error while reading the metadata" env ORAS_FAKE_BROKEN=1 PATH="$HERE/fake-oras:$PATH" \
+    "$METADATA" "$C" 15 "$ROOT/artifacthub-repo.yml"
+refuses "a metadata file that is not there"         with_oras "$METADATA" "$C" 15 "$WORK/none.yml"
+
 UNPUBLISHED="$ROOT/scripts/release-unpublished.sh"
 accepts "a version no repository has"   with_oras "$UNPUBLISHED" 7.1.499 "$W" "$I" "$C"
 refuses "a version one repository has"  with_oras "$UNPUBLISHED" 7.1.409 "$W" "$I" "$C"

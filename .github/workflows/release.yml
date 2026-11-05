@@ -352,15 +352,13 @@ jobs:
           IDX_VERSION: ${{ needs.prep.outputs.idx-version }}
         run: scripts/release-tag-once.sh --keep "$IDX" "$IDX_VERSION"
       # Artifact Hub reads artifacthub-repo.yml from the tag `artifacthub.io`
-      # of the chart's repository, as the layer of an ORAS artifact with
-      # these media types. It reads it when a new version appears, so it goes
-      # up before the chart's version. Not a semver tag: Helm, Flux and
-      # Artifact Hub's own version list pass over it.
+      # of the chart's repository, as the layer of an ORAS artifact. It reads
+      # it when a new version appears, so it goes up before the chart's
+      # version. Not a semver tag: Helm, Flux and Artifact Hub's own version
+      # list pass over it. Like `latest` it moves forward only: a later run's
+      # metadata stays.
       - name: Artifact Hub repository metadata
-        run: |
-          oras push "$REGISTRY/$OWNER/charts/wordpress-nginx:artifacthub.io" \
-            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
-            artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+        run: scripts/release-artifacthub-metadata.sh "$REGISTRY/$OWNER/charts/wordpress-nginx" "$GITHUB_RUN_NUMBER"
       # The tag is the version check-release-tag.sh matched against the
       # chart's, and the version chart-release-version.sh packaged. A version
       # the registry has on another digest stops the job.
@@ -379,6 +377,11 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-26.04
     timeout-minutes: 10
+    # One release job at a time across runs: reading which releases are
+    # published and marking this one as Latest are two steps.
+    concurrency:
+      group: release-publish
+      queue: max
     permissions:
       contents: write        # create the GitHub Release
     steps:

@@ -7,10 +7,12 @@
 # does not take Latest back from a newer release.
 #
 # The versions of the published releases come on standard input, one a
-# line; the version itself may be among them.
+# line; the version itself may be among them. The caller reads them in a
+# step of their own, so that a failed listing stops it and is not taken for
+# "nothing published yet":
 #
-#   gh api --paginate repos/OWNER/REPO/releases --jq '.[] | select(.draft or .prerelease | not) | .tag_name' \
-#     | scripts/release-is-latest.sh 7.1.409
+#   published="$(gh api --paginate repos/OWNER/REPO/releases --jq '.[] | select(.draft or .prerelease | not) | .tag_name')"
+#   scripts/release-is-latest.sh 7.1.409 <<<"$published"
 set -euo pipefail
 
 version="${1:-}"

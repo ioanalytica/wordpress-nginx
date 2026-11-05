@@ -61,7 +61,7 @@ if "push-by-digest=true" not in build_text or "oras manifest push" not in build_
 for name, job in list(release.items()) + list(build.items()):
     for step in job.get("steps") or []:
         run = str(step.get("run", ""))
-        if name != "tag" and ("oras tag" in run or "release-tag-" in run or ":artifacthub.io" in run):
+        if name != "tag" and ("oras tag" in run or "oras push" in run or "release-tag-" in run or "release-artifacthub-metadata" in run):
             problems.append(f"job {name} sets a tag outside the tag job")
         if "secrets." in str((step.get("with") or {}).get("build-args", "")):
             problems.append(f"job {name} passes a secret as a build argument; provenance records build arguments")
