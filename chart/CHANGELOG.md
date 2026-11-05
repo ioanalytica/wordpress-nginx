@@ -1,5 +1,13 @@
 # Changelog
 
+## 7.1.408
+
+* **Chart versions are stable SemVer versions now.** The build number moved from a `-N` suffix into the patch component: for WordPress `x.y.z` and build `N` the version is `x.y.P` with `P = z * 100 + N`. `7.1.408` follows `7.1.4-7`, and the first version for WordPress 7.1.5 will be `7.1.500`. SemVer reads a `-N` suffix as a pre-release, so Helm needed `--devel` and version ranges never matched a release. `appVersion` remains the plain WordPress version, and the chart version remains the image tag. "Chart versions" in the README has the scheme with examples, "To 7.1.408" the upgrade notes.
+  * Earlier versions and their image tags stay published unchanged, and every version of the new scheme sorts above them. A deployment that pins an exact version changes the pin to the new form with its next upgrade.
+  * `--devel` is no longer needed; the install commands in both READMEs dropped it.
+* No changes to templates, values or the Dockerfile. As with every release, the image is built on the base image and Alpine packages current at release time.
+* `scripts/chart-version.sh` holds the scheme, and the template test fails on a version outside it: a suffix, a build number past 99, or a patch component that does not belong to `appVersion`. The WordPress release tracker proposes `x.y.(z * 100)` for a new WordPress release.
+
 ## 7.1.4-7
 
 * Image hardening: rebuilt on current Alpine 3.24 packages, picking up the latest security update for `perl` (5.42.3, pulled in by the base image's build tooling, not used by WordPress) and `apk-tools` 3.0.9. Still PHP **8.4.27**, the current 8.4 release. No chart or configuration changes; upgrading is recommended as routine hardening.

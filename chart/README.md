@@ -27,7 +27,7 @@ A production-ready Helm chart for deploying WordPress with NGINX on Kubernetes. 
 The chart is published to an OCI registry. Helm installs from it directly; there is no `helm repo add` step:
 
 ```bash
-helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx --devel
+helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx
 ```
 
 Or install from local source. The `common` subchart is not checked in, so fetch it first:
@@ -39,15 +39,26 @@ helm install my-wordpress ./chart
 
 ### Chart versions
 
-The chart version follows the WordPress release it ships, plus a build number: `7.1.4-5` is the fifth chart release on WordPress 7.1.4. The chart version is also the image tag. SemVer reads the `-5` suffix as a pre-release, so:
+The chart version names the WordPress release the chart ships and the chart's build on that release, and it is also the image tag. For WordPress `x.y.z` and build `N`, the version is `x.y.P` with `P = z * 100 + N`; `appVersion` is the plain WordPress version.
 
-- Without `--version`, Helm only considers stable releases and finds none. Pass `--devel` to get the newest release, or pin one explicitly (recommended for production):
+| WordPress | Build | Chart version |
+|---|---|---|
+| 7.1.4 | 8 | `7.1.408` |
+| 7.1.5 | 0 | `7.1.500` |
+| 7.1.5 | 1 | `7.1.501` |
+| 7.2.0 | 0 | `7.2.0` |
+| 7.2.0 | 1 | `7.2.1` |
+| 7.2.1 | 0 | `7.2.100` |
+
+- The last two digits are the build number, everything before them is the WordPress patch release. A new build ships chart or image changes on the same WordPress release, a rebuilt image with current packages included.
+- SemVer allows no leading zeros, so on a `.0` WordPress release the patch component is the build number alone: `7.2.1` is build 1 on WordPress 7.2.0, and WordPress 7.2.1 starts at `7.2.100`. When in doubt, `appVersion` tells them apart.
+- Every version is a stable SemVer version. `helm install` without `--version` installs the newest one, and ranges work as usual: `7.1.x` follows the builds and patch releases of WordPress 7.1. For production, pin an exact version:
 
   ```bash
-  helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx --version 7.1.4-5
+  helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx --version 7.1.408
   ```
 
-- Version ranges such as `7.1.x` or `>=7.1.0` exclude pre-releases. Flux, Argo CD and Renovate users should pin exact versions or add a pre-release to the range (for example `>=7.1.0-0`).
+Versions up to `7.1.4-7` had the form `x.y.z-N`, which SemVer reads as a pre-release; see [To 7.1.408](#to-71408). They remain available, and every version of the current scheme sorts above them.
 
 The available versions are listed in the [CHANGELOG](CHANGELOG.md).
 
@@ -872,6 +883,15 @@ containerSecurityContext:
 OpenShift compatibility is handled automatically via `global.compatibility.openshift.adaptSecurityContext`.
 
 ## Upgrading
+
+### To 7.1.408
+
+The chart version scheme changed: `7.1.408` follows `7.1.4-7`. The build number moved from a `-N` suffix into the patch component (see [Chart versions](#chart-versions)), so releases are stable SemVer versions and no longer pre-releases. Chart and image are otherwise the same as in `7.1.4-7`; no values changes are required.
+
+* A deployment that pins an exact version (`--version`, a Flux `HelmRelease`, an Argo CD `targetRevision`) changes the pin to the new form with its next upgrade.
+* `--devel` is no longer needed to install or upgrade without `--version`.
+* A range that named pre-releases to match the earlier versions (for example `>=7.1.0-0`) still matches and can become a plain range such as `7.1.x`.
+* Earlier versions and their image tags stay published unchanged.
 
 ### To 7.0.0-2
 
