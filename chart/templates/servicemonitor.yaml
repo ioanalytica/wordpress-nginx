@@ -28,8 +28,14 @@ spec:
       scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
       {{- end }}
       honorLabels: {{ .Values.metrics.serviceMonitor.honorLabels }}
-      {{- if .Values.metrics.serviceMonitor.relabellings }}
-      metricRelabelings: {{- toYaml .Values.metrics.serviceMonitor.relabellings | nindent 8 }}
+      {{- /*
+      Up to 7.1.408 this read a key of another spelling (relabellings), so
+      the documented metricRelabelings did nothing. A release that set the
+      other spelling to get its rules applied keeps them.
+      */}}
+      {{- $metricRelabelings := .Values.metrics.serviceMonitor.metricRelabelings | default .Values.metrics.serviceMonitor.relabellings }}
+      {{- if $metricRelabelings }}
+      metricRelabelings: {{- toYaml $metricRelabelings | nindent 8 }}
       {{- end }}
       {{- if .Values.metrics.serviceMonitor.relabelings }}
       relabelings: {{- toYaml .Values.metrics.serviceMonitor.relabelings | nindent 6 }}

@@ -652,6 +652,69 @@ expect "report does not block"           absent  'if ($wp_rest_blocked) { return
 expect "report freezes the decision"     present 'set $wp_rest_reported 1'     --set restApiHardening.mode=report
 expect "extra deny renders a pattern"    present '" 1;'                        --set 'restApiHardening.extraDeniedPaths={~*^/wp-json/wp/v2/comments}'
 
+echo "=== Metrics reach Prometheus"
+# The exporter sidecar listens on a port of its own. The chart's
+# NetworkPolicy is on by default and lists the pod's ports one by one, so a
+# port missing there is a scrape that times out wherever policies are
+# enforced, with the exporter itself running fine.
+METRICS=(--set metrics.enabled=true)
+NETPOL=(--show-only templates/networkpolicy.yaml)
+expect "the policy admits the exporter's port"  present "- port: 9113" "${METRICS[@]}" "${NETPOL[@]}"
+expect "the admitted port follows the values"   present "- port: 9200" "${METRICS[@]}" "${NETPOL[@]}" \
+        --set metrics.containerPorts.metrics=9200
+expect "no exporter, no port in the policy"     absent  "- port: 9113" "${NETPOL[@]}"
+check  "metrics with a ServiceMonitor"          "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true
+
+# endpoint_field <field> <helm args...>: one field of the ServiceMonitor's
+# endpoint, as compact JSON ("null" when the endpoint does not have it).
+endpoint_field() {
+    local field="$1"; shift
+    helm template tst "$CHART" "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true \
+        --show-only templates/servicemonitor.yaml "$@" 2>&1 \
+        | python3 -c '
+import json, sys, yaml
+doc = yaml.safe_load(sys.stdin)
+print(json.dumps(doc["spec"]["endpoints"][0].get(sys.argv[1]), separators=(",", ":"), sort_keys=True))
+' "$field" 2>/dev/null || echo "render failed"
+}
+
+# endpoint_has <desc> <field> <expected JSON> <helm args...>
+endpoint_has() {
+    local desc="$1" field="$2" expected="$3" got; shift 3
+    got="$(endpoint_field "$field" "$@")"
+    if [ "$got" = "$expected" ]; then
+        echo "ok:   $desc"
+    else
+        echo "FAIL: $desc — $field is $got, expected $expected"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+
+DROP='[{"action":"drop","regex":"nginx_up","sourceLabels":["__name__"]}]'
+SITE='[{"replacement":"blog","targetLabel":"site"}]'
+# metricRelabelings and relabelings are two settings of an endpoint: one
+# rewrites the samples, the other the target. Each value must reach the
+# field of its own name and no other.
+endpoint_has "metricRelabelings reaches the endpoint"     metricRelabelings "$DROP" \
+        --set-json "metrics.serviceMonitor.metricRelabelings=$DROP"
+endpoint_has "metricRelabelings sets no relabelings"      relabelings null \
+        --set-json "metrics.serviceMonitor.metricRelabelings=$DROP"
+endpoint_has "relabelings reaches the endpoint"           relabelings "$SITE" \
+        --set-json "metrics.serviceMonitor.relabelings=$SITE"
+endpoint_has "relabelings sets no metricRelabelings"      metricRelabelings null \
+        --set-json "metrics.serviceMonitor.relabelings=$SITE"
+endpoint_has "both can be set side by side"               metricRelabelings "$DROP" \
+        --set-json "metrics.serviceMonitor.metricRelabelings=$DROP" \
+        --set-json "metrics.serviceMonitor.relabelings=$SITE"
+endpoint_has "no rules, no field"                         metricRelabelings null
+# The key the template read up to 7.1.408. A release that set it keeps its
+# rules; the documented key wins where both are set.
+endpoint_has "the earlier spelling still applies"         metricRelabelings "$DROP" \
+        --set-json "metrics.serviceMonitor.relabellings=$DROP"
+endpoint_has "the documented key wins over it"            metricRelabelings "$DROP" \
+        --set-json "metrics.serviceMonitor.metricRelabelings=$DROP" \
+        --set-json "metrics.serviceMonitor.relabellings=$SITE"
+
 echo "=== File-integrity watcher renders what it claims"
 # fim_check <desc> <deployment|sidecar> <helm args...>: the structural checks
 # plus check-fim.py - the pinned wp-config.php digest must equal the bytes
