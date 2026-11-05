@@ -7,12 +7,19 @@ on:
     paths:
       - 'docker/**'
       - 'chart/**'
+      - 'scripts/**'
       - '.github/workflows/docker-test.yml'
   pull_request:
     paths:
       - 'docker/**'
       - 'chart/**'
+      - 'scripts/**'
       - '.github/workflows/docker-test.yml'
+
+# Both jobs only read the repository. The build cache (type=gha) uses the
+# runner's own cache token, not GITHUB_TOKEN.
+permissions:
+  contents: read
 
 jobs:
   smoke-test:

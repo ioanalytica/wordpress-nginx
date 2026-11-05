@@ -50,36 +50,32 @@ jobs:
             exit 0
           fi
           echo "New WordPress release available: $current -> $latest"
-          # The chart version must be valid SemVer2 (MAJOR.MINOR.PATCH). WordPress
-          # reports x.y.0 releases as two-component (e.g. "7.1"), so normalize the
-          # chart/image version base to three components. WP_VERSION and appVersion
-          # keep the raw upstream string.
-          chart_base="$latest"
-          dots=$(printf '%s' "$latest" | tr -cd '.' | wc -c | tr -d ' ')
-          if [ "$dots" -eq 0 ]; then chart_base="${latest}.0.0"; fi
-          if [ "$dots" -eq 1 ]; then chart_base="${latest}.0"; fi
-          echo "chart_base=$chart_base" >> "$GITHUB_OUTPUT"
-          echo "chart_version=${chart_base}-1" >> "$GITHUB_OUTPUT"
+          # The first chart version on a WordPress release is x.y.(z * 100), see
+          # scripts/chart-version.sh. WordPress reports x.y.0 releases with two
+          # components (e.g. "7.2"), which the script reads as patch 0.
+          # WP_VERSION and appVersion keep the raw upstream string.
+          chart_version=$(scripts/chart-version.sh first "$latest")
+          echo "chart_version=$chart_version" >> "$GITHUB_OUTPUT"
           echo "update=true" >> "$GITHUB_OUTPUT"
 
       - name: Apply version bump
         if: steps.cmp.outputs.update == 'true'
         env:
           NEW: ${{ steps.wp.outputs.latest }}
-          CHART_BASE: ${{ steps.cmp.outputs.chart_base }}
+          CHART_VERSION: ${{ steps.cmp.outputs.chart_version }}
         run: |
           set -euo pipefail
-          # New WordPress version => reset the release suffix to -1.
+          # New WordPress version => the build number starts over at 0.
           # WP_VERSION/appVersion track the raw upstream string; the chart version
-          # and image tag use the SemVer-normalized base (CHART_BASE). appVersion is
-          # quoted so a numeric value like "7.1" stays a YAML string, not a float.
+          # and image tag are CHART_VERSION. appVersion is quoted so a numeric
+          # value like "7.1" stays a YAML string, not a float.
           sed -i "s/^ENV WP_VERSION=.*/ENV WP_VERSION=${NEW}/" docker/Dockerfile
-          sed -i "s/^version: .*/version: ${CHART_BASE}-1/" chart/Chart.yaml
+          sed -i "s/^version: .*/version: ${CHART_VERSION}/" chart/Chart.yaml
           sed -i "s/^appVersion: .*/appVersion: \"${NEW}\"/" chart/Chart.yaml
-          sed -i "s/^  imageTag: .*/  imageTag: \"${CHART_BASE}-1\"/" chart/Chart.yaml
-          sed -i "s|^      image: ghcr.io/ioanalytica/wordpress-nginx:.*|      image: ghcr.io/ioanalytica/wordpress-nginx:${CHART_BASE}-1|" chart/Chart.yaml
+          sed -i "s/^  imageTag: .*/  imageTag: \"${CHART_VERSION}\"/" chart/Chart.yaml
+          sed -i "s|^      image: ghcr.io/ioanalytica/wordpress-nginx:.*|      image: ghcr.io/ioanalytica/wordpress-nginx:${CHART_VERSION}|" chart/Chart.yaml
           # Prepend a CHANGELOG entry directly under the "# Changelog" header.
-          awk -v ver="${CHART_BASE}-1" -v wp="$NEW" '
+          awk -v ver="${CHART_VERSION}" -v wp="$NEW" '
             NR==1 {
               print
               print ""

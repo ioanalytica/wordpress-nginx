@@ -98,6 +98,68 @@ else
     FAILURES=$((FAILURES + 1))
 fi
 
+echo "=== Chart version scheme"
+# The chart version is x.y.P with P = z * 100 + N for WordPress x.y.z and
+# build N (scripts/chart-version.sh). A version with a suffix, or a build
+# number that runs past 99 into the next WordPress release's range, would
+# still package and install - nothing but this check refuses it.
+VERSION_SCRIPT="$(dirname "$0")/../../scripts/chart-version.sh"
+
+# version_prints <desc> <expected> <args...>
+version_prints() {
+    local desc="$1" expected="$2" out; shift 2
+    if out="$("$VERSION_SCRIPT" "$@" 2>&1)" && [ "$out" = "$expected" ]; then
+        echo "ok:   $desc"
+    else
+        echo "FAIL: $desc — expected '$expected', got '$out'"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+
+# version_refuses <desc> <args...>
+version_refuses() {
+    local desc="$1" out; shift
+    if out="$("$VERSION_SCRIPT" "$@" 2>&1)"; then
+        echo "FAIL: $desc — accepted, printed '$out'"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   $desc"
+    fi
+}
+
+app_version=$(sed -n 's/^appVersion: *//p' "$CHART/Chart.yaml" | tr -d '"')
+if out="$("$VERSION_SCRIPT" check "$chart_version" "$app_version" 2>&1)"; then
+    echo "ok:   $out"
+else
+    echo "FAIL: $out"
+    FAILURES=$((FAILURES + 1))
+fi
+
+version_prints  "first version of a patch release"            7.1.500   first 7.1.5
+version_prints  "first version of a two-component release"    7.2.0     first 7.2
+version_prints  "first version of a .0 release"               7.2.0     first 7.2.0
+version_prints  "first version of the release after a .0"     7.2.100   first 7.2.1
+version_prints  "first version of a two-digit patch release"  7.10.1200 first 7.10.12
+version_refuses "a WordPress version of one component"        first 7
+version_prints  "next build"                                  7.1.408   next 7.1.407
+version_prints  "next build on a .0 release"                  7.2.1     next 7.2.0
+version_refuses "a build after 99"                            next 7.1.499
+version_refuses "a build after 99 on a .0 release"            next 7.2.99
+version_prints  "a build on a patch release" \
+    "chart version 7.1.408: WordPress 7.1.4, build 8"         check 7.1.408 7.1.4
+version_prints  "a build on a two-component appVersion" \
+    "chart version 7.2.1: WordPress 7.2.0, build 1"           check 7.2.1 7.2
+version_prints  "the last build of a .0 release" \
+    "chart version 7.2.99: WordPress 7.2.0, build 99"         check 7.2.99 7.2.0
+version_refuses "the -N suffix of the earlier scheme"         check 7.1.4-8 7.1.4
+version_refuses "a build number past 99"                      check 7.1.500 7.1.4
+version_refuses "a build number past 99 on a .0 release"      check 7.2.100 7.2
+version_refuses "a patch component with a leading zero"       check 7.1.08 7.1.0
+version_refuses "a minor that differs from appVersion"        check 7.2.408 7.1.4
+version_refuses "a version with a v prefix"                   check v7.1.408 7.1.4
+version_refuses "a version with build metadata"               check 7.1.408+1 7.1.4
+version_refuses "a version of two components"                 check 7.1 7.1
+
 echo "=== Structural invariants across the value matrix"
 check "defaults"
 check "php allowlist report"        --set phpExecutionAllowlist.mode=report
