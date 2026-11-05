@@ -1,121 +1,467 @@
 {
-  "$schema": "http://json-schema.org/schema#",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$comment": "Copyright IO ANALYTICA. SPDX-License-Identifier: Apache-2.0",
+  "title": "wordpress-nginx",
+  "description": "The values of the wordpress-nginx chart, documented in values.yaml. Helm checks them against this schema on install, upgrade, template and lint. The schema is permissive on purpose: it refuses a mode other than the listed ones, a malformed entry of nginx.deniedPaths or wordpressPreinstallPlugins, and a list or map where the chart reads a single value, or the other way round. Text may come as a number and numbers as text, as --set and --set-string deliver them, and switches as 0/1 or text; the chart reads them as it always did. Keys the schema does not list are left to the chart.",
   "type": "object",
   "properties": {
-    "wordpressUsername": {
-      "type": "string",
-      "title": "Username",
-      "form": true
-    },
-    "wordpressPassword": {
-      "type": "string",
-      "title": "Password",
-      "form": true,
-      "description": "Defaults to a random 10-character alphanumeric string if not set"
-    },
-    "wordpressEmail": {
-      "type": "string",
-      "title": "Admin email",
-      "form": true
-    },
-    "wordpressBlogName": {
-      "type": "string",
-      "title": "Blog Name",
-      "form": true
-    },
-    "wordpressWpCache": {
-      "type": [
-        "boolean",
-        "null"
-      ],
-      "title": "WP_CACHE",
-      "description": "Define WP_CACHE in wp-config.php. null follows wordpressConfigureCache; true/false set it explicitly"
-    },
-    "wordpressPreinstallPlugins": {
-      "type": "array",
-      "title": "Preinstalled plugins",
-      "description": "Plugins installed, activated and set to auto-update by the application hook on every container start",
-      "items": {
-        "type": "object",
-        "required": [
-          "name"
-        ],
-        "additionalProperties": false,
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Plugin slug on wordpress.org"
-          },
-          "activate": {
-            "type": "boolean",
-            "default": true,
-            "description": "Activate the plugin when it is inactive"
-          },
-          "autoUpdate": {
-            "type": "boolean",
-            "default": true,
-            "description": "Enable WordPress auto-updates for the plugin"
+    "global": {
+      "title": "Global parameters",
+      "type": "object",
+      "properties": {
+        "imageRegistry": {
+          "description": "Global Docker image registry",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "imagePullSecrets": {
+          "description": "Global Docker registry secret names as an array",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "defaultStorageClass": {
+          "description": "Global default StorageClass for Persistent Volume(s)",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "compatibility": {
+          "title": "Compatibility adaptations for Kubernetes platforms",
+          "type": "object",
+          "properties": {
+            "openshift": {
+              "title": "Compatibility adaptations for OpenShift",
+              "type": "object",
+              "properties": {
+                "adaptSecurityContext": {
+                  "description": "Adapt the securityContext sections of the deployment to make them compatible with Openshift restricted-v2 SCC: remove runAsUser, runAsGroup and fsGroup and let the platform use their allowed default IDs. Possible values: auto (apply if the detected running cluster is Openshift), force (perform the adaptation always), disabled (do not perform adaptation)",
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "default": "auto"
+                }
+              }
+            }
           }
         }
       }
     },
-    "phpExecutionAllowlist": {
+    "kubeVersion": {
+      "description": "Override Kubernetes version",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "nameOverride": {
+      "description": "String to partially override common.names.fullname template (will maintain the release name)",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "fullnameOverride": {
+      "description": "String to fully override common.names.fullname template",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "commonLabels": {
+      "description": "Labels to add to all deployed resources",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "commonAnnotations": {
+      "description": "Annotations to add to all deployed resources",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "clusterDomain": {
+      "description": "Kubernetes Cluster Domain",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": "cluster.local"
+    },
+    "extraDeploy": {
+      "description": "Array of extra objects to deploy with the release",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "maxLength": 0,
+      "default": []
+    },
+    "diagnosticMode": {
+      "title": "Diagnostic mode",
       "type": "object",
-      "title": "PHP Execution Allowlist",
+      "properties": {
+        "enabled": {
+          "description": "Enable diagnostic mode (all probes will be disabled and the command will be overridden)",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "command": {
+          "description": "Command to override all containers in the deployment",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "default": [
+            "sleep"
+          ]
+        },
+        "args": {
+          "description": "Args to override all containers in the deployment",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "default": [
+            "infinity"
+          ]
+        }
+      }
+    },
+    "image": {
+      "title": "WordPress image",
+      "type": "object",
+      "properties": {
+        "registry": {
+          "description": "WordPress image registry",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "ghcr.io"
+        },
+        "repository": {
+          "description": "WordPress image repository",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "ioanalytica/wordpress-nginx"
+        },
+        "digest": {
+          "description": "WordPress image digest in the way sha256:aa.... Please note this parameter, if set, will override the tag",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "pullPolicy": {
+          "description": "WordPress image pull policy",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "Always"
+        },
+        "pullSecrets": {
+          "description": "WordPress image pull secrets",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "debug": {
+          "description": "Specify if debug values should be set",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        }
+      }
+    },
+    "wordpressUsername": {
+      "description": "WordPress username",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": "user"
+    },
+    "wordpressPassword": {
+      "description": "WordPress user password",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "existingSecret": {
+      "description": "Name of existing secret containing WordPress credentials",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "wordpressEmail": {
+      "description": "WordPress user email",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": "user@example.com"
+    },
+    "wordpressFirstName": {
+      "description": "WordPress user first name",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": "FirstName"
+    },
+    "wordpressLastName": {
+      "description": "WordPress user last name",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": "LastName"
+    },
+    "wordpressBlogName": {
+      "description": "Blog name",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": "User's Blog!"
+    },
+    "wordpressTablePrefix": {
+      "description": "Prefix to use for WordPress database tables",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": "wp_"
+    },
+    "wordpressScheme": {
+      "description": "Scheme to use to generate WordPress URLs",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": "http"
+    },
+    "wordpressSkipInstall": {
+      "description": "Skip wizard installation",
+      "type": [
+        "boolean",
+        "integer",
+        "string"
+      ],
+      "default": false
+    },
+    "wordpressExtraConfigContent": {
+      "description": "Add extra content to the default wp-config.php file",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "wordpressConfiguration": {
+      "description": "The content for your custom wp-config.php file (advanced feature)",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "existingWordPressConfigurationSecret": {
+      "description": "The name of an existing secret with your custom wp-config.php file (advanced feature)",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "wordpressConfigureCache": {
+      "description": "Enable W3 Total Cache plugin and configure cache settings",
+      "type": [
+        "boolean",
+        "integer",
+        "string"
+      ],
+      "default": false
+    },
+    "wordpressCacheInstanceId": {
+      "description": "W3 Total Cache `common.instance_id` (1-2147483647). Empty: derived from namespace and release name. Only used with `wordpressConfigureCache`",
+      "type": [
+        "integer",
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "wordpressWpCache": {
+      "description": "Define `WP_CACHE` in wp-config.php. `null` follows `wordpressConfigureCache`; `true`/`false` set it explicitly",
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "default": null
+    },
+    "wordpressPlugins": {
+      "description": "Array of plugins to install and activate. Can be specified as `all` or `none`.",
+      "type": [
+        "string",
+        "array"
+      ],
+      "default": "none"
+    },
+    "nginxConfiguration": {
+      "description": "The content for your custom nginx.conf file (advanced feature)",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "existingNginxConfigurationConfigMap": {
+      "description": "The name of an existing secret with your custom nginx.conf file (advanced feature)",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "nginxCustomServerBlockAddition": {
+      "description": "Additional content that's being added to all NGINX server blocks",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "existingCustomServerBlockAdditionConfigMap": {
+      "description": "The name of an existing configmap with content that's being added to all NGINX server blocks",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "phpExecutionAllowlist": {
+      "title": "PHP execution allowlist",
+      "type": "object",
       "properties": {
         "mode": {
+          "description": "PHP execution allowlist mode: `enforce` blocks non-allowlisted PHP requests with 403, `report` only logs them (`[php-allowlist]` lines on container stderr), `off` disables the allowlist",
           "type": "string",
-          "title": "Mode",
           "enum": [
             "enforce",
             "report",
             "off"
           ],
-          "description": "enforce blocks non-allowlisted PHP requests with 403, report only logs them, off disables the allowlist"
+          "default": "enforce"
         },
         "extraAllowedPaths": {
-          "type": "array",
-          "title": "Extra allowed paths",
+          "description": "Additional NGINX map regex patterns allowed to execute PHP, e.g. `'~*^/wp-content/plugins/myplugin/callback\\.php$'`",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
           "items": {
             "type": "string"
           },
-          "description": "Additional NGINX map regex patterns allowed to execute PHP"
+          "default": []
         }
       }
     },
     "restApiHardening": {
+      "title": "REST API and author enumeration hardening",
       "type": "object",
-      "title": "REST API and Author Enumeration Hardening",
       "properties": {
         "mode": {
+          "description": "REST API hardening mode: `off` (default) leaves every route reachable, `enforce` answers denied requests from anonymous callers with 403, `report` only logs them (`[rest-hardening]` lines on container stderr)",
           "type": "string",
-          "title": "Mode",
           "enum": [
             "off",
             "enforce",
             "report"
           ],
-          "description": "off (default) leaves every route reachable, enforce answers denied requests from anonymous callers with 403, report only logs them"
+          "default": "off"
         },
         "extraDeniedPaths": {
-          "type": "array",
-          "title": "Extra denied paths",
+          "description": "Additional NGINX map regex patterns to deny, matched against the synthetic key `\"$uri?rest_route=$arg_rest_route&author=$arg_author\"`, e.g. `'~*^/wp-json/wp/v2/comments(/|\\?)'`",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
           "items": {
             "type": "string"
           },
-          "description": "Additional NGINX map regex patterns to deny, matched against \"$uri?rest_route=$arg_rest_route&author=$arg_author\""
+          "default": []
         }
       }
     },
     "nginx": {
-      "type": "object",
       "title": "NGINX path rules",
+      "type": "object",
       "properties": {
         "deniedPaths": {
-          "type": "array",
-          "title": "Denied paths",
-          "description": "Paths NGINX refuses for every caller, enforced in the rewrite phase",
+          "description": "Paths NGINX refuses for every caller. Each entry: `path`, `action` (`deny` | `honeypot`), `reason`",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
           "items": {
             "type": "object",
             "required": [
@@ -142,231 +488,3045 @@
                 "description": "Rendered as a comment above the rule"
               }
             }
-          }
+          },
+          "default": []
         },
         "htaccessPolicy": {
+          "description": "What the init container does when it finds `.htaccess` files under wp-content: `warn` logs them and lists the directories that are not covered by `nginx.deniedPaths`; `fail` refuses to start the pod while any such directory is uncovered",
           "type": "string",
           "enum": [
             "warn",
             "fail"
           ],
-          "description": "warn logs .htaccess directories not covered by deniedPaths; fail refuses to start while any is uncovered"
+          "default": "warn"
+        }
+      }
+    },
+    "wordpressPreinstallPlugins": {
+      "description": "Plugins installed, activated and set to auto-update on every container start. Each entry: `name` (wordpress.org slug), `activate` (default true), `autoUpdate` (default true)",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "maxLength": 0,
+      "items": {
+        "type": "object",
+        "required": [
+          "name"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Plugin slug on wordpress.org"
+          },
+          "activate": {
+            "type": "boolean",
+            "default": true,
+            "description": "Activate the plugin when it is inactive"
+          },
+          "autoUpdate": {
+            "type": "boolean",
+            "default": true,
+            "description": "Enable WordPress auto-updates for the plugin"
+          }
+        }
+      },
+      "default": [
+        {
+          "name": "two-factor",
+          "activate": true,
+          "autoUpdate": true
+        }
+      ]
+    },
+    "customPostInitScripts": {
+      "description": "Custom application-hook scripts (`.sh` only)",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "smtpHost": {
+      "description": "SMTP relay host",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "smtpPort": {
+      "description": "SMTP relay port (empty: msmtp's default, which is 25, or 465 with smtpProtocol \"ssl\")",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "smtpUser": {
+      "description": "SMTP username. Authentication switches on as soon as a user or password is set",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "smtpPassword": {
+      "description": "SMTP user password",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "smtpProtocol": {
+      "description": "Connection security: \"tls\" = STARTTLS (usually port 587), \"ssl\" = implicit TLS (smtps, port 465), \"none\" = unencrypted even with credentials (internal relays without TLS only), empty = unencrypted without credentials and STARTTLS as soon as smtpUser or a password is set. Any other value fails the render",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "smtpFromEmail": {
+      "description": "Sender address: becomes the envelope sender (msmtp --from) AND replaces the message's From header on the way into msmtp - transport-side rewriting, no code injected into WordPress. Required for relays that tie the sender to the authenticated identity (e.g. Office 365 rejects a mismatched header From with SendAsDenied). Empty: envelope and header stay whatever WordPress wrote (wordpress@<site host>)",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "smtpFromName": {
+      "description": "Human-readable display name for the rewritten From header (\"Name <smtpFromEmail>\"). Non-ASCII names are RFC 2047 encoded. Requires smtpFromEmail; setting it alone fails the render",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "smtpExistingSecret": {
+      "description": "The name of an existing secret with SMTP credentials",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "allowEmptyPassword": {
+      "description": "Allow the container to be started with blank passwords",
+      "type": [
+        "boolean",
+        "integer",
+        "string"
+      ],
+      "default": true
+    },
+    "overrideDatabaseSettings": {
+      "description": "Allow overriding the database settings persisted in wp-config.php",
+      "type": [
+        "boolean",
+        "integer",
+        "string"
+      ],
+      "default": false
+    },
+    "customHTAccessCM": {
+      "description": "The name of an existing ConfigMap with custom htaccess rules",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "command": {
+      "description": "Override default container command (useful when using custom images)",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "args": {
+      "description": "Override default container args (useful when using custom images)",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "extraEnvVars": {
+      "description": "Array with extra environment variables to add to the WordPress container",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "extraEnvVarsCM": {
+      "description": "Name of existing ConfigMap containing extra env vars",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "extraEnvVarsSecret": {
+      "description": "Name of existing Secret containing extra env vars",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "multisite": {
+      "title": "WordPress Multisite",
+      "type": "object",
+      "properties": {
+        "enable": {
+          "description": "Whether to enable WordPress Multisite configuration.",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "host": {
+          "description": "WordPress Multisite hostname/address. This value is mandatory when enabling Multisite mode.",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "networkType": {
+          "description": "WordPress Multisite network type to enable. Allowed values: `subfolder`, `subdirectory` or `subdomain`.",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "subdomain"
+        },
+        "enableNipIoRedirect": {
+          "description": "Whether to enable IP address redirection to nip.io wildcard DNS. Useful when running on an IP address with subdomain network type.",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        }
+      }
+    },
+    "replicaCount": {
+      "description": "Number of WordPress replicas to deploy",
+      "type": [
+        "integer",
+        "string"
+      ],
+      "default": 1
+    },
+    "updateStrategy": {
+      "title": "Deployment update strategy",
+      "type": "object",
+      "properties": {
+        "type": {
+          "description": "WordPress deployment strategy type",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "RollingUpdate"
+        }
+      }
+    },
+    "schedulerName": {
+      "description": "Alternate scheduler",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "terminationGracePeriodSeconds": {
+      "description": "In seconds, time given to the WordPress pod to terminate gracefully",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "topologySpreadConstraints": {
+      "description": "Topology Spread Constraints for pod assignment spread across your cluster among failure-domains. Evaluated as a template",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "priorityClassName": {
+      "description": "Name of the existing priority class to be used by WordPress pods, priority class needs to be created beforehand",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "automountServiceAccountToken": {
+      "description": "Mount Service Account token in pod",
+      "type": [
+        "boolean",
+        "integer",
+        "string"
+      ],
+      "default": false
+    },
+    "hostAliases": {
+      "description": "WordPress pod host aliases",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "extraVolumes": {
+      "description": "Optionally specify extra list of additional volumes for WordPress pods",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "extraVolumeMounts": {
+      "description": "Optionally specify extra list of additional volumeMounts for WordPress container(s)",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "sidecars": {
+      "description": "Add additional sidecar containers to the WordPress pod",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "initContainers": {
+      "description": "Add additional init containers to the WordPress pods",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "podLabels": {
+      "description": "Extra labels for WordPress pods",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "podAnnotations": {
+      "description": "Annotations for WordPress pods",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "podAffinityPreset": {
+      "description": "Pod affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": ""
+    },
+    "podAntiAffinityPreset": {
+      "description": "Pod anti-affinity preset. Ignored if `affinity` is set. Allowed values: `soft` or `hard`",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": "soft"
+    },
+    "nodeAffinityPreset": {
+      "title": "Node affinity preset",
+      "type": "object",
+      "properties": {
+        "type": {
+          "description": "Node affinity preset type. Ignored if `affinity` is set. Allowed values: `soft` or `hard`",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "key": {
+          "description": "Node label key to match. Ignored if `affinity` is set",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "values": {
+          "description": "Node label values to match. Ignored if `affinity` is set",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        }
+      }
+    },
+    "affinity": {
+      "description": "Affinity for pod assignment",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "nodeSelector": {
+      "description": "Node labels for pod assignment",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "tolerations": {
+      "description": "Tolerations for pod assignment",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "resourcesPreset": {
+      "description": "Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if resources is set (resources is recommended for production).",
+      "type": [
+        "string",
+        "number"
+      ],
+      "default": "micro"
+    },
+    "resources": {
+      "description": "Set container requests and limits for different resources like CPU or memory (essential for production workloads)",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "maxLength": 0,
+      "default": {}
+    },
+    "containerPorts": {
+      "title": "Container ports",
+      "type": "object",
+      "properties": {
+        "http": {
+          "description": "WordPress HTTP container port",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 80
+        },
+        "https": {
+          "description": "WordPress HTTPS container port",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 443
+        }
+      }
+    },
+    "extraContainerPorts": {
+      "description": "Optionally specify extra list of additional ports for WordPress container(s)",
+      "type": [
+        "array",
+        "object",
+        "string"
+      ],
+      "maxProperties": 0,
+      "default": []
+    },
+    "podSecurityContext": {
+      "title": "Pod security context",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enabled WordPress pods' Security Context",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "fsGroupChangePolicy": {
+          "description": "Set filesystem group change policy",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "Always"
+        },
+        "sysctls": {
+          "description": "Set kernel settings using the sysctl interface",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "supplementalGroups": {
+          "description": "Set filesystem extra groups",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "fsGroup": {
+          "description": "Set WordPress pod's Security Context fsGroup",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 1001
+        }
+      }
+    },
+    "containerSecurityContext": {
+      "title": "Container security context",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enabled containers' Security Context",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "seLinuxOptions": {
+          "description": "Set SELinux options in container",
+          "type": [
+            "object",
+            "array",
+            "string",
+            "null"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
+        },
+        "runAsUser": {
+          "description": "Set containers' Security Context runAsUser",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 1001
+        },
+        "runAsGroup": {
+          "description": "Set containers' Security Context runAsGroup",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 1001
+        },
+        "runAsNonRoot": {
+          "description": "Set container's Security Context runAsNonRoot",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "privileged": {
+          "description": "Set container's Security Context privileged",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "readOnlyRootFilesystem": {
+          "description": "Set container's Security Context readOnlyRootFilesystem",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "allowPrivilegeEscalation": {
+          "description": "Set container's Security Context allowPrivilegeEscalation",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "capabilities": {
+          "title": "Linux capabilities",
+          "type": "object",
+          "properties": {
+            "drop": {
+              "description": "List of capabilities to be dropped",
+              "type": [
+                "array",
+                "object",
+                "string"
+              ],
+              "maxProperties": 0,
+              "maxLength": 0,
+              "default": [
+                "ALL"
+              ]
+            }
+          }
+        },
+        "seccompProfile": {
+          "title": "Seccomp profile",
+          "type": "object",
+          "properties": {
+            "type": {
+              "description": "Set container's Security Context seccomp profile",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "RuntimeDefault"
+            }
+          }
+        }
+      }
+    },
+    "livenessProbe": {
+      "title": "Liveness probe of the WordPress container",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable livenessProbe on WordPress containers",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "tcpSocket": {
+          "description": "What the livenessProbe checks: a TCP connection to the HTTP port",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {
+            "port": "http"
+          }
+        },
+        "initialDelaySeconds": {
+          "description": "Initial delay seconds for livenessProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 120
+        },
+        "periodSeconds": {
+          "description": "Period seconds for livenessProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 20
+        },
+        "timeoutSeconds": {
+          "description": "Timeout seconds for livenessProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 10
+        },
+        "failureThreshold": {
+          "description": "Failure threshold for livenessProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 6
+        },
+        "successThreshold": {
+          "description": "Success threshold for livenessProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 1
+        }
+      }
+    },
+    "readinessProbe": {
+      "title": "Readiness probe of the WordPress container",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable readinessProbe on WordPress containers",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "httpGet": {
+          "description": "What the readinessProbe asks: /healthz.php on the port and scheme of wordpressScheme",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {
+            "path": "/healthz.php",
+            "port": "{{ .Values.wordpressScheme }}",
+            "scheme": "{{ .Values.wordpressScheme | upper }}",
+            "httpHeaders": []
+          }
+        },
+        "initialDelaySeconds": {
+          "description": "Initial delay seconds for readinessProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 30
+        },
+        "periodSeconds": {
+          "description": "Period seconds for readinessProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 10
+        },
+        "timeoutSeconds": {
+          "description": "Timeout seconds for readinessProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 10
+        },
+        "failureThreshold": {
+          "description": "Failure threshold for readinessProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 6
+        },
+        "successThreshold": {
+          "description": "Success threshold for readinessProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 1
+        }
+      }
+    },
+    "startupProbe": {
+      "title": "Startup probe of the WordPress container",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable startupProbe on WordPress containers",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "httpGet": {
+          "description": "What the startupProbe asks: /healthz.php on the port and scheme of wordpressScheme",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {
+            "path": "/healthz.php",
+            "port": "{{ .Values.wordpressScheme }}",
+            "scheme": "{{ .Values.wordpressScheme | upper }}",
+            "httpHeaders": []
+          }
+        },
+        "initialDelaySeconds": {
+          "description": "Initial delay seconds for startupProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 30
+        },
+        "periodSeconds": {
+          "description": "Period seconds for startupProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 10
+        },
+        "timeoutSeconds": {
+          "description": "Timeout seconds for startupProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 10
+        },
+        "failureThreshold": {
+          "description": "Failure threshold for startupProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 6
+        },
+        "successThreshold": {
+          "description": "Success threshold for startupProbe",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 1
+        }
+      }
+    },
+    "customLivenessProbe": {
+      "description": "Custom livenessProbe that overrides the default one",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "customReadinessProbe": {
+      "description": "Custom readinessProbe that overrides the default one",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "customStartupProbe": {
+      "description": "Custom startupProbe that overrides the default one",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "lifecycleHooks": {
+      "description": "for the WordPress container(s) to automate configuration before or after startup",
+      "type": [
+        "object",
+        "array",
+        "string"
+      ],
+      "maxItems": 0,
+      "default": {}
+    },
+    "service": {
+      "title": "WordPress Service",
+      "type": "object",
+      "properties": {
+        "type": {
+          "description": "WordPress service type",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "LoadBalancer"
+        },
+        "ports": {
+          "title": "Service ports",
+          "type": "object",
+          "properties": {
+            "http": {
+              "description": "WordPress service HTTP port",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 80
+            },
+            "https": {
+              "description": "WordPress service HTTPS port",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 443
+            }
+          }
+        },
+        "httpsTargetPort": {
+          "description": "Target port for HTTPS",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "https"
+        },
+        "nodePorts": {
+          "title": "Node ports",
+          "type": "object",
+          "properties": {
+            "http": {
+              "description": "Node port for HTTP",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "https": {
+              "description": "Node port for HTTPS",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            }
+          }
+        },
+        "sessionAffinity": {
+          "description": "Control where client requests go, to the same pod or round-robin",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "None"
+        },
+        "sessionAffinityConfig": {
+          "description": "Additional settings for the sessionAffinity",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "clusterIP": {
+          "description": "WordPress service Cluster IP",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "loadBalancerIP": {
+          "description": "WordPress service Load Balancer IP",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "loadBalancerSourceRanges": {
+          "description": "WordPress service Load Balancer sources",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "externalTrafficPolicy": {
+          "description": "WordPress service external traffic policy",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "Cluster"
+        },
+        "annotations": {
+          "description": "Additional custom annotations for WordPress service",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "extraPorts": {
+          "description": "Extra port to expose on WordPress service",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "default": []
+        }
+      }
+    },
+    "ingress": {
+      "title": "Ingress",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable ingress record generation for WordPress",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "pathType": {
+          "description": "Ingress path type",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "ImplementationSpecific"
+        },
+        "apiVersion": {
+          "description": "Force Ingress API version (automatically detected if not set)",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "ingressClassName": {
+          "description": "IngressClass that will be be used to implement the Ingress (Kubernetes 1.18+)",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "hostname": {
+          "description": "Default host for the ingress record. The hostname is templated and thus can contain other variable references.",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "wordpress.local"
+        },
+        "path": {
+          "description": "Default path for the ingress record",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "/"
+        },
+        "annotations": {
+          "description": "Additional annotations for the Ingress resource. To enable certificate autogeneration, place here your cert-manager annotations.",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "tls": {
+          "description": "Enable TLS configuration for the host defined at `ingress.hostname` parameter",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "tlsWwwPrefix": {
+          "description": "Adds www subdomain to default cert",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "selfSigned": {
+          "description": "Create a TLS secret for this ingress record using self-signed certificates generated by Helm",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "extraHosts": {
+          "description": "An array with additional hostname(s) to be covered with the ingress record. The host names are templated and thus can contain other variable references.",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "extraPaths": {
+          "description": "An array with additional arbitrary paths that may need to be added to the ingress under the main host",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "extraTls": {
+          "description": "TLS configuration for additional hostname(s) to be covered with this ingress record",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "default": []
+        },
+        "secrets": {
+          "description": "Custom TLS certificates as secrets",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "extraRules": {
+          "description": "Additional rules to be covered with this ingress record",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "default": []
+        }
+      }
+    },
+    "secondaryIngress": {
+      "title": "Secondary Ingress",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable ingress record generation for WordPress",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "pathType": {
+          "description": "Ingress path type",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "ImplementationSpecific"
+        },
+        "apiVersion": {
+          "description": "Force Ingress API version (automatically detected if not set)",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "ingressClassName": {
+          "description": "IngressClass that will be be used to implement the Ingress (Kubernetes 1.18+)",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "hostname": {
+          "description": "Default host for the ingress record. The hostname is templated and thus can contain other variable references.",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "wordpress.local"
+        },
+        "path": {
+          "description": "Default path for the ingress record",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "/"
+        },
+        "annotations": {
+          "description": "Additional annotations for the Ingress resource. To enable certificate autogeneration, place here your cert-manager annotations.",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "tls": {
+          "description": "Enable TLS configuration for the host defined at `secondaryIngress.hostname` parameter",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "tlsWwwPrefix": {
+          "description": "Adds www subdomain to default cert",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "selfSigned": {
+          "description": "Create a TLS secret for this ingress record using self-signed certificates generated by Helm",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "extraHosts": {
+          "description": "An array with additional hostname(s) to be covered with the ingress record. The host names are templated and thus can contain other variable references.",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "extraPaths": {
+          "description": "An array with additional arbitrary paths that may need to be added to the ingress under the main host",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "extraTls": {
+          "description": "TLS configuration for additional hostname(s) to be covered with this ingress record",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "default": []
+        },
+        "secrets": {
+          "description": "Custom TLS certificates as secrets",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "extraRules": {
+          "description": "Additional rules to be covered with this ingress record",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "default": []
+        }
+      }
+    },
+    "redirect": {
+      "title": "Redirects and retired hostnames",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Render redirect resources",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "targetUrl": {
+          "description": "URL to redirect to (must include scheme; path is preserved on traefik paths)",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "annotations": {
+          "description": "Annotations for the redirect resource (Ingress on nginx path, optionally cert-manager.io/cluster-issuer used by Certificate on traefik path)",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
+        },
+        "hosts": {
+          "description": "List of source hostnames that should redirect to targetUrl",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "goneHosts": {
+          "description": "List of retired hostnames: crawlers are answered 410 on every path, browsers 301 to targetUrl's root",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "tls": {
+          "description": "TLS configuration. Single-entry list with secretName drives both Ingress.tls and IngressRoute.tls.secretName + Certificate.spec.secretName",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
         }
       }
     },
     "persistence": {
+      "title": "Persistence",
       "type": "object",
       "properties": {
+        "enabled": {
+          "description": "Enable persistence using Persistent Volume Claims",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "storageClass": {
+          "description": "Persistent Volume storage class",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "accessModes": {
+          "description": "Persistent Volume access modes",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": [
+            "ReadWriteOnce"
+          ]
+        },
+        "accessMode": {
+          "description": "Persistent Volume access mode (DEPRECATED: use `persistence.accessModes` instead)",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "ReadWriteOnce"
+        },
         "size": {
-          "type": "string",
-          "title": "Persistent Volume Size",
-          "form": true,
-          "render": "slider",
-          "sliderMin": 1,
-          "sliderMax": 100,
-          "sliderUnit": "Gi"
+          "description": "Persistent Volume size",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "10Gi"
+        },
+        "dataSource": {
+          "description": "Custom PVC data source",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "existingClaim": {
+          "description": "The name of an existing PVC to use for persistence",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "selector": {
+          "description": "Selector to match an existing Persistent Volume for WordPress data PVC",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "annotations": {
+          "description": "Persistent Volume Claim annotations",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        }
+      }
+    },
+    "serviceAccount": {
+      "title": "ServiceAccount",
+      "type": "object",
+      "properties": {
+        "create": {
+          "description": "Enable creation of ServiceAccount for WordPress pod",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "name": {
+          "description": "The name of the ServiceAccount to use.",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "automountServiceAccountToken": {
+          "description": "Allows auto mount of ServiceAccountToken on the serviceAccount created",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "annotations": {
+          "description": "Additional custom annotations for the ServiceAccount",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        }
+      }
+    },
+    "pdb": {
+      "title": "Pod Disruption Budget",
+      "type": "object",
+      "properties": {
+        "create": {
+          "description": "Enable a Pod Disruption Budget creation",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "minAvailable": {
+          "description": "Minimum number/percentage of pods that should remain scheduled",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "maxUnavailable": {
+          "description": "Maximum number/percentage of pods that may be made unavailable. Defaults to `1` if both `pdb.minAvailable` and `pdb.maxUnavailable` are empty.",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        }
+      }
+    },
+    "autoscaling": {
+      "title": "Horizontal Pod Autoscaler",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable Horizontal POD autoscaling for WordPress",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "minReplicas": {
+          "description": "Minimum number of WordPress replicas",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 1
+        },
+        "maxReplicas": {
+          "description": "Maximum number of WordPress replicas",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 11
+        },
+        "targetCPU": {
+          "description": "Target CPU utilization percentage",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 50
+        },
+        "targetMemory": {
+          "description": "Target Memory utilization percentage",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 50
+        }
+      }
+    },
+    "metrics": {
+      "title": "Prometheus metrics",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Start a Prometheus exporter sidecar container",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "image": {
+          "title": "NGINX Prometheus exporter image",
+          "type": "object",
+          "properties": {
+            "registry": {
+              "description": "NGINX Prometheus exporter image registry",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "docker.io"
+            },
+            "repository": {
+              "description": "NGINX Prometheus exporter image repository",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "nginx/nginx-prometheus-exporter"
+            },
+            "tag": {
+              "description": "NGINX Prometheus exporter image tag",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "1.5.3"
+            },
+            "digest": {
+              "description": "NGINX Prometheus exporter image digest in the way sha256:aa.... Please note this parameter, if set, will override the tag",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "pullPolicy": {
+              "description": "NGINX Prometheus exporter image pull policy",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "IfNotPresent"
+            },
+            "pullSecrets": {
+              "description": "Specify docker-registry secret names as an array",
+              "type": [
+                "array",
+                "object",
+                "string"
+              ],
+              "maxProperties": 0,
+              "maxLength": 0,
+              "default": []
+            }
+          }
+        },
+        "port": {
+          "description": "NGINX Container Status Port scraped by Prometheus Exporter",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "extraArgs": {
+          "description": "Extra arguments for Prometheus exporter",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "default": []
+        },
+        "containerPorts": {
+          "title": "Exporter container ports",
+          "type": "object",
+          "properties": {
+            "metrics": {
+              "description": "Prometheus exporter container port",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 9113
+            }
+          }
+        },
+        "podAnnotations": {
+          "description": "Additional annotations for NGINX Prometheus exporter pod(s)",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "containerSecurityContext": {
+          "title": "Exporter container security context",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Enabled NGINX Exporter containers' Security Context",
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "default": false
+            },
+            "seLinuxOptions": {
+              "description": "Set SELinux options in the NGINX Exporter container",
+              "type": [
+                "object",
+                "array",
+                "string",
+                "null"
+              ],
+              "maxItems": 0,
+              "maxLength": 0,
+              "default": {}
+            },
+            "runAsUser": {
+              "description": "Set NGINX Exporter container's Security Context runAsUser",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 1001
+            }
+          }
+        },
+        "livenessProbe": {
+          "title": "Liveness probe of the exporter",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Enable livenessProbe on the NGINX Exporter container",
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "default": true
+            },
+            "initialDelaySeconds": {
+              "description": "Initial delay seconds for livenessProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 15
+            },
+            "periodSeconds": {
+              "description": "Period seconds for livenessProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 10
+            },
+            "timeoutSeconds": {
+              "description": "Timeout seconds for livenessProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 5
+            },
+            "failureThreshold": {
+              "description": "Failure threshold for livenessProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 3
+            },
+            "successThreshold": {
+              "description": "Success threshold for livenessProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 1
+            }
+          }
+        },
+        "readinessProbe": {
+          "title": "Readiness probe of the exporter",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Enable readinessProbe on the NGINX Exporter container",
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "default": true
+            },
+            "initialDelaySeconds": {
+              "description": "Initial delay seconds for readinessProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 5
+            },
+            "periodSeconds": {
+              "description": "Period seconds for readinessProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 10
+            },
+            "timeoutSeconds": {
+              "description": "Timeout seconds for readinessProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 5
+            },
+            "failureThreshold": {
+              "description": "Failure threshold for readinessProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 3
+            },
+            "successThreshold": {
+              "description": "Success threshold for readinessProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 1
+            }
+          }
+        },
+        "startupProbe": {
+          "title": "Startup probe of the exporter",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Enable startupProbe on the NGINX Exporter container",
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "default": false
+            },
+            "initialDelaySeconds": {
+              "description": "Initial delay seconds for startupProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 10
+            },
+            "periodSeconds": {
+              "description": "Period seconds for startupProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 10
+            },
+            "timeoutSeconds": {
+              "description": "Timeout seconds for startupProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 5
+            },
+            "failureThreshold": {
+              "description": "Failure threshold for startupProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 30
+            },
+            "successThreshold": {
+              "description": "Success threshold for startupProbe",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 1
+            }
+          }
+        },
+        "customLivenessProbe": {
+          "description": "Custom livenessProbe that overrides the default one",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "customReadinessProbe": {
+          "description": "Custom readinessProbe that overrides the default one",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "customStartupProbe": {
+          "description": "Custom startupProbe that overrides the default one",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "service": {
+          "title": "Metrics Service",
+          "type": "object",
+          "properties": {
+            "port": {
+              "description": "NGINX Prometheus exporter service port",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 9113
+            },
+            "annotations": {
+              "description": "Annotations for the Prometheus exporter service",
+              "type": [
+                "object",
+                "array",
+                "string"
+              ],
+              "maxItems": 0,
+              "default": {
+                "prometheus.io/scrape": "true",
+                "prometheus.io/port": "{{ .Values.metrics.service.port }}"
+              }
+            }
+          }
+        },
+        "resourcesPreset": {
+          "description": "Set container resources according to one common preset (allowed values: none, nano, micro, small, medium, large, xlarge, 2xlarge). This is ignored if metrics.resources is set (metrics.resources is recommended for production).",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "nano"
+        },
+        "resources": {
+          "description": "Set container requests and limits for different resources like CPU or memory (essential for production workloads)",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
+        },
+        "serviceMonitor": {
+          "title": "ServiceMonitor for the exporter",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Creates a Prometheus Operator ServiceMonitor (also requires `metrics.enabled` to be `true`)",
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "default": false
+            },
+            "namespace": {
+              "description": "Namespace in which Prometheus is running",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "jobLabel": {
+              "description": "The name of the label on the target service to use as the job name in prometheus.",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "interval": {
+              "description": "Interval at which metrics should be scraped.",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "scrapeTimeout": {
+              "description": "Timeout after which the scrape is ended",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "selector": {
+              "description": "Prometheus instance selector labels",
+              "type": [
+                "object",
+                "array",
+                "string"
+              ],
+              "maxItems": 0,
+              "maxLength": 0,
+              "default": {}
+            },
+            "labels": {
+              "description": "Additional labels that can be used so PodMonitor will be discovered by Prometheus",
+              "type": [
+                "object",
+                "array",
+                "string"
+              ],
+              "maxItems": 0,
+              "default": {}
+            },
+            "relabelings": {
+              "description": "RelabelConfigs to apply to samples before scraping",
+              "type": [
+                "array",
+                "object",
+                "string"
+              ],
+              "maxProperties": 0,
+              "maxLength": 0,
+              "default": []
+            },
+            "metricRelabelings": {
+              "description": "MetricRelabelConfigs to apply to samples before ingestion",
+              "type": [
+                "array",
+                "object",
+                "string"
+              ],
+              "maxProperties": 0,
+              "maxLength": 0,
+              "default": []
+            },
+            "honorLabels": {
+              "description": "honorLabels chooses the metric's labels on collisions with target labels",
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "default": false
+            }
+          }
+        },
+        "prometheusRule": {
+          "title": "PrometheusRule for the exporter",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "if `true`, creates a Prometheus Operator PrometheusRule (also requires `metrics.enabled` to be `true` and `metrics.prometheusRule.rules`)",
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "default": false
+            },
+            "namespace": {
+              "description": "Namespace for the PrometheusRule Resource (defaults to the Release Namespace)",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "additionalLabels": {
+              "description": "Additional labels that can be used so PrometheusRule will be discovered by Prometheus",
+              "type": [
+                "object",
+                "array",
+                "string"
+              ],
+              "maxItems": 0,
+              "maxLength": 0,
+              "default": {}
+            },
+            "rules": {
+              "description": "Prometheus Rule definitions",
+              "type": [
+                "array",
+                "object",
+                "string"
+              ],
+              "maxProperties": 0,
+              "maxLength": 0,
+              "default": []
+            }
+          }
+        }
+      }
+    },
+    "idx": {
+      "title": "Search index sidecar (wordpress-idx)",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable wordpress-idx search sidecar container",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "image": {
+          "title": "wordpress-idx image",
+          "type": "object",
+          "properties": {
+            "registry": {
+              "description": "wordpress-idx image registry",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "ghcr.io"
+            },
+            "repository": {
+              "description": "wordpress-idx image repository",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "ioanalytica/wordpress-idx"
+            },
+            "pullPolicy": {
+              "description": "wordpress-idx image pull policy",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "IfNotPresent"
+            }
+          }
+        },
+        "port": {
+          "description": "wordpress-idx container port",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 3000
+        },
+        "basePath": {
+          "description": "Base URL path prefix for idx routes",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "/idx"
+        },
+        "reindexApiKey": {
+          "description": "API key for the /api/reindex endpoint (leave empty to disable)",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "existingReindexApiKeySecret": {
+          "description": "Name of existing secret containing key `idx-reindex-api-key`",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "corsOrigin": {
+          "description": "CORS origin for the idx API",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "*"
+        },
+        "startupDelay": {
+          "description": "Seconds to wait before DB extraction (lets WordPress boot first)",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 30
+        },
+        "forceUpdate": {
+          "description": "Force rebuild of search index on every startup",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "pluginAutoUpdate": {
+          "description": "Keep the bundled WordPress plugin at the sidecar's build: updated on every container start and by WordPress' own auto-updates. Set to false to only surface updates in wp-admin.",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "resourcesPreset": {
+          "description": "Set container resources according to one common preset",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "small"
+        },
+        "resources": {
+          "description": "Set container requests and limits for different resources",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
+        },
+        "service": {
+          "title": "idx Service",
+          "type": "object",
+          "properties": {
+            "port": {
+              "description": "idx service port",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "default": 3000
+            }
+          }
+        }
+      }
+    },
+    "fim": {
+      "title": "File-integrity monitoring",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Run the file-integrity watcher",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "mode": {
+          "description": "`deployment` runs the watcher in a pod of its own, `sidecar` as a container in the WordPress pod",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "deployment"
+        },
+        "interval": {
+          "description": "Seconds between two scans",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 120
+        },
+        "port": {
+          "description": "Metrics port",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 9114
+        },
+        "allowMuPlugins": {
+          "description": "Accept a wp-content/mu-plugins directory",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
+        },
+        "allowedRootPhp": {
+          "description": "Further executable files accepted directly in wp-content/, by name alone",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "allowedComponentRootFiles": {
+          "description": "Further files accepted directly in wp-content/plugins/ or wp-content/themes/, by name alone",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "dropins": {
+          "description": "Drop-ins in wp-content/ and the plugin file each must equal, keyed by drop-in name",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
+        },
+        "writableDirs": {
+          "description": "Further web paths below which an executable file is a finding",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "nameMarkers": {
+          "description": "Case-insensitive file name fragments that are a finding wherever they appear",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "ignorePaths": {
+          "description": "Web paths exempt from the presence rules: an exact path, or a prefix ending in `/`",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "extraPaths": {
+          "description": "Further volume paths watched as static paths",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "baseline": {
+          "description": "SHA-256 digests of files that must not change, keyed by web path",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
+        },
+        "resources": {
+          "description": "Set container requests and limits",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {
+            "requests": {
+              "cpu": "10m",
+              "memory": "32Mi"
+            },
+            "limits": {
+              "cpu": "200m",
+              "memory": "128Mi"
+            }
+          }
+        },
+        "containerSecurityContext": {
+          "description": "Security context of the watcher container",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {
+            "runAsUser": 33,
+            "runAsGroup": 33,
+            "runAsNonRoot": true,
+            "allowPrivilegeEscalation": false,
+            "readOnlyRootFilesystem": true,
+            "capabilities": {
+              "drop": [
+                "ALL"
+              ]
+            },
+            "seccompProfile": {
+              "type": "RuntimeDefault"
+            }
+          }
+        },
+        "podLabels": {
+          "description": "Extra labels for the watcher pod (deployment mode)",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "podAnnotations": {
+          "description": "Annotations for the watcher pod (deployment mode)",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
+        },
+        "nodeSelector": {
+          "description": "Node labels for the watcher pod (deployment mode)",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
+        },
+        "tolerations": {
+          "description": "Tolerations for the watcher pod (deployment mode)",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "maxLength": 0,
+          "default": []
+        },
+        "affinity": {
+          "description": "Affinity for the watcher pod (deployment mode)",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "default": {}
+        },
+        "serviceMonitor": {
+          "title": "ServiceMonitor for the watcher",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Create a ServiceMonitor for the watcher",
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "default": false
+            },
+            "namespace": {
+              "description": "Namespace of the ServiceMonitor (default: release namespace)",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "interval": {
+              "description": "Scrape interval",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "60s"
+            },
+            "labels": {
+              "description": "Extra labels, e.g. for the Prometheus serviceMonitorSelector",
+              "type": [
+                "object",
+                "array",
+                "string"
+              ],
+              "maxItems": 0,
+              "default": {}
+            }
+          }
+        },
+        "prometheusRule": {
+          "title": "Alert rules for the watcher",
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "description": "Create alert rules for this watcher",
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "default": false
+            },
+            "namespace": {
+              "description": "Namespace of the PrometheusRule (default: release namespace)",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "labels": {
+              "description": "Extra labels, e.g. for the Prometheus ruleSelector",
+              "type": [
+                "object",
+                "array",
+                "string"
+              ],
+              "maxItems": 0,
+              "default": {}
+            }
+          }
+        }
+      }
+    },
+    "networkPolicy": {
+      "title": "NetworkPolicy",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Specifies whether a NetworkPolicy should be created",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "allowExternal": {
+          "description": "Don't require server label for connections",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "allowExternalEgress": {
+          "description": "Allow the pod to access any range of port and all destinations.",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "extraIngress": {
+          "description": "Add extra ingress rules to the NetworkPolicy",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "default": []
+        },
+        "extraEgress": {
+          "description": "Add extra ingress rules to the NetworkPolicy",
+          "type": [
+            "array",
+            "object",
+            "string"
+          ],
+          "maxProperties": 0,
+          "default": []
+        },
+        "ingressNSMatchLabels": {
+          "description": "Labels to match to allow traffic from other namespaces",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
+        },
+        "ingressNSPodMatchLabels": {
+          "description": "Pod labels to match to allow traffic from other namespaces",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
         }
       }
     },
     "mariadb": {
+      "title": "Bundled MariaDB",
       "type": "object",
-      "title": "MariaDB Details",
-      "form": true,
       "properties": {
         "enabled": {
-          "type": "boolean",
-          "title": "Use a new MariaDB database hosted in the cluster",
-          "form": true,
-          "description": "Whether to deploy a mariadb server to satisfy the applications database requirements. To use an external database switch this off and configure the external database details"
+          "description": "Deploy an internal MariaDB server",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": true
+        },
+        "image": {
+          "description": "MariaDB container image",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "mariadb:12.2.2-noble"
+        },
+        "auth": {
+          "title": "MariaDB credentials",
+          "type": "object",
+          "properties": {
+            "rootPassword": {
+              "description": "MariaDB root password",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "database": {
+              "description": "MariaDB database name",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "wordpress"
+            },
+            "username": {
+              "description": "MariaDB user name",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "wp_user"
+            },
+            "password": {
+              "description": "MariaDB user password",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "existingSecret": {
+              "description": "Name of existing secret containing MariaDB credentials",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            }
+          }
+        },
+        "databaseCharset": {
+          "description": "MariaDB database character set",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "utf8mb4"
+        },
+        "databaseCollation": {
+          "description": "MariaDB database collation",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
         },
         "primary": {
+          "title": "MariaDB server",
           "type": "object",
           "properties": {
             "persistence": {
+              "title": "MariaDB persistence",
               "type": "object",
               "properties": {
+                "enabled": {
+                  "description": "Enable persistence on MariaDB using PVC(s)",
+                  "type": [
+                    "boolean",
+                    "integer",
+                    "string"
+                  ],
+                  "default": true
+                },
+                "storageClass": {
+                  "description": "Persistent Volume storage class",
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "default": ""
+                },
+                "existingClaim": {
+                  "description": "Name of an existing PVC to use",
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "default": ""
+                },
                 "size": {
-                  "type": "string",
-                  "title": "Volume Size",
-                  "form": true,
-                  "hidden": {
-                    "value": false,
-                    "path": "mariadb/enabled"
-                  },
-                  "render": "slider",
-                  "sliderMin": 1,
-                  "sliderMax": 100,
-                  "sliderUnit": "Gi"
+                  "description": "Persistent Volume size",
+                  "type": [
+                    "string",
+                    "number"
+                  ],
+                  "default": "8Gi"
                 }
               }
+            },
+            "resources": {
+              "description": "Set container requests and limits for different resources like CPU or memory",
+              "type": [
+                "object",
+                "array",
+                "string"
+              ],
+              "maxItems": 0,
+              "maxLength": 0,
+              "default": {}
             }
           }
         }
       }
     },
     "externalDatabase": {
+      "title": "External database",
       "type": "object",
-      "title": "External Database Details",
-      "description": "If MariaDB is disabled. Use this section to specify the external database details",
-      "form": true,
       "properties": {
         "host": {
-          "type": "string",
-          "form": true,
-          "title": "Database Host",
-          "hidden": "mariadb/enabled"
-        },
-        "user": {
-          "type": "string",
-          "form": true,
-          "title": "Database Username",
-          "hidden": "mariadb/enabled"
-        },
-        "password": {
-          "type": "string",
-          "form": true,
-          "title": "Database Password",
-          "hidden": "mariadb/enabled"
-        },
-        "database": {
-          "type": "string",
-          "form": true,
-          "title": "Database Name",
-          "hidden": "mariadb/enabled"
+          "description": "External Database server host",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "localhost"
         },
         "port": {
-          "type": "integer",
-          "form": true,
-          "title": "Database Port",
-          "hidden": "mariadb/enabled"
+          "description": "External Database server port",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 3306
+        },
+        "user": {
+          "description": "External Database username",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "wp_user"
+        },
+        "password": {
+          "description": "External Database user password",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "database": {
+          "description": "External Database database name",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "wordpress"
+        },
+        "databaseCharset": {
+          "description": "External Database character set (`DB_CHARSET` in wp-config.php)",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "utf8mb4"
+        },
+        "databaseCollation": {
+          "description": "External Database collation (`DB_COLLATE` in wp-config.php); empty leaves it to the character set",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "existingSecret": {
+          "description": "The name of an existing secret with database credentials. Evaluated as a template",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
         }
       }
     },
-    "ingress": {
+    "memcached": {
+      "title": "Bundled cache server (Dragonfly)",
       "type": "object",
-      "form": true,
-      "title": "Ingress Configuration",
       "properties": {
         "enabled": {
-          "type": "boolean",
-          "form": true,
-          "title": "Use a custom hostname",
-          "description": "Enable the ingress resource that allows you to access the WordPress installation."
+          "description": "Deploy an internal Dragonfly cache server (serves both Redis and Memcached protocols)",
+          "type": [
+            "boolean",
+            "integer",
+            "string"
+          ],
+          "default": false
         },
-        "hostname": {
-          "type": "string",
-          "form": true,
-          "title": "Hostname",
-          "hidden": {
-            "value": false,
-            "path": "ingress/enabled"
-          }
+        "image": {
+          "description": "Dragonfly container image",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2"
         },
-        "tls": {
-          "type": "boolean",
-          "form": true,
-          "title": "Create a TLS secret",
-          "hidden": {
-            "value": false,
-            "path": "ingress/enabled"
-          }
-        }
-      }
-    },
-    "secondaryIngress": {
-      "type": "object",
-      "form": true,
-      "title": "Ingress Configuration",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "form": true,
-          "title": "Use a custom hostname",
-          "description": "Enable the ingress resource that allows you to access the WordPress installation."
+        "password": {
+          "description": "Dragonfly password",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
         },
-        "hostname": {
-          "type": "string",
-          "form": true,
-          "title": "Hostname",
-          "hidden": {
-            "value": false,
-            "path": "ingress/enabled"
-          }
+        "existingSecret": {
+          "description": "Name of existing secret containing cache password (key: cache-password)",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
         },
-        "tls": {
-          "type": "boolean",
-          "form": true,
-          "title": "Create a TLS secret",
-          "hidden": {
-            "value": false,
-            "path": "ingress/enabled"
-          }
-        }
-      }
-    },
-    "service": {
-      "type": "object",
-      "form": true,
-      "title": "Service Configuration",
-      "properties": {
-        "type": {
-          "type": "string",
-          "form": true,
-          "title": "Service Type",
-          "description": "Allowed values: \"ClusterIP\", \"NodePort\" and \"LoadBalancer\""
-        }
-      }
-    },
-    "resources": {
-      "type": "object",
-      "title": "Required Resources",
-      "description": "Configure resource requests",
-      "form": true,
-      "properties": {
-        "requests": {
+        "persistence": {
+          "title": "Cache persistence",
           "type": "object",
           "properties": {
-            "memory": {
-              "type": "string",
-              "form": true,
-              "render": "slider",
-              "title": "Memory Request",
-              "sliderMin": 10,
-              "sliderMax": 2048,
-              "sliderUnit": "Mi"
+            "enabled": {
+              "description": "Enable persistence for the cache server",
+              "type": [
+                "boolean",
+                "integer",
+                "string"
+              ],
+              "default": true
             },
-            "cpu": {
-              "type": "string",
-              "form": true,
-              "render": "slider",
-              "title": "CPU Request",
-              "sliderMin": 10,
-              "sliderMax": 2000,
-              "sliderUnit": "m"
+            "storageClass": {
+              "description": "Persistent Volume storage class",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "existingClaim": {
+              "description": "Name of an existing PVC to use",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": ""
+            },
+            "size": {
+              "description": "Persistent Volume size",
+              "type": [
+                "string",
+                "number"
+              ],
+              "default": "1Gi"
             }
           }
+        },
+        "resources": {
+          "description": "Set container requests and limits for different resources like CPU or memory",
+          "type": [
+            "object",
+            "array",
+            "string"
+          ],
+          "maxItems": 0,
+          "maxLength": 0,
+          "default": {}
         }
       }
     },
-    "volumePermissions": {
+    "externalCache": {
+      "title": "External cache server",
       "type": "object",
       "properties": {
-        "enabled": {
-          "type": "boolean",
-          "form": true,
-          "title": "Enable Init Containers",
-          "description": "Use an init container to set required folder permissions on the data volume before mounting it in the final destination"
-        }
-      }
-    },
-    "metrics": {
-      "type": "object",
-      "properties": {
-        "enabled": {
-          "type": "boolean",
-          "title": "Enable Metrics",
-          "description": "Prometheus Exporter / Metrics",
-          "form": true
+        "type": {
+          "description": "External cache server type. Can be one of memcached (default) and redis",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "memcached"
+        },
+        "host": {
+          "description": "External cache server host",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "localhost"
+        },
+        "port": {
+          "description": "External cache server port",
+          "type": [
+            "integer",
+            "string"
+          ],
+          "default": 11211
+        },
+        "password": {
+          "description": "External cache server password. Ignored when `externalCache.existingSecret` is set",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "existingSecret": {
+          "description": "Name of an existing secret holding the external cache password",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": ""
+        },
+        "existingSecretPasswordKey": {
+          "description": "Key in `externalCache.existingSecret` holding the password",
+          "type": [
+            "string",
+            "number"
+          ],
+          "default": "cache-password"
         }
       }
     }
