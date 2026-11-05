@@ -34,10 +34,11 @@ helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx -f va
 ## Pin a version
 
 `helm install` without `--version` installs the newest chart version. For
-production, pin one; the current version is <ChartVersion />:
+production, pin one of the
+[released versions](https://github.com/ioanalytica/wordpress-nginx/releases):
 
 ```bash
-helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx --version <version>
+helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx --version <version> -f values.yaml
 ```
 
 The chart version names the WordPress release and the chart's build on it;

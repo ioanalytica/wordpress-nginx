@@ -199,7 +199,9 @@ targets "what stays as it is" chart/README.md \
     https://example.com/a https://example.com/a \
     mailto:someone@example.com mailto:someone@example.com
 targets "an address of the site becomes a path on it" chart/README.md \
-    https://wordpress-nginx.ioanalytica.com /  \
+    https://wordpress-nginx.ioanalytica.com / \
+    'https://wordpress-nginx.ioanalytica.com#quick-start' '/#quick-start' \
+    'https://wordpress-nginx.ioanalytica.com/#quick-start' '/#quick-start' \
     https://wordpress-nginx.ioanalytica.com/guide/install /guide/install \
     'https://wordpress-nginx.ioanalytica.com/security/#opt-in' '/security/#opt-in' \
     https://wordpress-nginx.ioanalytica.com.example.org/x https://wordpress-nginx.ioanalytica.com.example.org/x

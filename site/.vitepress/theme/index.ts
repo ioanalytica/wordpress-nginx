@@ -8,7 +8,6 @@ import '@fontsource/jost/400-italic.css';
 import '@fontsource/jost/500.css';
 import '@fontsource/jost/600.css';
 import './custom.css';
-import ChartVersion from './ChartVersion.vue';
 import HeroTerminal from './HeroTerminal.vue';
 import IdxLink from './IdxLink.vue';
 
@@ -16,7 +15,6 @@ export default {
   extends: DefaultTheme,
   Layout: () => h(DefaultTheme.Layout, null, { 'home-hero-image': () => h(HeroTerminal) }),
   enhanceApp({ app }) {
-    app.component('ChartVersion', ChartVersion);
     app.component('IdxLink', IdxLink);
   },
 } satisfies Theme;

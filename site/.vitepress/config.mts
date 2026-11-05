@@ -13,15 +13,15 @@ const repoRoot = resolve(siteRoot, '..');
 const icon = resolve(repoRoot, 'icon.png');
 
 export interface ThemeConfig extends DefaultTheme.Config {
-  chartVersion: string;
   idxVersion: string;
 }
 
-const chart = readFileSync(resolve(repoRoot, 'chart/Chart.yaml'), 'utf8');
-const chartVersion = chart.match(/^version:\s*(\S+)/m)?.[1] ?? '';
 // The wordpress-idx release the chart pins; pages link to that release's
-// files instead of copying them.
-const idxVersion = chart.match(/^\s*idxImageTag:\s*"?([^"\s]+)"?/m)?.[1] ?? '';
+// files instead of copying them. The chart's own version is not shown: the
+// site is built from main, where a version can stand before its release is
+// published.
+const idxVersion =
+  readFileSync(resolve(repoRoot, 'chart/Chart.yaml'), 'utf8').match(/^\s*idxImageTag:\s*"?([^"\s]+)"?/m)?.[1] ?? '';
 
 export default defineConfigWithTheme<ThemeConfig>({
   lang: 'en-US',
@@ -53,7 +53,6 @@ export default defineConfigWithTheme<ThemeConfig>({
     copyFileSync(icon, join(config.outDir, 'favicon.png'));
   },
   themeConfig: {
-    chartVersion,
     idxVersion,
     siteTitle: 'wordpress-nginx',
     nav: [

@@ -23,7 +23,7 @@ metrics:
 | `metrics.service.annotations` | Annotations of the metrics Service | `prometheus.io/scrape: "true"` and the port |
 | `metrics.resourcesPreset`, `metrics.resources` | The sidecar's resources | `nano` |
 | `metrics.serviceMonitor.enabled` | Create a ServiceMonitor for the Prometheus Operator | `false` |
-| `metrics.serviceMonitor.interval`, `.scrapeTimeout`, `.labels`, `.selector`, `.relabelings`, `.metricRelabelings`, `.honorLabels`, `.jobLabel`, `.namespace` | Settings of the ServiceMonitor | |
+| `metrics.serviceMonitor.namespace`, `.labels`, `.jobLabel`, `.interval`, `.scrapeTimeout`, `.relabelings`, `.honorLabels` | Settings of the ServiceMonitor | |
 
 The chart's NetworkPolicy, which is on by default, does not list the
 exporter's port. Where the cluster enforces network policies, admit the

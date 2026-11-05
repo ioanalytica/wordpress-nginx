@@ -1,19 +1,14 @@
 <!-- Copyright IO ANALYTICA. SPDX-License-Identifier: Apache-2.0 -->
-<!-- The home page's hero image: the install, at the chart's current version. -->
-<script setup lang="ts">
-import { useData } from 'vitepress';
-import type { ThemeConfig } from '../config.mts';
-
-const { theme } = useData<ThemeConfig>();
-</script>
-
+<!--
+  The home page's hero image: the install. It names no version: the site is
+  built from main, where a version can stand before its release is published.
+-->
 <template>
   <figure class="hero-terminal">
     <div class="bar" aria-hidden="true"><span /><span /><span /></div>
     <pre><code><span class="c"># WordPress on NGINX, with its own MariaDB</span>
 <span class="p">$</span> helm install my-wordpress \
     oci://ghcr.io/ioanalytica/charts/wordpress-nginx \
-    --version {{ theme.chartVersion }} \
     --set ingress.enabled=true \
     --set ingress.hostname=blog.example.com
 

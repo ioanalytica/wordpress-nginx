@@ -32,7 +32,8 @@ const sitePages: Record<string, string> = {
 // own.
 export function siteHref(href: string, source?: string): string {
   if (href === siteUrl || href.startsWith(`${siteUrl}/`) || href.startsWith(`${siteUrl}#`)) {
-    return href.slice(siteUrl.length) || '/';
+    const rest = href.slice(siteUrl.length);
+    return rest.startsWith('/') ? rest : `/${rest}`;
   }
   if (!source || /^[a-z][a-z\d+.-]*:/i.test(href) || /^[/?]/.test(href)) return href;
   if (href.startsWith('#')) return sitePages[source + href] ?? href;
