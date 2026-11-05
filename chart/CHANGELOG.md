@@ -1,5 +1,12 @@
 # Changelog
 
+## 7.1.409
+
+* **A new installation can store uploads.** The image installed WordPress as root, and the installer left `wp-content/uploads` with root as its owner, so the first upload in wp-admin failed with "The uploaded file could not be moved". The installer now runs as the web user. An installation made by an earlier version is repaired on its next start: what root owns below `wp-content/uploads` is handed to the web user, and nothing else is touched. Sites that brought their uploads along were not affected.
+* **The first start waits for the database.** WordPress installs itself when its container first starts, once; a database that was not up at that moment left a running pod with a site that was never installed, until the pod was restarted. The pod now has an init container `wait-for-database` that holds it until the database port answers. With the bundled MariaDB that is after its initialization; with `externalDatabase.*` it is the host and port named there. After five minutes without a database the init container ends with an error and is started again, so a database that stays away shows in the pod's state (`Init:Error`) and in `kubectl logs <pod> -c wait-for-database`. No values change. A release with a `wp-config.php` of its own (`wordpressConfiguration`, `existingWordPressConfigurationSecret`) gets no such container: the chart does not know which database that file names.
+  * An installed site loses nothing by waiting: a pod that cannot reach its database is not ready either way, its readiness probe needs the database.
+* The k3d run of "Try it locally" uploads a file through wp-admin and installs a second release whose database is away at the first start; the template test checks the init container for the bundled and an external database.
+
 ## 7.1.408
 
 * **Chart versions are stable SemVer versions now.** The build number moved from a `-N` suffix into the patch component: for WordPress `x.y.z` and build `N` the version is `x.y.P` with `P = z * 100 + N`. `7.1.408` follows `7.1.4-7`, and the first version for WordPress 7.1.5 will be `7.1.500`. SemVer reads a `-N` suffix as a pre-release, so Helm needed `--devel`, and a version range matched a release only if it named a pre-release itself. `appVersion` remains the plain WordPress version, and the chart version remains the image tag. "Chart versions" in the README has the scheme with examples, "To 7.1.408" the upgrade notes.

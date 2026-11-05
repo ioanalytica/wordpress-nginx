@@ -140,6 +140,23 @@ externalDatabase:
   database: wordpress
 ```
 
+#### The first start waits for the database
+
+WordPress installs itself when its container first starts. An init container,
+`wait-for-database`, holds the pod until the database port answers: the
+bundled MariaDB's Service, or `externalDatabase.host` and
+`externalDatabase.port`. After five minutes without a database it ends with an
+error and is started again, so a database that stays away shows as
+`Init:Error` in the pod's state:
+
+```bash
+kubectl logs <pod> -c wait-for-database
+```
+
+A release with a `wp-config.php` of its own (`wordpressConfiguration`,
+`existingWordPressConfigurationSecret`) has no such container; the chart does
+not know which database that file names.
+
 <!-- #endregion database -->
 
 ### Cache (Dragonfly)
@@ -965,6 +982,18 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 ## Upgrading
 
 <!-- #region upgrading -->
+
+### To 7.1.409
+
+No values change. Two things differ at the next start of a pod:
+
+- The pod has a second init container, `wait-for-database`, and stays in
+  `Init` until its database port answers (see
+  [The first start waits for the database](#the-first-start-waits-for-the-database)).
+  A network policy of your own that limits the pod's egress already has to
+  admit the database; nothing new is needed.
+- If `wp-content/uploads` belongs to root, as an installation made by an
+  earlier version left it, what root owns below it is handed to the web user.
 
 ### To 7.1.408
 

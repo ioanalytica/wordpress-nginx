@@ -521,6 +521,65 @@ spec:
             - name: empty-dir
               mountPath: /tmp
               subPath: tmp-dir
+        {{- if not (or .Values.wordpressConfiguration .Values.existingWordPressConfigurationSecret) }}
+        {{- /*
+        WordPress installs itself when its container first starts, once and
+        without a second try: a database that is not up at that moment leaves
+        a running pod with a site that was never installed. So the pod does
+        not get that far before the database port answers. The bundled
+        MariaDB opens it only after its own initialization; a Service without
+        a server behind it refuses the connection.
+
+        The wait ends after five minutes with an error, and the kubelet starts
+        the container again: a database that stays away shows in the pod's
+        state (Init:Error, Init:CrashLoopBackOff) and in this container's
+        log, and the pod goes on as soon as the database is there. A pod that
+        cannot reach its database serves nothing either way - its readiness
+        probe needs the database - so waiting here takes nothing from a site
+        that is already installed.
+
+        Not with a wp-config.php of the user's own: the chart does not know
+        which database that one names.
+        */}}
+        - name: wait-for-database
+          image: busybox
+          imagePullPolicy: IfNotPresent
+          {{- if .Values.resources }}
+          resources: {{- toYaml .Values.resources | nindent 12 }}
+          {{- else if ne .Values.resourcesPreset "none" }}
+          resources: {{- include "common.resources.preset" (dict "type" .Values.resourcesPreset) | nindent 12 }}
+          {{- end }}
+          {{- if .Values.containerSecurityContext.enabled }}
+          securityContext: {{- include "common.compatibility.renderSecurityContext" (dict "secContext" .Values.containerSecurityContext "context" $) | nindent 12 }}
+          {{- end }}
+          env:
+            - name: DB_HOST
+              value: {{ include "wordpress.databaseHost" . | quote }}
+            - name: DB_PORT
+              value: {{ include "wordpress.databasePort" . | quote }}
+          command:
+            - /bin/ash
+          args:
+            - -ec
+            - |
+              echo "Waiting for the database at $DB_HOST:$DB_PORT …"
+              start=$(date +%s)
+              said=0
+              until nc -z -w 2 "$DB_HOST" "$DB_PORT" 2>/dev/null; do
+                waited=$(( $(date +%s) - start ))
+                if [ "$waited" -ge 300 ]; then
+                  echo "ERROR: no database at $DB_HOST:$DB_PORT after 5 minutes."
+                  echo "       WordPress needs it to start; this container is started again."
+                  exit 1
+                fi
+                if [ $((waited - said)) -ge 30 ]; then
+                  echo "  still waiting (${waited} s)"
+                  said=$waited
+                fi
+                sleep 2
+              done
+              echo "The database accepts connections."
+        {{- end }}
         {{- if .Values.initContainers }}
         {{- include "common.tplvalues.render" (dict "value" .Values.initContainers "context" $) | nindent 8 }}
         {{- end }}

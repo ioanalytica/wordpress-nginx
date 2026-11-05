@@ -5,15 +5,29 @@ if ! is-true "$DISABLE_GREETING"; then
     wp --version
 fi
 
-if wp-cli core is-installed --allow-root >/dev/null 2>&1; then
+# WP-CLI through the `wp` wrapper, which runs it as the web user. The
+# installer creates wp-content/uploads; run as root, it leaves a directory
+# that PHP-FPM cannot write to, and no upload reaches it.
+if wp core is-installed >/dev/null 2>&1; then
   debug-echo -i "WordPress is already set up."
 else
   debug-echo -i "Running Wordpress installer …"
-  wp-cli core install \
+  wp core install \
               --url="${WORDPRESS_SCHEME:-http}://localhost" \
               --title="${WORDPRESS_BLOG_NAME:-Weblog}" \
               --admin_user="${WORDPRESS_USERNAME:-admin}" \
               --admin_password="${WORDPRESS_PASSWORD:-admin}" \
               --admin_email="${WORDPRESS_EMAIL:-admin@localhost}" \
-              --skip-email --quiet --allow-root
+              --skip-email --quiet
+fi
+
+# An installation made by an image that still ran the installer as root keeps
+# its upload directory with root as the owner. Hand over what root owns
+# there, and nothing else: the check costs one stat on a volume in order, and
+# files that belong to another user on purpose stay as they are.
+uploads="${APP_PATH:-/var/www/html}/wp-content/uploads"
+if [ -d "$uploads" ] && [ "$(stat -c '%u' "$uploads" 2>/dev/null)" = "0" ]; then
+  debug-echo -i "Handing $uploads over to $APP_USER …"
+  find "$uploads" -user 0 -exec chown -h "$APP_USER:$APP_GROUP" {} + \
+    || debug-echo -w "Could not change the owner of $uploads; uploads will fail until it belongs to $APP_USER."
 fi

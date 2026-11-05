@@ -3,7 +3,9 @@
 # cluster and every shell block of the page, in the page's order, with the
 # values file of this checkout in place of its raw URL. Where the page shows
 # the output of a block, the run compares it; where the page sends the reader
-# to a browser, the run signs in with curl.
+# to a browser, the run signs in with curl and uploads a file. Before the
+# clean-up it installs a second release whose database is away at the first
+# start, and expects WordPress to wait for it.
 #
 #   tests/try-locally/run.sh                      # the latest release, as the page installs it
 #   tests/try-locally/run.sh ./chart              # the chart of this checkout
@@ -108,6 +110,53 @@ import_image() {
   echo "ok:   the node has $IMPORT"
 }
 
+# late_database - a first start whose database is not there yet, with a
+# second release in the same cluster. WordPress installs itself when its
+# container first starts; the chart keeps the pod in the init container
+# wait-for-database until the database port answers. The release is installed
+# without a WordPress pod, so that MariaDB can finish its own initialization
+# undisturbed; then MariaDB is taken away, WordPress is started, has to wait,
+# and has to end up installed once MariaDB is back.
+late_database() {
+  local ns=late release=late chart="${CHART:-$PAGE_CHART}" deadline state log
+  local db="deployment/late-wordpress-nginx-mariadb" wp="deployment/late-wordpress-nginx"
+  local pod="app.kubernetes.io/name=wordpress-nginx,app.kubernetes.io/instance=late"
+  echo "=== ${SECONDS}s, a first start with the database away"
+  # shellcheck disable=SC2086 # the extra flags are words of their own
+  helm install "$release" "$chart" --namespace "$ns" --create-namespace \
+    --set replicaCount=0 --set service.type=ClusterIP $HELM_EXTRA >/dev/null
+  deadline=$((SECONDS + 300))
+  until log="$(kubectl -n "$ns" logs "$db" 2>/dev/null)" && grep -q 'port: 3306' <<<"$log"; do
+    [ "$SECONDS" -lt "$deadline" ] || fail "MariaDB of the second release did not finish its initialization"
+    sleep 3
+  done
+  kubectl -n "$ns" scale "$db" --replicas=0 >/dev/null
+  kubectl -n "$ns" wait --for=delete pod \
+    -l "app.kubernetes.io/name=wordpress-nginx-mariadb,app.kubernetes.io/instance=late" --timeout=3m >/dev/null
+  kubectl -n "$ns" scale "$wp" --replicas=1 >/dev/null
+  deadline=$((SECONDS + 180))
+  until state="$(kubectl -n "$ns" get pods -l "$pod" \
+          -o jsonpath='{.items[0].status.initContainerStatuses[?(@.name=="wait-for-database")].state.running.startedAt}' 2>/dev/null)" \
+        && [ -n "$state" ]; do
+    [ "$SECONDS" -lt "$deadline" ] || fail "the WordPress pod does not wait in an init container wait-for-database"
+    sleep 3
+  done
+  # Long enough for a start that did not wait to reach the installer.
+  sleep 20
+  state="$(kubectl -n "$ns" get pods -l "$pod" \
+    -o jsonpath='{.items[0].status.initContainerStatuses[?(@.name=="wait-for-database")].state.running.startedAt}')"
+  [ -n "$state" ] || fail "the WordPress pod left wait-for-database although the database is away"
+  log="$(kubectl -n "$ns" logs "$wp" -c wait-for-database)"
+  grep -qF "Waiting for the database at late-wordpress-nginx-mariadb:3306" <<<"$log" \
+    || fail "wait-for-database does not say what it waits for: $log"
+  echo "ok:   without its database, the WordPress pod waits and says so"
+  kubectl -n "$ns" scale "$db" --replicas=1 >/dev/null
+  kubectl -n "$ns" rollout status "$wp" --timeout=10m
+  kubectl -n "$ns" exec "$wp" -c wordpress -- wp core is-installed \
+    || fail "WordPress is not installed after its database came back"
+  echo "ok:   once the database is back, WordPress installs itself and the pod gets ready"
+}
+
 # diagnose - what the cluster shows, for a run that failed.
 diagnose() {
   local pod
@@ -115,9 +164,12 @@ diagnose() {
   kubectl get pods -A -o wide || true
   kubectl get pvc,ingress,svc -A || true
   kubectl get events -A --sort-by=.lastTimestamp | tail -n 60 || true
-  for pod in $(kubectl -n "$PAGE_NAMESPACE" get pods -o name 2>/dev/null); do
-    echo "--- $pod"
-    kubectl -n "$PAGE_NAMESPACE" logs "$pod" --all-containers --prefix --tail=150 || true
+  local ns
+  for ns in "$PAGE_NAMESPACE" late; do
+    for pod in $(kubectl -n "$ns" get pods -o name 2>/dev/null); do
+      echo "--- $ns $pod"
+      kubectl -n "$ns" logs "$pod" --all-containers --prefix --tail=150 || true
+    done
   done
   kubectl -n kube-system logs deployment/traefik --tail=40 || true
 }
@@ -280,6 +332,21 @@ html="$(curl -fsS --max-time 30 -b "$jar" "$SITE/wp-admin/")"
 grep -q '<title>Dashboard ' <<<"$html" \
   || fail "signing in as $user with the generated password does not lead to the dashboard"
 echo "ok:   $user signs in with the generated password"
+# An upload, as wp-admin's uploader sends it: a new installation has to be
+# able to store a file, and to serve it. The page does not show this; the
+# reader would use the Media screen.
+html="$(curl -fsS --max-time 30 -b "$jar" "$SITE/wp-admin/media-new.php")"
+nonce="$(sed -n 's/.*"_wpnonce":"\([a-f0-9]*\)".*/\1/p' <<<"$html" | sed -n 1p)"
+[ -n "$nonce" ] || fail "wp-admin's upload page holds no nonce"
+echo "A file for the upload check." >"$WORK/upload-check.txt"
+answer="$(curl -sS --max-time 60 -b "$jar" -F "async-upload=@$WORK/upload-check.txt;type=text/plain" \
+  -F "name=upload-check.txt" -F "action=upload-attachment" -F "_wpnonce=$nonce" "$SITE/wp-admin/async-upload.php")"
+grep -q '"success":true' <<<"$answer" || fail "wp-admin refuses an upload: $answer"
+stored="$(sed -n 's/.*"url":"\([^"]*upload-check[^"]*\.txt\)".*/\1/p' <<<"$answer" | sed -n 1p | sed 's|\\/|/|g')"
+[ -n "$stored" ] || fail "the upload's answer names no file: $answer"
+[ "$(curl -fsS --max-time 30 "$stored")" = "A file for the upload check." ] \
+  || fail "the uploaded file is not served at $stored"
+echo "ok:   $user uploads a file, and the site serves it"
 out="$(page_out "## 3. " 3)"
 same_as_page "the two plugins are installed and active" "## 3. " 2 "$out"
 
@@ -339,6 +406,9 @@ done
 echo "ok:   the running watcher reports the PHP file on its own"
 out="$(page_out "## 6. " 4)"
 same_as_page "without the files the scan is clean again" "## 6. " 4 "$out"
+
+# Beyond the page: the same chart, started while its database is away.
+late_database
 
 # Clean up, with the page's command
 if [ -z "${KEEP_CLUSTER:-}" ]; then

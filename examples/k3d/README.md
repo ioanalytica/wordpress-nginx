@@ -244,7 +244,7 @@ and the pulled images included, and the `kubectl` context.
 | `k3d cluster create` fails with `port is already allocated` | another program listens on port 8080. Take another port in `-p`, `127.0.0.1:8081:80@loadbalancer` say, and use it in the URLs of this page |
 | `curl` prints `404` right after the install | Traefik is up, but has not read the Ingress yet. Try again after a few seconds |
 | The WordPress pod stays at `1/2` ready for a minute | nothing is wrong: the search sidecar waits 30 seconds before it reads the database, and reports ready once its index is built |
-| The WordPress pod is not ready after several minutes, and `kubectl -n wordpress logs deployment/demo-wordpress-nginx -c wordpress` says `Error establishing a database connection` | WordPress installs itself when its container first starts, and MariaDB was not up yet. Start the pod again, then wait as in step 2: `kubectl -n wordpress rollout restart deployment/demo-wordpress-nginx` |
+| The WordPress pod stays at `Init:1/2` | it waits for MariaDB, which initializes its data directory on the first start: `kubectl -n wordpress logs deployment/demo-wordpress-nginx -c wait-for-database` |
 | The WordPress pod's log has a warning about a plugin download | the pod installs the Two Factor plugin from wordpress.org on its first start and needs to reach it; without it the pod starts all the same |
 
 ## From here to a real cluster
