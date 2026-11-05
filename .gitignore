@@ -4,6 +4,7 @@
 !.gitlab-ci.*
 !.dockerignore
 !.github
+!.coderabbit.yaml
 wordpress-nginx-*.tgz
 chart/charts/
 chart/Chart.lock
