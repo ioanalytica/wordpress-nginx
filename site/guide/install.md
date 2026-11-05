@@ -14,9 +14,10 @@ editPage: true
 <!--@include: ../../chart/README.md#install-->
 
 Without further values the release runs WordPress with a MariaDB server of its
-own and no Ingress; passwords that are not set are generated and kept in the
-release's Secret. A first values file usually sets the administrator and the
-host name:
+own, behind a Service of type `LoadBalancer` and without an Ingress; passwords
+that are not set are generated and kept in the release's Secret. A first
+values file usually sets the administrator and the host name, and with an
+Ingress in front the Service no longer needs an address of its own:
 
 ```yaml
 wordpressUsername: admin
@@ -25,6 +26,9 @@ wordpressEmail: admin@example.com
 ingress:
   enabled: true
   hostname: blog.example.com
+
+service:
+  type: ClusterIP
 ```
 
 ```bash

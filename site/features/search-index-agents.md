@@ -9,9 +9,12 @@ agent together with the address of the index.
 
 ## What the agent needs
 
-1. **The address.** With `idx.enabled`, the chart routes `idx.basePath`
-   (default `/idx`) on the site's host name to the sidecar. The API of a site
-   at `blog.example.com` is at `https://blog.example.com/idx/api/`.
+1. **The address.** With `idx.enabled` and `ingress.enabled`, the chart's
+   Ingress routes `idx.basePath` (default `/idx`) on the site's host name to
+   the sidecar. The API of a site at `blog.example.com` is then at
+   `https://blog.example.com/idx/api/`. Without the chart's Ingress, the
+   sidecar answers on a port of its own on the release's Service,
+   `idx.service.port` (default 3000), under the same base path.
 2. **The reference.** <IdxLink file="API_PROMPT.md" /> describes the
    endpoints, their parameters and the entry format in about seventy lines. The
    link, like the plain-text one below, points at the wordpress-idx release

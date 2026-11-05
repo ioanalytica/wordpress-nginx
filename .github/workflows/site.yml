@@ -30,9 +30,11 @@ permissions:
   contents: read
 
 # One deployment at a time, never cut off half-way; a pull request's newer
-# push replaces its build.
+# push replaces its build. The group names the branch, so that a run started
+# by hand on another branch, which deploys nothing, does not take the place of
+# a deployment that is waiting.
 concurrency:
-  group: ${{ github.event_name == 'pull_request' && format('site-{0}', github.ref) || 'site-pages' }}
+  group: ${{ github.event_name == 'pull_request' && format('site-{0}', github.ref) || format('site-pages-{0}', github.ref) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:

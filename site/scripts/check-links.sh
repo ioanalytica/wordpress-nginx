@@ -49,11 +49,12 @@ page_of() {
 }
 
 # PAGE, TARGET and ANCHOR of each link to an anchor on this site: on the page
-# itself (`#a`, TARGET empty) or on another one (`/path#a`). The fields are
+# itself (`#a`, TARGET empty) or on another one (`/path#a`); a query before
+# the anchor does not change the page. The fields are
 # separated by the unit separator: `read` folds a run of tabs into one, which
 # would lose an empty TARGET.
 sep=$'\x1f'
-anchors=$(sed -nE "s/^\.\/([^:]*):href=[\"'](\/[^\"'#?]*)?#([^\"']+)[\"']$/\1${sep}\2${sep}\3/p" <<<"$hrefs" | LC_ALL=C sort -u)
+anchors=$(sed -nE "s/^\.\/([^:]*):href=[\"'](\/[^\"'#?]*)?(\?[^\"'#]*)?#([^\"']+)[\"']$/\1${sep}\2${sep}\4/p" <<<"$hrefs" | LC_ALL=C sort -u)
 missing=""
 while IFS=$sep read -r page target anchor; do
   [ -n "$page" ] || continue

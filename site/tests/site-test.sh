@@ -243,19 +243,20 @@ mkdir -p "$WORK/good/guide" "$WORK/bad/guide" "$WORK/empty"
 cat > "$WORK/good/index.html" <<'HTML'
 <link rel="icon" href="/favicon.png"><a href="#top">a</a><h1 id="top">t</h1>
 <a href="/guide/install#pin">b</a> <a href="/guide/#intro">c</a> <a href="https://example.com/x#y">d</a>
-<a href="./guide/install">e</a> <a href='..'>f</a> <a data-href="chart/values.yaml">g</a> <a href="/no-such-page#x">h</a>
+<a href="/guide/install?tab=1#pin">q</a> <a href="?tab=2#top">r</a> <a href="./guide/install">e</a> <a href='..'>f</a> <a data-href="chart/values.yaml">g</a> <a href="/no-such-page#x">h</a>
 HTML
 echo '<h2 id="pin">p</h2>' > "$WORK/good/guide/install.html"
 echo '<h2 id="intro">i</h2>' > "$WORK/good/guide/index.html"
 cp -R "$WORK/good/." "$WORK/bad/"
-echo '<a href="chart/values.yaml">a</a> <a href=".github/workflows/site.yml">b</a> <a href="/guide/install#gone">c</a> <a href="#nowhere">d</a>' > "$WORK/bad/guide/other.html"
+echo '<a href="chart/values.yaml">a</a> <a href=".github/workflows/site.yml">b</a> <a href="/guide/install#gone">c</a> <a href="#nowhere">d</a> <a href="/guide/install?tab=1#lost">e</a>' > "$WORK/bad/guide/other.html"
 check "a clean site passes" "$CHECK" "$WORK/good"
 if out=$("$CHECK" "$WORK/bad" 2>&1); then fail "a site with broken links passes"; else ok "a site with broken links fails"; fi
 equal "it names each broken link with its page" "$out" \
 'link relative to the repository, leads nowhere on the site: guide/other.html:href=".github/workflows/site.yml"
 link relative to the repository, leads nowhere on the site: guide/other.html:href="chart/values.yaml"
 anchor without a target on its page: guide/other.html: #nowhere
-anchor without a target on its page: guide/other.html: /guide/install#gone'
+anchor without a target on its page: guide/other.html: /guide/install#gone
+anchor without a target on its page: guide/other.html: /guide/install#lost'
 "$CHECK" "$WORK/empty" >/dev/null 2>&1 && code=0 || code=$?
 equal "a directory without pages is an error, not a pass" "$code" 2
 

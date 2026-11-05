@@ -24,7 +24,7 @@ other layers on purpose.
 | Strict `.htaccess` policy | The pod refuses to start while a directory that a plugin wants denied is still open. | `nginx.htaccessPolicy: fail` |
 | [File-integrity monitoring](/security/file-integrity-monitoring) | A watcher reads the site's volume read-only and reports unexpected files, changed drop-ins and changed baselined files as Prometheus metrics. | `fim.enabled` |
 | [REST API hardening](/security/rest-api-hardening) | NGINX answers 403 for anonymous requests that list the site's login names. The page says what this does not prevent, which is why it is off by default. | `restApiHardening.mode` |
-| Restricted `wp-admin` | A second Ingress for `/wp-admin` with annotations of its own, for example a source range. See [Ingress and redirects](/features/ingress). | `secondaryIngress` |
+| Restricted `wp-admin` | A second Ingress for `/wp-admin` with annotations of its own, for example a source range. It restricts what passes through the Ingress: the Service is of type `LoadBalancer` by default, which a cluster may expose directly, so set `service.type: ClusterIP` with it. See [Ingress and redirects](/features/ingress). | `secondaryIngress`, `service.type` |
 | Network policy rules | The chart creates a NetworkPolicy, which by default admits any source to the pod's ports and allows all egress. `allowExternal: false` and `allowExternalEgress: false` narrow it; without external egress, add rules for what the site needs to reach, such as wordpress.org for plugin updates. | `networkPolicy` |
 
 ## Not covered
