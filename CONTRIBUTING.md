@@ -152,7 +152,7 @@ A release is a pull request of its own. It
 3. sets the tag of the `wordpress-nginx` entry in `annotations.images` there,
    which must equal `version` too;
 4. turns `## Unreleased` in `chart/CHANGELOG.md` into the heading of that
-   version.
+   version, so that no line is left under `## Unreleased` when it is merged.
 
 `./chart/tests/template-test.sh` fails while the three places in
 `chart/Chart.yaml` disagree and on a version outside the scheme.
@@ -163,9 +163,11 @@ for both platforms, publishes image and chart under that version and creates
 the GitHub release.
 
 A workflow asks wordpress.org every day for the current WordPress release. The
-pull request it opens for a new one is such a release pull request: it also
-raises `WP_VERSION` in `docker/Dockerfile` and `appVersion` in
-`chart/Chart.yaml`, which no test compares with each other.
+pull request it opens for a new one is such a release pull request, and the
+four points hold for it as well: whoever merges it sees to it that the lines
+under `## Unreleased` stand under the new version's heading. It also raises
+`WP_VERSION` in `docker/Dockerfile` and `appVersion` in `chart/Chart.yaml`,
+which no test compares with each other.
 
 A new release of the search sidecar is pinned in two places of
 `chart/Chart.yaml`: `annotations.idxImageTag` and the tag of the
@@ -208,16 +210,18 @@ site/scripts/check-links.sh site/.vitepress/dist
 
 Every commit must carry a `Signed-off-by` line, certifying the
 [Developer Certificate of Origin](https://developercertificate.org/): that you
-wrote the change or otherwise have the right to submit it under the project's
-license. `git commit -s` adds the line from your git name and e-mail.
+wrote the change or otherwise have the right to submit it under the license of
+the part it changes. `git commit -s` adds the line from your git name and
+e-mail.
 
 There is no contributor license agreement.
 
 ## License
 
-wordpress-nginx is licensed under the [Apache License 2.0](LICENSE), and
-contributions are accepted under the same license. WordPress itself, which the
-image contains, is licensed under the GNU General Public License, version 2 or
+wordpress-nginx is licensed under the [Apache License 2.0](LICENSE);
+[NOTICE](NOTICE) says what the license covers. A contribution is accepted
+under the license of the part it changes. WordPress itself, which the image
+contains, is licensed under the GNU General Public License, version 2 or
 later.
 
 ## Conduct
