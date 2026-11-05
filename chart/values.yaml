@@ -1646,7 +1646,7 @@ mariadb:
   enabled: true
   ## @param mariadb.image MariaDB container image
   ##
-  image: "mariadb:12.2.2-noble"
+  image: "mariadb:12.3.3-noble"
   ## MariaDB Authentication parameters
   ## @param mariadb.auth.rootPassword MariaDB root password
   ## @param mariadb.auth.database MariaDB database name
