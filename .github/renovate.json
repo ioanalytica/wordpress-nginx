@@ -87,6 +87,11 @@
       "prBodyNotes": ["For a new minor, tests/try-locally/test.sh fails until \"Tested with k3d … and k3s …\" in examples/k3d/README.md names it."]
     },
     {
+      "description": "The search sidecar's image comes from GHCR, which gives Renovate no release date to hold against the three days above; without one a new version would wait for good. It is this project's own image and needs no waiting time.",
+      "matchPackageNames": ["ghcr.io/ioanalytica/wordpress-idx"],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
       "description": "Dragonfly has its own workflow, dragonfly-version-check.yml: it proposes a version only after a container has started with the flags the chart passes.",
       "matchPackageNames": ["docker.dragonflydb.io/dragonflydb/dragonfly"],
       "enabled": false
