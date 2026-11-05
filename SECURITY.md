@@ -55,6 +55,11 @@ meant to be exposed. An image scanner reports the key as a private key.
 Removing the listener is tracked in
 [#32](https://github.com/ioanalytica/wordpress-nginx/issues/32).
 
+The chart's default `service.type` is `LoadBalancer`. Where the cluster
+gives such a Service an address, the pod's ports, 443 among them, are
+reachable on it beside the Ingress, and without what the Ingress adds. With
+an Ingress in front, set `service.type: ClusterIP`.
+
 ## What the daily scan covers
 
 Once a day a workflow scans every image the chart can run with
