@@ -595,6 +595,40 @@ fim_refuses "a digest YAML read as a number"     --set-json 'fim.baseline={"salt
 fim_refuses "a digest of the wrong length"       --set-json 'fim.baseline={"salts.php":["abc"]}'
 
 echo
+echo "=== The examples render, with keys the chart knows"
+# examples/ lives next to the chart in the repository and is not part of the
+# packaged chart, so a chart tested on its own has none. An example that no
+# longer renders, or sets a key the chart has renamed or dropped, would
+# otherwise only fail for the reader who follows its page: helm ignores
+# unknown keys.
+EXAMPLES="$(cd "$(dirname "$0")/../.." && pwd)/examples"
+for values in "$EXAMPLES"/*/values.yaml; do
+    [ -f "$values" ] || continue
+    name="examples/$(basename "$(dirname "$values")")"
+    check "$name renders" -f "$values"
+    if unknown="$(python3 "$(dirname "$0")/check-example-keys.py" "$CHART/values.yaml" "$values")" \
+            && [ -z "$unknown" ]; then
+        echo "ok:   $name sets only keys of values.yaml"
+    else
+        echo "FAIL: $name sets keys values.yaml does not know: $(echo "$unknown" | tr '\n' ' ')"
+        FAILURES=$((FAILURES + 1))
+    fi
+done
+# What the k3d page relies on (examples/k3d/README.md).
+K3D="$EXAMPLES/k3d/values.yaml"
+if [ -f "$K3D" ]; then
+    expect "k3d: no LoadBalancer next to k3s's Traefik" absent  'type: LoadBalancer' -f "$K3D"
+    expect "k3d: the Ingress is Traefik's"              present 'ingressClassName: "traefik"' -f "$K3D"
+    expect "k3d: the Ingress is for localhost"          present '- host: "localhost"' -f "$K3D"
+    expect "k3d: the Ingress routes /idx to the sidecar" present 'path: /idx' -f "$K3D"
+    expect "k3d: the watcher runs in a pod of its own"  present 'name: tst-wordpress-nginx-fim' -f "$K3D"
+    expect "k3d: the watcher accepts Hello Dolly"       present '"hello.php"' -f "$K3D"
+    expect "k3d: the reindex key comes from the command line" present 'idx-reindex-api-key:' -f "$K3D" \
+            --set idx.reindexApiKey=test
+    expect "k3d: without it there is no key"            absent  'idx-reindex-api-key' -f "$K3D"
+fi
+
+echo
 if [ "$FAILURES" -gt 0 ]; then
     echo "=== $FAILURES check(s) FAILED"
     exit 1

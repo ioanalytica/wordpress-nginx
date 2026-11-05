@@ -1,0 +1,49 @@
+# wordpress-nginx in a throwaway k3d cluster: WordPress, the bundled MariaDB,
+# the search sidecar and the file-integrity watcher on one node, with nothing
+# outside the cluster. The steps are in README.md, next to this file.
+#
+# Written for the release "demo" in the namespace "wordpress", on a k3d
+# cluster whose load balancer maps port 8080 of the host to Traefik
+# (k3d cluster create ... -p "127.0.0.1:8080:80@loadbalancer").
+#
+# No password is set here. The chart generates the WordPress and MariaDB
+# passwords and keeps them in the release's Secret; the install command of
+# the page generates the key of the reindex endpoint.
+#
+# The site's files and its database live in the k3d node container: deleting
+# the cluster deletes them. A cluster to try the chart in, not one to keep.
+#
+# chart/tests/template-test.sh renders these values and fails on a key that
+# chart/values.yaml does not know.
+
+wordpressBlogName: wordpress-nginx on k3d
+
+# The chart's default is a LoadBalancer Service on ports 80 and 443. On k3s
+# those ports of the node belong to Traefik, so such a Service would wait for
+# an address for ever. Traefik reaches WordPress through the Ingress below.
+service:
+  type: ClusterIP
+
+# k3s ships Traefik with the IngressClass "traefik". WordPress takes its URLs
+# from the Host header of each request, so the port of the k3d mapping
+# carries through: the site answers at http://localhost:8080. With idx
+# enabled, the same Ingress routes /idx to the search sidecar.
+ingress:
+  enabled: true
+  ingressClassName: traefik
+  hostname: localhost
+
+# The full-text search sidecar (wordpress-idx) in the WordPress pod. Its
+# index lives on the site's volume.
+idx:
+  enabled: true
+
+# The file-integrity watcher, in a pod of its own. The site's volume is
+# ReadWriteOnce, the only access mode k3s's local-path storage offers, so the
+# chart schedules the watcher next to WordPress; on one node that is a given.
+fim:
+  enabled: true
+  # WordPress ships Hello Dolly as a single file in wp-content/plugins/. The
+  # watcher reports loose files there, so the file is accepted by name.
+  allowedComponentRootFiles:
+    - hello.php

@@ -18,6 +18,8 @@ helm install my-wordpress oci://ghcr.io/ioanalytica/charts/wordpress-nginx \
 
 The chart version is also the image tag. It names the WordPress release the chart ships and the chart's build on it: `7.1.408` is build 8 on WordPress 7.1.4 (see [Chart versions](chart/README.md#chart-versions)).
 
+To see the chart run before you point it at a cluster of your own, follow [Try it locally](examples/k3d/README.md): a throwaway k3d cluster on one machine, with the search sidecar and file-integrity monitoring switched on, in about two minutes.
+
 See [chart/README.md](chart/README.md) for full documentation and values reference.
 
 ### [Docker Image](docker/)

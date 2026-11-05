@@ -69,6 +69,7 @@ export default defineConfigWithTheme<ThemeConfig>({
         text: 'Getting Started',
         items: [
           { text: 'Introduction', link: '/guide/' },
+          { text: 'Try it locally', link: '/guide/try-locally' },
           { text: 'Install', link: '/guide/install' },
           { text: 'Configuration', link: '/guide/configuration' },
           { text: 'Coming from the Bitnami chart', link: '/guide/migrating' },
