@@ -241,10 +241,15 @@ to that image: a pull request with the new commit and a line under
 `## Unreleased` that names the wordpress-idx version. After a fresh clone,
 `git submodule update --init` checks the submodule out.
 
-Renovate opens the pull requests for new versions of GitHub Actions, base
-images, the third-party images the chart pins and the site's packages
+Renovate opens the pull requests for new versions of GitHub Actions, the
+third-party images the chart pins and the site's packages
 (`.github/renovate.json`). A pull request that moves an image the chart pins
 needs its line under `## Unreleased` as well; the bot's pull request says so.
+
+The PHP series of the image is not Renovate's: the tag of the base image in
+`docker/Dockerfile` names it, and the maintainers move it by hand, because the
+plugins of a site depend on the PHP series. PHP patch releases need no change
+there; every release build pulls the base image afresh.
 
 A tag is never moved and a version is never published a second time: a
 deployment that pins a version would not see the change. The release workflow

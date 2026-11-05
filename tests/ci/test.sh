@@ -430,7 +430,7 @@ has "Dragonfly stays with its own workflow"      '[.packageRules[] | select(.ena
 has "the common chart dependency stays manual"   '.helmv3.enabled == false'
 has "only the chart's own values file is read"   '."helm-values".managerFilePatterns == ["/^chart/values\\.yaml$/"]'
 has "a moved action tag waits for approval"      'any(.packageRules[]; .matchUpdateTypes == ["digest"] and .dependencyDashboardApproval == true)'
-has "the base image moves only by approval"      'any(.packageRules[]; .matchDepNames == ["shinsenter/php"] and .dependencyDashboardApproval == true)'
+has "the base image's PHP series moves by hand"  'any(.packageRules[]; .matchDepNames == ["shinsenter/php"] and .enabled == false)'
 
 echo
 if [ "$FAILURES" -gt 0 ]; then

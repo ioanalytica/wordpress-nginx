@@ -44,6 +44,17 @@ Not covered here:
   project. One that is already public is no secret: a normal issue that asks
   for a new build is fine.
 
+## TLS and the key in the image
+
+TLS for a site belongs to the Ingress: the chart serves the site over HTTP
+inside the cluster. The image's NGINX also listens on port 443, with a
+self-signed certificate for `localhost` that the base image creates when it
+is built. That pair is a placeholder that lets NGINX start; it is the same in
+every copy of the image and no secret, so the Service's HTTPS port is not
+meant to be exposed. An image scanner reports the key as a private key.
+Removing the listener is tracked in
+[#32](https://github.com/ioanalytica/wordpress-nginx/issues/32).
+
 ## What the daily scan covers
 
 Once a day a workflow scans every image the chart can run with
@@ -77,7 +88,9 @@ What covers the rest:
   releases. Every release build starts from the base image as its registry
   serves it at that time, and upgrades all Alpine packages on top. A new PHP
   release in the base image does not start a build by itself: it arrives with
-  the next build, which a maintainer starts.
+  the next build, which a maintainer starts. The image stays on one PHP
+  series (8.4 at present); a new series is a deliberate move by the
+  maintainers, because the plugins of a site depend on it.
 - **WordPress core** is tracked by a workflow that asks wordpress.org once a
   day for the current release and opens the pull request that raises it.
 - **Plugins and themes** are updated by WordPress's own auto-updates. The
