@@ -29,8 +29,10 @@ jobs:
             exit 1
           fi
           # The answer ends up in files, a branch name and the pull request's
-          # text: nothing but a version gets that far.
-          if ! printf '%s' "$latest" | grep -qE '^[0-9]+\.[0-9]+(\.[0-9]+)?$'; then
+          # text: nothing but a version gets that far. Matched as a whole,
+          # not with grep, which would accept a value of several lines whose
+          # first line is a version.
+          if ! [[ "$latest" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
             echo "Upstream reports '$latest', which is not a WordPress version" >&2
             exit 1
           fi

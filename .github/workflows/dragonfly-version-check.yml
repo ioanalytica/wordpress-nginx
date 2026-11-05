@@ -31,7 +31,9 @@ jobs:
           fi
           # Only track stable releases. A glob is not enough here: v[0-9]*.[0-9]*.[0-9]*
           # also matches v1.41.0-rc1, because the trailing * swallows the suffix.
-          if ! printf '%s' "$latest" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+          # Matched as a whole, not with grep, which would accept a value of
+          # several lines whose first line is a version tag.
+          if ! [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "Latest release '$latest' is not a plain version tag; nothing to do"
             exit 1
           fi

@@ -74,14 +74,23 @@ jobs:
     permissions:
       id-token: write
     steps:
-      - run: "true"
+      - {uses: docker/login-action@v4, with: {registry: ghcr.io}}
+  five:
+    uses: example/workflows/.github/workflows/build.yml@main
+    permissions: write-all
+  six:
+    uses: ./.github/workflows/other.yml
+    permissions:
+      id-token: write
 EOF
 out="$(python3 "$HERE/check-workflows.py" "$WORK/bad" 2>&1 || true)"
 for needle in "not pinned by a commit SHA" "has no '# vX.Y.Z' comment" "no timeout-minutes" \
               "not on a pinned runner image" "contents: write for every job" \
               "expression inside the run script" "keeps its token" "without a '# renovate:' line" \
-              "has permissions: write-all" \
-              "more than one job can get an OIDC token: bad.yml: job three; bad.yml: job four"; do
+              "job two has permissions: write-all" "job five has permissions: write-all" \
+              "job four: docker/login-action@v4 is not pinned" \
+              "job five: example/workflows/.github/workflows/build.yml@main is not pinned" \
+              "more than one job can get an OIDC token: bad.yml: job three; bad.yml: job four; bad.yml: job six"; do
     if grep -qF -- "$needle" <<<"$out"; then ok "the checker reports: $needle"
     else fail "the checker misses: $needle"; fi
 done
@@ -140,6 +149,14 @@ printf '      containers:\n        - image: busybox\n        - image: {{ .Values
 got="$("$IMAGES" "$WORK/chart" | jq -r 'map(.ref) | sort | join(" ")')"
 want="docker.io/busybox:latest docker.io/other:3 registry.example:5000/group/thing:1.2"
 if [ "$got" = "$want" ]; then ok "a registry with a port, a bare name and a template's own image"
+else fail "expected '$want', got '$got'"; fi
+# A digest in the values is what the chart runs, whatever the tag says.
+digest="sha256:$(printf '%064d' 1)"
+printf 'a:\n  image:\n    repository: one/thing\n    tag: 1.10\n    digest: %s\nb:\n  image: "two/other:2@%s"\n' "$digest" "$digest" >"$WORK/chart/values.yaml"
+rm "$WORK/chart/templates/x.yaml"
+got="$("$IMAGES" "$WORK/chart" | jq -r 'map(.ref) | sort | join(" ")')"
+want="docker.io/one/thing@$digest docker.io/two/other@$digest"
+if [ "$got" = "$want" ]; then ok "an image pinned by digest is scanned by that digest"
 else fail "expected '$want', got '$got'"; fi
 
 echo "=== Accepted findings of the CVE scan"
