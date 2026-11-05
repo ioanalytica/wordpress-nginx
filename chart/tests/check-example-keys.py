@@ -8,7 +8,9 @@ dropped renders, installs and silently does something else than its page
 says.
 
 A key whose value in the chart's values is an empty map is free-form
-(fim.baseline, podLabels): nothing below it is checked.
+(fim.baseline, podLabels): nothing below it is checked. A map where the
+chart has a single value or a list is reported as well: its keys are not the
+chart's either.
 """
 
 import sys
@@ -21,8 +23,11 @@ def walk(example, chart, path):
         here = path + [str(key)]
         if not isinstance(chart, dict) or key not in chart:
             print(".".join(here))
-        elif isinstance(value, dict) and isinstance(chart[key], dict) and chart[key]:
-            walk(value, chart[key], here)
+        elif isinstance(value, dict):
+            if not isinstance(chart[key], dict):
+                print(".".join(here) + " (a map, where the chart has none)")
+            elif chart[key]:
+                walk(value, chart[key], here)
 
 
 def main():

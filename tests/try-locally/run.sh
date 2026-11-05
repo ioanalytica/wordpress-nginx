@@ -286,10 +286,22 @@ echo "$out"
 expect "WP-CLI creates the post" '^Success: Created post [0-9]+\.$' "$out"
 expect "the reindex takes the generated key" '^\{"status":"ok","entries":3\}$' "$out"
 expect "the search finds the new post" '^\{"total":1,"results":\[\{.*"title":"Notes from k3d"' "$out"
+# The endpoint is reachable through the Ingress: the key the chart hands the
+# sidecar must be what opens it, and nothing else.
+code="$("$CURL" -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST "$SITE/idx/api/reindex")"
+[ "$code" = 401 ] || fail "a reindex without a key is answered with $code, not 401"
+code="$("$CURL" -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST -H "X-Api-Key: not-the-key" "$SITE/idx/api/reindex")"
+[ "$code" = 401 ] || fail "a reindex with a wrong key is answered with $code, not 401"
+echo "ok:   the reindex endpoint refuses a missing and a wrong key"
 
 # 5. File-integrity monitoring
 out="$(page_out "## 5. " 1)"
 same_as_page "a scan of the new installation has no findings" "## 5. " 1 "$out"
+# The page scans by hand. The watcher's own loop is what a Prometheus would
+# read: its metrics endpoint must answer, with a finished scan behind it.
+metrics="$(kubectl get --raw "/api/v1/namespaces/$PAGE_NAMESPACE/services/$PAGE_RELEASE-wordpress-nginx-fim:fim-metrics/proxy/metrics")"
+expect "the running watcher has finished a scan of its own" '^wp_fim_last_scan_timestamp_seconds [1-9]' "$metrics"
+expect "the running watcher reports no findings" '^wp_fim_violations 0$' "$metrics"
 
 # 6. A PHP file under uploads
 out="$(page_out "## 6. " 1)"
