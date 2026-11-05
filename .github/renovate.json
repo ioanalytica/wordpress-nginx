@@ -8,6 +8,7 @@
   "rebaseWhen": "conflicted",
   "minimumReleaseAge": "3 days",
   "semanticCommits": "disabled",
+  "commitBody": "Signed-off-by: {{{gitAuthor}}}",
   "configMigration": true,
   "ignorePaths": ["**/node_modules/**", "chart/tests/**", "docker/tests/**", "site/tests/**", "tests/**"],
   "helm-values": {

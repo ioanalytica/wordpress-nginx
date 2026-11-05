@@ -109,6 +109,8 @@ jobs:
         with:
           branch: wp-bump/${{ steps.wp.outputs.latest }}
           base: main
+          # CONTRIBUTING.md asks for a Signed-off-by line on every commit.
+          signoff: true
           # Bot-authored PRs only reach the watching inbox, where they get buried;
           # a review request lands in the participating inbox and triggers email.
           reviewers: ioanalytica
