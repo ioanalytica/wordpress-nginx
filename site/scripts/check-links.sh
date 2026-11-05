@@ -9,14 +9,18 @@
 #   as it was: a path the repository does not have, or a section on a page that
 #   names no `source`. It leads nowhere on the site, while GitHub renders the
 #   file fine, and the build takes a link to a file that is not a page for an
-#   asset. A link relative to the page (`.` or `..`, alone or before `/`, `#`
-#   or `?`) passes.
+#   asset.
 # - A link to a page the site does not have. The build checks the links of the
 #   Markdown text only, not those of the home page's frontmatter (hero actions,
 #   feature cards), of the navigation or of HTML written into a page.
 # - An anchor no element of its page has. The build checks that a linked page
 #   exists, not that the heading does; a README heading that was renamed, or
 #   whose anchor differs between GitHub and VitePress, would go unnoticed.
+#
+# Every link that stays on the site is followed: an absolute path (`/guide/`),
+# one relative to the page (`.` or `..`, alone or before `/`, `#` or `?`), an
+# anchor or a query alone (the page itself). An address with a scheme or a
+# host (`https://…`, `//host/…`) leaves the site and is not checked.
 #
 # The build job of site.yml runs it on what it built.
 #
@@ -29,15 +33,30 @@ dir="${1:-}"
 cd "$dir"
 [ -n "$(find . -name '*.html' | head -1)" ] || { echo "no pages in $dir" >&2; exit 2; }
 
-# PAGE:href="…" for each link, quoted either way; not data-href or the like.
+# PAGE and HREF of each link, quoted either way; not data-href or the like.
+# The fields are separated by the unit separator, which no address holds.
 # grep finding none is no error.
-hrefs=$(grep -roE --include='*.html' "(^|[[:space:]])href=(\"[^\"]*\"|'[^']*')" . \
-  | sed -E 's/^([^:]*):[[:space:]]*/\1:/') || [ $? -eq 1 ]
+sep=$'\x1f'
+links=$(grep -roE --include='*.html' "(^|[[:space:]])href=(\"[^\"]*\"|'[^']*')" . \
+  | sed -E "s/^\.\/([^:]*):[[:space:]]*href=[\"'](.*)[\"']$/\1${sep}\2/" | LC_ALL=C sort -u) || [ $? -eq 1 ]
 
-# An absolute path, an anchor, a query or an empty link (the page itself), an
-# address with a scheme and a link relative to the page pass.
-pass=":href=[\"'](/|#|\\?|[\"']|[a-zA-Z][a-zA-Z0-9+.-]*:|\\.\\.?([/#?]|[\"']))"
-relative=$({ grep -vE "$pass" <<<"$hrefs" || true; } | sed 's|^\./||' | LC_ALL=C sort -u)
+# site_path DIR PATH — PATH as a path from the site's root, without `.` and
+# `..` segments: an absolute one as it is, any other read from DIR, the
+# directory of the page that links to it. As in a browser, `..` at the root
+# stays at the root.
+site_path() {
+  local path=$2 part parts=() out=() IFS=/
+  case "$path" in /*) ;; *) path="$1/$path" ;; esac
+  read -ra parts <<<"$path"
+  for part in ${parts[@]+"${parts[@]}"}; do
+    case "$part" in
+      '' | .) ;;
+      ..) [ ${#out[@]} -eq 0 ] || unset "out[$((${#out[@]} - 1))]" ;;
+      *) out+=("$part") ;;
+    esac
+  done
+  printf '/%s\n' "${out[*]-}"
+}
 
 # page_of PATH — the file that serves the site path PATH (clean URLs), or
 # nothing.
@@ -51,43 +70,33 @@ page_of() {
   return 0
 }
 
-# PAGE, TARGET and ANCHOR of each link to an anchor on this site: on the page
-# itself (`#a`, TARGET empty) or on another one (`/path#a`); a query before
-# the anchor does not change the page. The fields are
-# separated by the unit separator: `read` folds a run of tabs into one, which
-# would lose an empty TARGET.
-sep=$'\x1f'
-anchors=$(sed -nE "s/^\.\/([^:]*):href=[\"'](\/[^\"'#?]*)?(\?[^\"'#]*)?#([^\"']+)[\"']$/\1${sep}\2${sep}\4/p" <<<"$hrefs" | LC_ALL=C sort -u)
-missing=""
-while IFS=$sep read -r page target anchor; do
+relative="" absent="" missing=""
+while IFS=$sep read -r page href; do
   [ -n "$page" ] || continue
-  file=$page
-  [ -z "$target" ] || file=$(page_of "$target")
-  # A link to a page that does not exist is reported as such, below.
-  [ -n "$file" ] && [ -f "./$file" ] || continue
-  grep -qF -- " id=\"$anchor\"" "./$file" || missing+="$page: ${target}#$anchor"$'\n'
-done <<<"$anchors"
+  # Another site.
+  if [[ "$href" =~ ^(//|[a-zA-Z][a-zA-Z0-9+.-]*:) ]]; then continue; fi
+  path=${href%%[?#]*}
+  anchor=""
+  case "$href" in *'#'*) anchor=${href#*#} ;; esac
+  case "$path" in
+    '') file=$page ;;
+    /* | . | .. | ./* | ../*)
+      file=$(page_of "$(site_path "/$(dirname "$page")" "$path")")
+      if [ -z "$file" ]; then absent+="$page: $href"$'\n'; continue; fi ;;
+    *) relative+="$page: $href"$'\n'; continue ;;
+  esac
+  [ -z "$anchor" ] || grep -qF -- " id=\"$anchor\"" "./$file" || missing+="$page: $href"$'\n'
+done <<<"$links"
 
-# PAGE and TARGET of each link to a path on this site, without its query and
-# anchor; `//host/…` is another site's address.
-paths=$(sed -nE "s/^\.\/([^:]*):href=[\"'](\/([^\/\"'#?][^\"'#?]*)?)([?#][^\"']*)?[\"']$/\1${sep}\2/p" <<<"$hrefs" | LC_ALL=C sort -u)
-absent=""
-while IFS=$sep read -r page target; do
-  [ -n "$page" ] || continue
-  [ -n "$(page_of "$target")" ] || absent+="$page: $target"$'\n'
-done <<<"$paths"
+# report PREFIX LINES — print each line with PREFIX on stderr.
+report() {
+  local line
+  while IFS= read -r line; do
+    [ -z "$line" ] || printf '%s: %s\n' "$1" "$line" >&2
+  done <<<"$2"
+}
 
-status=0
-if [ -n "$relative" ]; then
-  sed 's/^/link relative to the repository, leads nowhere on the site: /' <<<"$relative" >&2
-  status=1
-fi
-if [ -n "$absent" ]; then
-  printf '%s' "$absent" | sed 's/^/link to a page the site does not have: /' >&2
-  status=1
-fi
-if [ -n "$missing" ]; then
-  printf '%s' "$missing" | sed 's/^/anchor without a target on its page: /' >&2
-  status=1
-fi
-exit "$status"
+report "link relative to the repository, leads nowhere on the site" "$relative"
+report "link to a page the site does not have" "$absent"
+report "anchor without a target on its page" "$missing"
+[ -z "$relative$absent$missing" ]

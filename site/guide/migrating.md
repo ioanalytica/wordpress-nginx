@@ -65,6 +65,11 @@ security contexts explicitly needs a test first; see
   image (`mariadb.image`) instead of a subchart.
 - **`wordpressConfigureCache`** configures W3 Total Cache only where the
   plugin is already active; it does not install it. See [Cache](/features/cache).
+- **`wordpressSkipInstall`** does not keep the image from installing
+  WordPress. On every start the image checks the database: where it holds no
+  installation, the installer runs and creates the site and its
+  administrator, whatever the value says; a database that already holds a
+  site is left as it is.
 - **`wordpressExtraConfigContent`** is accepted, but the `wp-config.php` the
   chart generates does not evaluate it. Constants set that way, such as
   `DISALLOW_FILE_EDIT`, move to the environment variable
