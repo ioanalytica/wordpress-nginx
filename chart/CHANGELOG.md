@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+* **The bundled MariaDB moves to 12.3.3**, the current long-term series; the 12.2 image is no longer updated. An installation with `mariadb.enabled` starts the new series on its existing data directory at the upgrade. Back the database up first: MariaDB does not support going back to the earlier series.
+  * **The image updates its system tables itself.** The chart sets `MARIADB_AUTO_UPGRADE`, so the first start on data of an earlier series runs `mariadb-upgrade` before the server takes connections, and keeps a copy of the old system tables in the data directory. Until now a change of series left the server on the old system tables until someone ran `mariadb-upgrade` by hand.
+  * An installation with an external database (`mariadb.enabled: false`) is not affected. One that sets `mariadb.image` itself keeps its image and gets the setting: its database pod is replaced once at the upgrade, and a server that still runs on the system tables of an earlier series updates them at that start.
+* **The search sidecar is wordpress-idx 1.3.8** (1.3.7 before). Its image keeps the chart version as its tag.
+  * **The first start rebuilds the index once.** The index file on the volume has a new format, so the sidecar builds its index anew from the database at its first start with this version and needs the database for that start; the search is ready a little later than usual. No manual "Rebuild index" is needed.
+  * A query returns every match, where it returned at most 100 entries per searched field, and it matches titles as well as content and comments.
+  * Published posts and pages whose author is not a WordPress user are in the index, with an empty author.
+  * Hardening: the index holds only posts and pages that are public without a password.
+  * The sidecar tries its index build again every 5 seconds until it succeeds. A database that answered late, or a WordPress that had not created its tables yet, left it without an index until it was restarted.
+  * The plugin's search form follows `idx.basePath`; it called the sidecar under `/idx` whatever the path was.
+* The template test checks `MARIADB_AUTO_UPGRADE` on the rendered Deployment.
+
 ## 7.1.409
 
 * **A new installation can store uploads.** The image installed WordPress as root, and the installer left `wp-content/uploads` with root as its owner, so the first upload in wp-admin failed with "The uploaded file could not be moved". The installer now runs as the web user. An installation made by an earlier version is repaired on its next start: `wp-content/uploads` and the year and month directories below it are handed to the web user where root owns them. Files, other directories and symbolic links are left alone. Sites that brought their uploads along were not affected.

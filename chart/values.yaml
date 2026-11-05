@@ -1645,8 +1645,13 @@ mariadb:
   ##
   enabled: true
   ## @param mariadb.image MariaDB container image
+  ## A new MariaDB series (12.2 to 12.3) meets the data directory of an
+  ## existing installation at its first start: the image then updates its
+  ## system tables itself and keeps a copy of the old ones in the data
+  ## directory. Back the database up before a chart upgrade that changes the
+  ## series; going back to the earlier series is not supported by MariaDB.
   ##
-  image: "mariadb:12.2.2-noble"
+  image: "mariadb:12.3.3-noble"
   ## MariaDB Authentication parameters
   ## @param mariadb.auth.rootPassword MariaDB root password
   ## @param mariadb.auth.database MariaDB database name

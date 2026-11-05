@@ -3041,7 +3041,7 @@
             "string",
             "number"
           ],
-          "default": "mariadb:12.2.2-noble"
+          "default": "mariadb:12.3.3-noble"
         },
         "auth": {
           "title": "MariaDB credentials",

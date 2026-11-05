@@ -71,6 +71,16 @@ metadata:
   {{- end }}
 spec:
   replicas: 1
+  # No strategy and no readiness probe, on purpose. The data directory takes
+  # one server at a time: a new server waits for MariaDB's lock on it until
+  # the old one has exited. With the default rolling update and no probe the
+  # old pod is stopped as soon as the new container has started, which lets
+  # the new server in. A readiness probe would keep the old pod running until
+  # the new one answers, which it cannot while the old one holds the lock, so
+  # the rollout would not finish. Recreate would stop the old pod first, but
+  # an existing Deployment cannot move to it: Kubernetes refuses the change
+  # while the rolling update's defaults are set, and a server-side apply
+  # cannot take them away.
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "common.names.name" . }}-mariadb
@@ -111,6 +121,13 @@ spec:
                   key: mariadb-password
             - name: MARIADB_DATABASE
               value: {{ .Values.mariadb.auth.database | quote }}
+            # A data directory written by an earlier MariaDB series: the
+            # image runs mariadb-upgrade on it before the server takes
+            # connections, after saving the old system tables next to the
+            # data. Without it the server runs on the old system tables until
+            # someone runs mariadb-upgrade by hand.
+            - name: MARIADB_AUTO_UPGRADE
+              value: "1"
           ports:
             - name: mysql
               containerPort: 3306
