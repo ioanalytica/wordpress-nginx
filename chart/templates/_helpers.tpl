@@ -301,6 +301,37 @@ first 28 bits of its SHA-256, plus one, since W3TC treats 0 as unset.
 {{- end -}}
 
 {{/*
+A list value as the chart renders it, for templates that read its entries:
+a list, or text for the template engine that renders to one, comes back as
+YAML under the key "items". Read it with
+  (include "wordpress.renderedList" (dict "value" .Values.x "context" $) | fromYaml).items
+The wrapping key is there because fromYaml reads a map, and fromYamlArray is
+not in every Helm 3 release.
+*/}}
+{{- define "wordpress.renderedList" -}}
+items:
+{{- $rendered := include "common.tplvalues.render" (dict "value" .value "context" .context) | trim }}
+{{- if $rendered }}
+{{ $rendered | indent 2 }}
+{{- end }}
+{{- end -}}
+
+{{/*
+True when extraEnvVars has an entry named WORDPRESS_CONFIG_EXTRA. The
+entries are read as the Deployment renders them, so text for the template
+engine and a templated name count as well.
+*/}}
+{{- define "wordpress.extraEnvVarsSetConfigExtra" -}}
+{{- range (include "wordpress.renderedList" (dict "value" .Values.extraEnvVars "context" $) | fromYaml).items -}}
+{{- if kindIs "map" . -}}
+{{- if eq (toString .name) "WORDPRESS_CONFIG_EXTRA" -}}
+{{- true -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return the value for the WP_CACHE constant in wp-config.php.
 An unset wordpressWpCache follows wordpressConfigureCache; an explicit
 true/false wins. Note that "default" is unusable here - it would treat an

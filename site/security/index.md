@@ -29,9 +29,12 @@ other layers on purpose.
 
 ## Not covered
 
-The pod and container security contexts are off by default, and a release
-with them enabled is not part of the chart's tests; see
-[Configuration](/guide/configuration#security-context) before enabling them.
+The image has to start as root, with a writable root filesystem and the
+container runtime's default capabilities. The pod and container security
+contexts are off by default; switched on, the container security context
+rules out privilege escalation and applies the runtime's default seccomp
+profile, and no more than that. See
+[Configuration](/guide/configuration#security-context).
 
 ## Left to other layers
 

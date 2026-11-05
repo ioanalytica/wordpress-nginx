@@ -19,7 +19,6 @@ A production-ready Helm chart for deploying WordPress with NGINX on Kubernetes. 
 - **Horizontal Pod Autoscaling** with CPU/memory targets
 - **Network Policies** for pod-level firewall rules
 - **Dual Ingress** support (primary + secondary for wp-admin restrictions)
-- **OpenShift** compatibility via automatic security context adaptation
 - **Resource presets** (nano through 2xlarge) for quick sizing
 
 <!-- #endregion features -->
@@ -95,10 +94,14 @@ The available versions are listed in the [CHANGELOG](CHANGELOG.md).
 | `wordpressEmail` | WordPress admin email | `user@example.com` |
 | `wordpressBlogName` | Blog name | `User's Blog!` |
 | `wordpressScheme` | URL scheme (`http`/`https`) | `http` |
-| `wordpressSkipInstall` | Skip the installation wizard | `false` |
+| `wordpressExtraConfigContent` | PHP statements the generated `wp-config.php` evaluates, for constants of your own | `""` |
 | `wordpressConfigureCache` | Auto-configure W3 Total Cache | `false` |
 | `wordpressCacheInstanceId` | W3 Total Cache instance id (cache key prefix) | derived from namespace and release |
-| `wordpressPlugins` | Plugins to activate (`all`, `none`, or list) | `none` |
+| `wordpressPreinstallPlugins` | Plugins installed and activated on every start, see [Preinstalled plugins](#preinstalled-plugins) | `two-factor` |
+
+WordPress is installed by the image, not by a value: on every start it checks
+the database, creates the site with the settings above where there is none,
+and leaves an existing one as it is.
 
 <!-- #endregion wordpress-settings -->
 
@@ -244,10 +247,11 @@ W3 Total Cache, WP Rocket, LiteSpeed Cache — installs its drop-in and then
 silently never uses it.
 
 Those plugins normally write the constant into `wp-config.php` themselves.
-That does not hold here: the chart regenerates `wp-config.php` on every
-container start, so a plugin-written constant is gone after the next restart
-or rollout, and the page cache quietly stops working until someone touches the
-plugin's settings again. The chart therefore owns the constant:
+That does not hold here: the init container writes `wp-config.php` anew for
+every pod, so a plugin-written constant is gone with the next pod (a rollout,
+or a pod that is rescheduled or deleted), and the page cache quietly stops
+working until someone touches the plugin's settings again. The chart
+therefore owns the constant:
 
 ```yaml
 wordpressWpCache: true     # null (default) follows wordpressConfigureCache
@@ -258,8 +262,10 @@ it follows along. Set it explicitly when running a different page cache plugin
 without that integration, or to force page caching off regardless.
 
 Note the same regeneration applies to any other constant a plugin writes into
-`wp-config.php`. If you depend on one, put it in `WORDPRESS_CONFIG_EXTRA`
-rather than relying on the plugin's edit to persist.
+`wp-config.php`. If you depend on one, put it in `wordpressExtraConfigContent`
+rather than relying on the plugin's edit to persist. Released chart versions
+up to 7.1.408 do not read that value; there, set the environment variable
+`WORDPRESS_CONFIG_EXTRA` through `extraEnvVars`.
 
 <!-- #endregion cache -->
 
@@ -415,7 +421,7 @@ kubectl logs deploy/<release>-wordpress-nginx | grep '\[rest-hardening\]'
 
 <!-- #region nginx-changes -->
 
-`nginxConfiguration`, `nginxCustomServerBlockAddition`, `phpExecutionAllowlist`,
+`nginxCustomServerBlockAddition`, `phpExecutionAllowlist`,
 `restApiHardening`, `nginx.deniedPaths` and `redirect.goneHosts` all render
 into ConfigMaps that are mounted with `subPath`; the post-init scripts
 (`wordpressPreinstallPlugins`, `wordpressConfigureCache`,
@@ -431,6 +437,14 @@ Deployment spec stayed byte-identical, no rollout was triggered, and running
 pods kept the previous configuration indefinitely. If you are on such a version
 and a configuration change appears to have no effect, `kubectl rollout restart`
 the deployment.
+
+`nginxConfiguration` and `existingNginxConfigurationConfigMap` do not belong
+to this list. The content of the first is rendered into a ConfigMap, the
+second names a ConfigMap of your own; either becomes a pod volume that no
+container mounts, so the image's `nginx.conf` stays in place. A ConfigMap
+named in `existingNginxConfigurationConfigMap` has to exist all the same, or
+the pod does not start. Additions to the server block go into
+`nginxCustomServerBlockAddition`.
 
 <!-- #endregion nginx-changes -->
 
@@ -450,9 +464,9 @@ nginx:
     - path: /wp-content/uploads/dlm_uploads
       action: deny              # 403 (default)
       reason: Download Monitor - force downloads through the permission check
-    - path: ~* ^/wp-content/themes/config-1785900943/
+    - path: ~* ^/wp-content/plugins/retired-plugin/
       action: honeypot          # 418
-      reason: incident 2026-08, removed backdoor
+      reason: plugin no longer installed here - only scanners ask for it
   htaccessPolicy: warn          # warn (default) | fail
 ```
 
@@ -469,8 +483,8 @@ Rendered, the example above becomes:
 # Download Monitor - force downloads through the permission check
 "~*^/wp-content/uploads/dlm_uploads(/|$)" 403;
 
-# incident 2026-08, removed backdoor
-"~*^/wp-content/themes/config-1785900943/" 418;
+# plugin no longer installed here - only scanners ask for it
+"~*^/wp-content/plugins/retired-plugin/" 418;
 ```
 
 #### Why not a `location` in the per-site `nginx.conf`
@@ -489,9 +503,11 @@ allowlist, and never enters location matching at all.
 
 A 418 is a deliberate signal, not an error. If your edge runs a CrowdSec
 scenario that bans any source receiving a 418 (`http-teapot-ban` or similar),
-a honeypot rule on a known-removed backdoor path makes probers ban themselves,
-whatever throwaway IP they use next — no per-IP rules to maintain. Without such
-a scenario, `honeypot` is just a more conspicuous `deny`.
+a honeypot rule on a path that no visitor has a reason to request, such as
+the directory of a plugin the site no longer has, makes probers ban
+themselves, whatever throwaway IP they use next — no per-IP rules to
+maintain. Without such a scenario, `honeypot` is just a more conspicuous
+`deny`.
 
 #### `.htaccess` files: the plugin thinks it is protected
 
@@ -901,16 +917,24 @@ its rule in the `rule` label; `values.yaml` lists them all.
 
 ### Metrics & Monitoring
 
+With `metrics.enabled` the pod gets a sidecar running the
+[NGINX Prometheus exporter](https://github.com/nginx/nginx-prometheus-exporter)
+(`metrics.image`, pinned in `values.yaml`). It serves NGINX's connection and
+request counters on port 9113 through a Service of its own, and the chart's
+NetworkPolicy admits that port.
+
 ```yaml
 metrics:
   enabled: true
-  image:
-    registry: docker.io
-    repository: bitnami/nginx-exporter
-    tag: 1.4.1-debian-12-r5
   serviceMonitor:
-    enabled: true
+    enabled: true          # needs the Prometheus Operator
+    labels:
+      release: prometheus  # whatever your Prometheus selects ServiceMonitors by
 ```
+
+Without the Prometheus Operator, the Service's `prometheus.io/scrape`
+annotations let a Prometheus that discovers targets by annotation find the
+exporter.
 
 ### Resources
 
@@ -967,17 +991,25 @@ When using multiple replicas, ensure the PVC access mode supports `ReadWriteMany
 
 ```yaml
 podSecurityContext:
-  enabled: true
-  fsGroup: 1001
+  enabled: true     # fsGroup 1001
 
 containerSecurityContext:
-  enabled: true
-  runAsUser: 1001
-  runAsNonRoot: true
-  readOnlyRootFilesystem: true
+  enabled: true     # no privilege escalation, seccomp profile RuntimeDefault
 ```
 
-OpenShift compatibility is handled automatically via `global.compatibility.openshift.adaptSecurityContext`.
+The image has to start as root: its init system refuses any other user and
+writes to the root filesystem while starting, and the init container sets the
+owner of the files it creates on the volume. `containerSecurityContext`
+therefore keeps `runAsUser: 0`, a
+writable root filesystem and the container runtime's default capabilities.
+What `enabled: true` adds is `allowPrivilegeEscalation: false`,
+`privileged: false` and the `RuntimeDefault` seccomp profile, for the
+WordPress container and the init container alike.
+
+With `runAsNonRoot: true`, a `runAsUser` other than 0,
+`readOnlyRootFilesystem: true` or all capabilities dropped the pod does not
+start. A cluster that admits no root containers, such as OpenShift with its
+default security context constraints, cannot run the image.
 
 <!-- #endregion security-context -->
 

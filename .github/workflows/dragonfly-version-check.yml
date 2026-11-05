@@ -120,6 +120,9 @@ jobs:
           sed -i "s|^      image: docker.dragonflydb.io/dragonflydb/dragonfly:.*$|      image: docker.dragonflydb.io/dragonflydb/dragonfly:${NEW}|" chart/Chart.yaml
           grep '^  image: "docker.dragonflydb.io' chart/values.yaml
           grep '^      image: docker.dragonflydb.io' chart/Chart.yaml
+          # The values schema repeats every default, and the schema test
+          # fails when the two files disagree.
+          scripts/schema-default.sh memcached.image "docker.dragonflydb.io/dragonflydb/dragonfly:${NEW}"
 
       - name: Create Pull Request
         if: steps.cmp.outputs.update == 'true'
@@ -137,7 +140,7 @@ jobs:
           body: |
             Automated image bump: Dragonfly **${{ steps.upstream.outputs.latest }}** is available (was `${{ steps.current.outputs.current }}`).
 
-            Only `memcached.image` in `chart/values.yaml` and its entry in the images list of `chart/Chart.yaml` changed. The chart version is deliberately left alone — fold this into the next release rather than cutting one for it.
+            Only `memcached.image` in `chart/values.yaml`, its default in `chart/values.schema.json` and its entry in the images list of `chart/Chart.yaml` changed. The chart version is deliberately left alone — fold this into the next release rather than cutting one for it.
 
             Verified before opening this PR: the new image still accepts `--requirepass` and `--memcached_port`, and comes up listening on the memcached port with the flags the chart passes.
 

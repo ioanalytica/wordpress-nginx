@@ -15,9 +15,18 @@ page covers the settings most sites change first.
 <!--@include: ../../chart/README.md#wordpress-settings-->
 
 The chart writes `wp-config.php` every time a pod starts, so a constant that
-a plugin adds to the file is gone with the next pod. The generated file
-evaluates the environment variable `WORDPRESS_CONFIG_EXTRA`; set constants of
-your own there, through `extraEnvVars`:
+a plugin adds to the file is gone with the next pod. Set constants of your
+own in `wordpressExtraConfigContent`, as PHP statements without an opening
+tag; the generated file evaluates them before it loads WordPress:
+
+```yaml
+wordpressExtraConfigContent: |
+  define('WP_POST_REVISIONS', 10);
+```
+
+The content reaches the container as the environment variable
+`WORDPRESS_CONFIG_EXTRA`. Released chart versions up to 7.1.408 do not read
+`wordpressExtraConfigContent`; there, set that variable yourself:
 
 ```yaml
 extraEnvVars:
@@ -25,6 +34,8 @@ extraEnvVars:
     value: |
       define('WP_POST_REVISIONS', 10);
 ```
+
+An `extraEnvVars` entry of that name still takes precedence over the value.
 
 ## Persistence
 
@@ -55,14 +66,16 @@ The default is `resourcesPreset: "micro"`.
 ## Security context
 
 Both security contexts are off by default (`enabled: false`), so the
-containers run as the image defines. The values exist for clusters that
-require them:
+containers run as the image defines. Switched on, they add what the image can
+run with:
 
 <!--@include: ../../chart/README.md#security-context-->
 
-::: warning Test before relying on it
-The chart's tests do not cover a release with the security contexts enabled.
-The container security context applies to the init container as well, which
-sets the owner of the files it creates on the volume, something a user other
-than root is not allowed to do. Try such values on a fresh release first.
+::: warning Released chart versions up to 7.1.408
+There the defaults of `containerSecurityContext` were those of the Bitnami
+chart (user 1001, `runAsNonRoot`, a read-only root filesystem, all
+capabilities dropped), and a pod with `enabled: true` did not start. On such
+a version, set `runAsUser: 0`, `runAsGroup: 0`, `runAsNonRoot: false`,
+`readOnlyRootFilesystem: false` and `capabilities.drop: []` next to
+`enabled: true`.
 :::

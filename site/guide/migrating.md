@@ -13,7 +13,7 @@ release.
 
 ## How much carries over
 
-Compared on 2026-11-05 with version 27.0.1 of the Bitnami WordPress chart: 89
+Compared on 2026-11-05 with version 27.0.1 of the Bitnami WordPress chart: 88
 of its 95 top-level keys exist in wordpress-nginx under the same name. That
 includes `wordpressUsername` and the other `wordpress*` settings, `ingress`,
 `secondaryIngress`, `persistence`, `mariadb`, `externalDatabase`, `memcached`,
@@ -29,13 +29,14 @@ Go through the lists below instead of relying on an error.
 
 | Bitnami key | Here |
 |---|---|
-| `apacheConfiguration`, `existingApacheConfigurationConfigMap` | The web server is NGINX: `nginxConfiguration`, `existingNginxConfigurationConfigMap`, and `nginxCustomServerBlockAddition` for additions to the server block. |
-| `allowOverrideNone`, `htaccessPersistenceEnabled` | NGINX reads no `.htaccess`. Directories a plugin protects that way are closed with `nginx.deniedPaths`; the chart reports the files it finds. See [Denied paths and .htaccess](/security/denied-paths). |
+| `apacheConfiguration`, `existingApacheConfigurationConfigMap` | The web server is NGINX. `nginxCustomServerBlockAddition` adds to its server block; the image's `nginx.conf` itself cannot be replaced through the values. |
+| `allowOverrideNone`, `htaccessPersistenceEnabled`, `customHTAccessCM` | NGINX reads no `.htaccess`. Directories a plugin protects that way are closed with `nginx.deniedPaths`; the chart reports the files it finds. See [Denied paths and .htaccess](/security/denied-paths). |
 | `volumePermissions` | Removed. |
 | `usePasswordFiles` | Not supported; credentials reach the containers through environment variables sourced from Secrets. |
 | `mariadb.architecture` | The bundled MariaDB is a single server. For replication, run the database outside the chart and set `externalDatabase`. |
 | `memcached.auth.*`, `memcached.service.*` | The bundled cache is Dragonfly and always has a password: `memcached.password` or `memcached.existingSecret`. See [Cache](/features/cache). |
 | `image.tag` | Not read. The image tag is always the chart version; `image.digest` still overrides it. |
+| `metrics.prometheusRule` | The chart renders no alert rules for the exporter. Deploy a PrometheusRule of your own through `extraDeploy`. The file-integrity watcher has rules of its own, `fim.prometheusRule`. |
 
 ## Same key, different default
 
@@ -45,6 +46,9 @@ Go through the lists below instead of relying on an error.
 | `mariadb.auth.username`, `externalDatabase.user` | `bn_wordpress` | `wp_user` |
 | `containerPorts.http`, `containerPorts.https` | `8080`, `8443` | `80`, `443` |
 | `podSecurityContext.enabled`, `containerSecurityContext.enabled` | `true` | `false` |
+| `containerSecurityContext.runAsUser`, `.runAsGroup` | `1001` | `0` |
+| `containerSecurityContext.runAsNonRoot`, `.readOnlyRootFilesystem` | `true` | `false` |
+| `containerSecurityContext.capabilities.drop` | `["ALL"]` | `[]` |
 | `readinessProbe.httpGet.path`, `startupProbe.httpGet.path` | `/wp-login.php` | `/healthz.php` |
 | `image.pullPolicy` | `IfNotPresent` | `Always` |
 | `metrics.image` | an Apache exporter | `nginx/nginx-prometheus-exporter` |
@@ -52,8 +56,10 @@ Go through the lists below instead of relying on an error.
 | `hostAliases` | an entry for `status.localhost` | empty |
 
 A values file that names the database and its user explicitly is not affected
-by the changed defaults; one that relied on them is. One that enables the
-security contexts explicitly needs a test first; see
+by the changed defaults; one that relied on them is. One that carries the
+Bitnami chart's container security context (user 1001, `runAsNonRoot`, a
+read-only root filesystem, all capabilities dropped) does not start here: the
+image has to start as root; see
 [Configuration](/guide/configuration#security-context).
 
 ## Same key, different meaning
@@ -70,17 +76,36 @@ security contexts explicitly needs a test first; see
   installation, the installer runs and creates the site and its
   administrator, whatever the value says; a database that already holds a
   site is left as it is.
-- **`wordpressExtraConfigContent`** is accepted, but the `wp-config.php` the
-  chart generates does not evaluate it. Constants set that way, such as
-  `DISALLOW_FILE_EDIT`, move to the environment variable
-  `WORDPRESS_CONFIG_EXTRA`, set through `extraEnvVars`; see
-  [Configuration](/guide/configuration#wordpress-settings).
-- **`customHTAccessCM`** is accepted and has no effect, as NGINX reads no
-  `.htaccess`.
+- **`wordpressExtraConfigContent`** is evaluated by the generated
+  `wp-config.php` as PHP statements, not appended to the file; write it
+  without an opening `<?php` tag. Released chart versions up to 7.1.408 do
+  not read it;
+  see [Configuration](/guide/configuration#wordpress-settings).
+- **`secondaryIngress.selfSigned`** adds the TLS entry to the second Ingress
+  and generates no certificate for it.
 - **The ingress annotation `nginx.ingress.kubernetes.io/from-to-www-redirect`**
   is not honoured. Redirects are declared in the `redirect` block, which works
   with every supported ingress class; see
   [Ingress and redirects](/features/ingress).
+
+## Accepted, without effect
+
+These keys exist so that a values file carries over, and none of them has an
+effect: the chart passes some to the container as environment variables the
+image does not read, and no template reads the others.
+
+| Key | Instead |
+|---|---|
+| `wordpressFirstName`, `wordpressLastName` | The installer creates the administrator from `wordpressUsername`, `wordpressPassword` and `wordpressEmail`. |
+| `wordpressPlugins` | `wordpressPreinstallPlugins` installs and activates plugins; see [Plugins](/features/plugins). |
+| `allowEmptyPassword` | A password left empty in the values is generated. |
+| `overrideDatabaseSettings` | `wp-config.php` is written anew for every pod and takes the database settings from the values each time. |
+| `multisite` | The image does not set up WordPress Multisite. |
+| `nginxConfiguration` | Its content is rendered into a ConfigMap that no container mounts. `nginxCustomServerBlockAddition` adds to the server block. |
+| `existingNginxConfigurationConfigMap` | Nothing is rendered for it; the ConfigMap it names becomes a pod volume that no container mounts. That ConfigMap has to exist all the same: a pod whose volume names a missing ConfigMap does not start. |
+| `image.debug` | |
+| `ingress.apiVersion`, `secondaryIngress.apiVersion` | The Ingress API version is detected from the cluster. |
+| `secondaryIngress.secrets` | `ingress.secrets` creates TLS secrets, also the one of the second Ingress. |
 
 ## What is new
 

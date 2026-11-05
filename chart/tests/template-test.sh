@@ -191,6 +191,127 @@ version_refuses "a version with a v prefix"                   check v7.1.408 7.1
 version_refuses "a version with build metadata"               check 7.1.408+1 7.1.4
 version_refuses "a version of two components"                 check 7.1 7.1
 
+echo "=== Changelog and releases"
+# A pull request that changes the chart or the image adds its lines under
+# "## Unreleased" and leaves the version alone; the release pull request sets
+# the version and turns that section into the version's
+# (scripts/changelog-release.sh). So the newest version in the changelog is
+# always the one Chart.yaml names: a bumped version without an entry, or an
+# entry for a version the chart does not have yet, fails here.
+CHANGELOG="$CHART/CHANGELOG.md"
+RELEASE_SCRIPT="$(dirname "$0")/../../scripts/changelog-release.sh"
+newest_heading=$(awk '/^## / && $0 != "## Unreleased" { print; exit }' "$CHANGELOG")
+if [ "$newest_heading" = "## $chart_version" ]; then
+    echo "ok:   the newest version in the changelog is $chart_version, the chart's"
+else
+    echo "FAIL: the newest version in the changelog is '${newest_heading#\#\# }', Chart.yaml says $chart_version"
+    FAILURES=$((FAILURES + 1))
+fi
+first_heading=$(awk '/^## / { print; exit }' "$CHANGELOG")
+case "$(grep -cxF '## Unreleased' "$CHANGELOG" || true)" in
+    0) echo "ok:   no Unreleased section" ;;
+    1) if [ "$first_heading" = "## Unreleased" ]; then
+           echo "ok:   Unreleased is the first section"
+       else
+           echo "FAIL: '## Unreleased' must be the first section, which is '$first_heading'"
+           FAILURES=$((FAILURES + 1))
+       fi ;;
+    *) echo "FAIL: more than one Unreleased section"; FAILURES=$((FAILURES + 1)) ;;
+esac
+
+CL_TMP="$(mktemp -d)"
+trap 'rm -rf "$CL_TMP"' EXIT
+
+# release_gives <desc> <changelog> <expected> <version> [line]: the script
+# turns <changelog> into <expected>. Both are given with \n for line ends.
+release_gives() {
+    local desc="$1" before="$2" expected="$3" out; shift 3
+    printf '%b' "$before" > "$CL_TMP/CHANGELOG.md"
+    if out="$("$RELEASE_SCRIPT" "$1" "${2:-}" "$CL_TMP/CHANGELOG.md" 2>&1)" \
+       && [ "$(cat "$CL_TMP/CHANGELOG.md")" = "$(printf '%b' "$expected")" ]; then
+        echo "ok:   $desc"
+    else
+        echo "FAIL: $desc — got: $out"
+        sed 's/^/      /' "$CL_TMP/CHANGELOG.md"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+
+# release_refuses <desc> <changelog> <version> [line]: the script fails and
+# leaves the file as it was.
+release_refuses() {
+    local desc="$1" before="$2" out; shift 2
+    printf '%b' "$before" > "$CL_TMP/CHANGELOG.md"
+    if out="$("$RELEASE_SCRIPT" "$1" "${2:-}" "$CL_TMP/CHANGELOG.md" 2>&1)"; then
+        echo "FAIL: $desc — accepted"
+        FAILURES=$((FAILURES + 1))
+    elif [ "$(cat "$CL_TMP/CHANGELOG.md")" != "$(printf '%b' "$before")" ]; then
+        echo "FAIL: $desc — refused, but the file changed"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   $desc"
+    fi
+}
+
+WP_LINE='* Update to WordPress 7.1.5.'
+release_gives "a release takes the Unreleased lines over, below its own" \
+    '# Changelog\n\n## Unreleased\n\n* A fix.\n* Another one.\n\n## 7.1.408\n\n* Old.\n' \
+    '# Changelog\n\n## 7.1.500\n\n* Update to WordPress 7.1.5.\n* A fix.\n* Another one.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.500 "$WP_LINE"
+release_gives "a release without a line of its own keeps the Unreleased lines as they are" \
+    '# Changelog\n\n## Unreleased\n\n* A fix.\n\n## 7.1.408\n\n* Old.\n' \
+    '# Changelog\n\n## 7.1.409\n\n* A fix.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.409
+release_gives "without an Unreleased section the version gets a new one" \
+    '# Changelog\n\n## 7.1.408\n\n* Old.\n' \
+    '# Changelog\n\n## 7.1.500\n\n* Update to WordPress 7.1.5.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.500 "$WP_LINE"
+release_gives "an empty Unreleased section becomes the version's" \
+    '# Changelog\n\n## Unreleased\n\n## 7.1.408\n\n* Old.\n' \
+    '# Changelog\n\n## 7.1.500\n\n* Update to WordPress 7.1.5.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.500 "$WP_LINE"
+release_gives "a subheading under Unreleased keeps its blank line" \
+    '# Changelog\n\n## Unreleased\n\n### Chart\n\n* A fix.\n\n## 7.1.408\n\n* Old.\n' \
+    '# Changelog\n\n## 7.1.500\n\n* Update to WordPress 7.1.5.\n\n### Chart\n\n* A fix.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.500 "$WP_LINE"
+release_refuses "a version that has its section already" \
+    '# Changelog\n\n## Unreleased\n\n* A fix.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.408 "$WP_LINE"
+release_refuses "an entry that would say nothing" \
+    '# Changelog\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.409
+release_refuses "an empty Unreleased section without a line" \
+    '# Changelog\n\n## Unreleased\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.409
+release_refuses "an Unreleased section with a subheading and no line below it" \
+    '# Changelog\n\n## Unreleased\n\n### Chart\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.409
+release_refuses "an Unreleased section below a version" \
+    '# Changelog\n\n## 7.1.408\n\n* Old.\n\n## Unreleased\n\n* A fix.\n' \
+    7.1.409
+# The tracker's pull request is built from the repository's own files: the
+# workflow must call the script, and the script must take this changelog.
+if grep -qF 'scripts/changelog-release.sh "${CHART_VERSION}"' \
+        "$(dirname "$0")/../../.github/workflows/wp-version-check.yml"; then
+    echo "ok:   the WordPress release tracker writes its entry with the script"
+else
+    echo "FAIL: .github/workflows/wp-version-check.yml does not call scripts/changelog-release.sh"
+    FAILURES=$((FAILURES + 1))
+fi
+cp "$CHANGELOG" "$CL_TMP/real.md"
+# Any version the changelog does not have will do; the script does not ask
+# whether it follows the chart's scheme.
+next_version=9999.0.0
+if "$RELEASE_SCRIPT" "$next_version" "$WP_LINE" "$CL_TMP/real.md" 2>/dev/null \
+   && [ "$(awk '/^## / { print; exit }' "$CL_TMP/real.md")" = "## $next_version" ] \
+   && ! grep -qxF '## Unreleased' "$CL_TMP/real.md" \
+   && [ "$(grep -c '' "$CL_TMP/real.md")" -ge "$(grep -c '' "$CHANGELOG")" ]; then
+    echo "ok:   this changelog can be released: its first section becomes the version's, every line kept"
+else
+    echo "FAIL: scripts/changelog-release.sh cannot release this changelog as $next_version"
+    FAILURES=$((FAILURES + 1))
+fi
+
 echo "=== Structural invariants across the value matrix"
 check "defaults"
 check "php allowlist report"        --set phpExecutionAllowlist.mode=report
@@ -535,6 +656,254 @@ expect "enforce blocks"                  present 'if ($wp_rest_blocked) { return
 expect "report does not block"           absent  'if ($wp_rest_blocked) { return 403; }' --set restApiHardening.mode=report
 expect "report freezes the decision"     present 'set $wp_rest_reported 1'     --set restApiHardening.mode=report
 expect "extra deny renders a pattern"    present '" 1;'                        --set 'restApiHardening.extraDeniedPaths={~*^/wp-json/wp/v2/comments}'
+
+echo "=== Metrics reach Prometheus"
+# The exporter sidecar listens on a port of its own. The chart's
+# NetworkPolicy is on by default and lists the pod's ports one by one, so a
+# port missing there is a scrape that times out wherever policies are
+# enforced, with the exporter itself running fine.
+METRICS=(--set metrics.enabled=true)
+NETPOL=(--show-only templates/networkpolicy.yaml)
+expect "the policy admits the exporter's port"  present "- port: 9113" "${METRICS[@]}" "${NETPOL[@]}"
+expect "the admitted port follows the values"   present "- port: 9200" "${METRICS[@]}" "${NETPOL[@]}" \
+        --set metrics.containerPorts.metrics=9200
+expect "no exporter, no port in the policy"     absent  "- port: 9113" "${NETPOL[@]}"
+check  "metrics with a ServiceMonitor"          "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true
+
+# endpoint_field <field> <helm args...>: one field of the ServiceMonitor's
+# endpoint, as compact JSON ("null" when the endpoint does not have it).
+endpoint_field() {
+    local field="$1"; shift
+    helm template tst "$CHART" "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true \
+        --show-only templates/servicemonitor.yaml "$@" 2>&1 \
+        | python3 -c '
+import json, sys, yaml
+doc = yaml.safe_load(sys.stdin)
+print(json.dumps(doc["spec"]["endpoints"][0].get(sys.argv[1]), separators=(",", ":"), sort_keys=True))
+' "$field" 2>/dev/null || echo "render failed"
+}
+
+# endpoint_has <desc> <field> <expected JSON> <helm args...>
+endpoint_has() {
+    local desc="$1" field="$2" expected="$3" got; shift 3
+    got="$(endpoint_field "$field" "$@")"
+    if [ "$got" = "$expected" ]; then
+        echo "ok:   $desc"
+    else
+        echo "FAIL: $desc — $field is $got, expected $expected"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+
+DROP='[{"action":"drop","regex":"nginx_up","sourceLabels":["__name__"]}]'
+SITE='[{"replacement":"blog","targetLabel":"site"}]'
+# metricRelabelings and relabelings are two settings of an endpoint: one
+# rewrites the samples, the other the target. Each value must reach the
+# field of its own name and no other.
+endpoint_has "metricRelabelings reaches the endpoint"     metricRelabelings "$DROP" \
+        --set-json "metrics.serviceMonitor.metricRelabelings=$DROP"
+endpoint_has "metricRelabelings sets no relabelings"      relabelings null \
+        --set-json "metrics.serviceMonitor.metricRelabelings=$DROP"
+endpoint_has "relabelings reaches the endpoint"           relabelings "$SITE" \
+        --set-json "metrics.serviceMonitor.relabelings=$SITE"
+endpoint_has "relabelings sets no metricRelabelings"      metricRelabelings null \
+        --set-json "metrics.serviceMonitor.relabelings=$SITE"
+endpoint_has "both can be set side by side"               metricRelabelings "$DROP" \
+        --set-json "metrics.serviceMonitor.metricRelabelings=$DROP" \
+        --set-json "metrics.serviceMonitor.relabelings=$SITE"
+endpoint_has "no rules, no field"                         metricRelabelings null
+# The key the template read up to 7.1.408. A release that set it keeps its
+# rules; the documented key wins where both are set.
+endpoint_has "the earlier spelling still applies"         metricRelabelings "$DROP" \
+        --set-json "metrics.serviceMonitor.relabellings=$DROP"
+endpoint_has "the documented key wins over it"            metricRelabelings "$DROP" \
+        --set-json "metrics.serviceMonitor.metricRelabelings=$DROP" \
+        --set-json "metrics.serviceMonitor.relabellings=$SITE"
+
+# selector and labels both end up as labels of the ServiceMonitor, which is
+# what a Prometheus selects it by. A key named in both must render once: a
+# second one makes the manifest invalid for a strict YAML parser.
+SM=("${METRICS[@]}" --set metrics.serviceMonitor.enabled=true --show-only templates/servicemonitor.yaml)
+expect "selector labels the ServiceMonitor"      present "prometheus: main" "${SM[@]}" \
+        --set metrics.serviceMonitor.selector.prometheus=main
+expect "labels wins over selector"               present "release: mine" "${SM[@]}" \
+        --set metrics.serviceMonitor.selector.release=theirs --set metrics.serviceMonitor.labels.release=mine
+expect "the overruled selector label is gone"    absent  "release: theirs" "${SM[@]}" \
+        --set metrics.serviceMonitor.selector.release=theirs --set metrics.serviceMonitor.labels.release=mine
+check  "selector and labels naming one key"      "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true \
+        --set metrics.serviceMonitor.selector.release=theirs --set metrics.serviceMonitor.labels.release=mine
+# The ServiceMonitor's own component label is one of these labels: a value
+# that names the key must not put it into the manifest a second time.
+expect "the component label stays metrics"       present "app.kubernetes.io/component: metrics" "${SM[@]}" \
+        --set-json 'metrics.serviceMonitor.selector={"app.kubernetes.io/component":"other"}'
+expect "a value cannot rename the component"     absent  "app.kubernetes.io/component: other" "${SM[@]}" \
+        --set-json 'metrics.serviceMonitor.selector={"app.kubernetes.io/component":"other"}' \
+        --set-json 'metrics.serviceMonitor.labels={"app.kubernetes.io/component":"other"}'
+check  "selector naming the component label"     "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true \
+        --set-json 'metrics.serviceMonitor.selector={"app.kubernetes.io/component":"metrics"}'
+check  "labels naming the component label"       "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true \
+        --set-json 'metrics.serviceMonitor.labels={"app.kubernetes.io/component":"metrics"}'
+
+echo "=== NetworkPolicy admits the ports the pod declares"
+# extraContainerPorts entries are container ports (name, containerPort); the
+# policy needs the number. Rendering the entry itself gave a port the API
+# server refuses, so the release could not be installed.
+EXTRA_PORT=(--set-json 'extraContainerPorts=[{"name":"status","containerPort":9090},{"name":"dns","containerPort":5353,"protocol":"UDP"}]')
+# policy_ports <helm args...>: the ports of the policy's first ingress rule
+# as "port/protocol", in one line; a port without a protocol is TCP to the
+# API server and shows as "port/-".
+policy_ports() {
+    helm template tst "$CHART" "${NETPOL[@]}" "$@" 2>/dev/null | python3 -c '
+import sys, yaml
+doc = yaml.safe_load(sys.stdin)
+print(" ".join("%s/%s" % (p["port"], p.get("protocol", "-")) for p in doc["spec"]["ingress"][0]["ports"]))
+' 2>/dev/null || echo "render failed"
+}
+# policy_admits <desc> <expected ports> <helm args...>
+policy_admits() {
+    local desc="$1" expected="$2" got; shift 2
+    got="$(policy_ports "$@")"
+    if [ "$got" = "$expected" ]; then
+        echo "ok:   $desc"
+    else
+        echo "FAIL: $desc — the policy admits '$got', expected '$expected'"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+policy_admits "extra container ports are admitted, with their protocol" "80/- 443/- 9090/- 5353/UDP" "${EXTRA_PORT[@]}"
+# The Deployment renders the value through the template engine, so text is a
+# form of it; the policy has to read the same entries.
+policy_admits "extra container ports given as template text"            "80/- 443/- 9091/-" \
+        --set-string $'extraContainerPorts=- name: status\n  containerPort: {{ add 9000 91 }}'
+policy_admits "no extra container ports"                                "80/- 443/-"
+check  "extra container ports"                   "${EXTRA_PORT[@]}"
+check  "extra container ports as template text"  --set-string $'extraContainerPorts=- name: status\n  containerPort: {{ add 9000 91 }}'
+
+echo "=== Extra wp-config.php content reaches the generated file"
+# The generated wp-config.php evaluates WORDPRESS_CONFIG_EXTRA and nothing
+# else. wordpressExtraConfigContent used to be passed under a name nothing
+# reads.
+EXTRA_CONFIG=(--set-json 'wordpressExtraConfigContent="define( \"WP_POST_REVISIONS\", 10 );"')
+expect "no content, no variable"                 absent  'name: WORDPRESS_CONFIG_EXTRA'
+expect "content becomes WORDPRESS_CONFIG_EXTRA"  present 'name: WORDPRESS_CONFIG_EXTRA' "${EXTRA_CONFIG[@]}"
+expect "the content is the variable's value"     present 'value: "define( \"WP_POST_REVISIONS\", 10 );"' "${EXTRA_CONFIG[@]}"
+expect "the unread variable is gone"             absent  'WORDPRESS_EXTRA_WP_CONFIG_CONTENT' "${EXTRA_CONFIG[@]}"
+expect "wp-config.php evaluates the variable"    present "getenv_docker('WORDPRESS_CONFIG_EXTRA', '')"
+# A release may set the variable itself through extraEnvVars. That entry
+# stays the only one: two variables of one name in a container are refused
+# by a server-side apply.
+# config_extra_values <helm args...>: the value of every WORDPRESS_CONFIG_EXTRA
+# entry of the WordPress container, one per line.
+config_extra_values() {
+    helm template tst "$CHART" "${EXTRA_CONFIG[@]}" "$@" 2>/dev/null | python3 -c '
+import sys, yaml
+for d in yaml.safe_load_all(sys.stdin):
+    if d and d.get("kind") == "Deployment" and d["metadata"]["name"] == "tst-wordpress-nginx":
+        for c in d["spec"]["template"]["spec"]["containers"]:
+            if c["name"] == "wordpress":
+                for e in c.get("env") or []:
+                    if e["name"] == "WORDPRESS_CONFIG_EXTRA":
+                        print(e.get("value"))
+' 2>/dev/null || true
+}
+# The entries are read as the Deployment renders them: a list, text for the
+# template engine, a name with a comment behind it, a templated name.
+for form in "a list" "text" "text with a comment" "a templated name"; do
+    case "$form" in
+        "a list")              OWN=(--set-json 'extraEnvVars=[{"name":"WORDPRESS_CONFIG_EXTRA","value":"own_statement();"}]') ;;
+        "text")                OWN=(--set-string $'extraEnvVars=- name: WORDPRESS_CONFIG_EXTRA\n  value: own_statement();') ;;
+        "text with a comment") OWN=(--set-string $'extraEnvVars=- name: WORDPRESS_CONFIG_EXTRA # ours\n  value: own_statement();') ;;
+        "a templated name")    OWN=(--set-string $'extraEnvVars=- name: {{ printf "WORDPRESS_%s" "CONFIG_EXTRA" }}\n  value: own_statement();') ;;
+    esac
+    got="$(config_extra_values "${OWN[@]}")"
+    if [ "$got" = "own_statement();" ]; then
+        echo "ok:   an extraEnvVars entry of that name stays the only one, as $form"
+    else
+        echo "FAIL: with extraEnvVars as $form, WORDPRESS_CONFIG_EXTRA renders as: ${got:-nothing}"
+        FAILURES=$((FAILURES + 1))
+    fi
+done
+got="$(config_extra_values)"
+if [ "$got" = 'define( "WP_POST_REVISIONS", 10 );' ]; then
+    echo "ok:   without such an entry the value is the only one"
+else
+    echo "FAIL: WORDPRESS_CONFIG_EXTRA renders as: ${got:-nothing}"
+    FAILURES=$((FAILURES + 1))
+fi
+expect "another extraEnvVars entry changes nothing" present 'name: WORDPRESS_CONFIG_EXTRA' "${EXTRA_CONFIG[@]}" \
+        --set-json 'extraEnvVars=[{"name":"OTHER","value":"x"}]'
+check  "extra config content"                    "${EXTRA_CONFIG[@]}"
+# Variables the image never read are not passed any more.
+expect "no variable for wordpressSkipInstall"    absent  'WORDPRESS_SKIP_BOOTSTRAP' --set wordpressSkipInstall=true
+# The init container has no environment to check; the block that claimed to
+# check it printed a check mark for every name.
+expect "init script checks no environment"       absent  'Checking environment for required settings'
+
+echo "=== Security contexts render what the image starts with"
+# The image has to start as root, with a writable root filesystem and the
+# runtime's default capabilities; the init container sets file owners. The
+# defaults of containerSecurityContext must therefore be a context the pod
+# starts with, so that enabled=true alone is usable. What starts was tried on
+# a cluster; this pins the defaults to it.
+security_contexts=$(helm template tst "$CHART" --set containerSecurityContext.enabled=true \
+        --set podSecurityContext.enabled=true 2>&1 | python3 -c '
+import json, sys, yaml
+want = {"seLinuxOptions": {}, "runAsUser": 0, "runAsGroup": 0, "runAsNonRoot": False, "privileged": False,
+        "readOnlyRootFilesystem": False, "allowPrivilegeEscalation": False,
+        "capabilities": {"drop": []}, "seccompProfile": {"type": "RuntimeDefault"}}
+problems = []
+for d in yaml.safe_load_all(sys.stdin):
+    if not d or d.get("kind") != "Deployment" or d["metadata"]["name"] != "tst-wordpress-nginx":
+        continue
+    spec = d["spec"]["template"]["spec"]
+    if (spec.get("securityContext") or {}).get("fsGroup") != 1001:
+        problems.append("pod securityContext has no fsGroup 1001")
+    containers = {c["name"]: c for c in spec["initContainers"] + spec["containers"]}
+    for name in ("prepare-base-dir", "wordpress"):
+        got = containers[name].get("securityContext")
+        if got != want:
+            problems.append(name + ": " + json.dumps(got, sort_keys=True))
+    break
+else:
+    problems.append("no WordPress Deployment rendered")
+print("; ".join(problems))
+' 2>&1) || security_contexts="render failed"
+if [ -z "$security_contexts" ]; then
+    echo "ok:   enabled contexts keep root, a writable root filesystem and the default capabilities"
+else
+    echo "FAIL: security contexts differ from what the image starts with — $security_contexts"
+    FAILURES=$((FAILURES + 1))
+fi
+expect "off by default"                          absent  "securityContext:" --show-only templates/deployment.yaml
+check  "security contexts enabled"               --set containerSecurityContext.enabled=true --set podSecurityContext.enabled=true
+
+echo "=== The notes after an install fit any cluster"
+# `helm template` does not print NOTES.txt; a client-side dry run of the
+# install does, and with no kubeconfig it asks no cluster.
+# notes_say <desc> <"present"|"absent"> <needle> <helm args...>
+notes_say() {
+    local desc="$1" mode="$2" needle="$3" out; shift 3
+    out="$(KUBECONFIG=/dev/null helm install tst "$CHART" --dry-run=client -n default "$@" 2>&1)" || {
+        echo "FAIL: $desc — the dry run of the install failed"; FAILURES=$((FAILURES + 1)); return
+    }
+    out="${out#*NOTES:}"
+    if grep -qF -- "$needle" <<<"$out"; then
+        if [ "$mode" = "present" ]; then echo "ok:   $desc"
+        else echo "FAIL: $desc — the notes say '$needle'"; FAILURES=$((FAILURES + 1)); fi
+    else
+        if [ "$mode" = "absent" ]; then echo "ok:   $desc"
+        else echo "FAIL: $desc — the notes do not say '$needle'"; FAILURES=$((FAILURES + 1)); fi
+    fi
+}
+WITH_INGRESS=(--set ingress.enabled=true --set ingress.hostname=blog.example.com)
+notes_say "with an Ingress the notes give the site's URL"  present "WordPress URL: http://blog.example.com/" "${WITH_INGRESS[@]}"
+notes_say "with TLS the URL is https"                      present "WordPress URL: https://blog.example.com/" "${WITH_INGRESS[@]}" --set ingress.tls=true
+notes_say "a templated hostname is rendered"               present "WordPress URL: http://tst.example.com/" \
+        --set ingress.enabled=true --set-json 'ingress.hostname="{{ .Release.Name }}.example.com"'
+notes_say "they name the Ingress to look at"               present "kubectl get ingress --namespace default tst-wordpress-nginx" "${WITH_INGRESS[@]}"
+notes_say "they assume no particular cluster"              absent  "minikube" "${WITH_INGRESS[@]}"
+notes_say "they ask for no change to /etc/hosts"           absent  "/etc/hosts" "${WITH_INGRESS[@]}"
+notes_say "without an Ingress they follow the Service"     present "kubectl get svc --namespace default" 
 
 echo "=== File-integrity watcher renders what it claims"
 # fim_check <desc> <deployment|sidecar> <helm args...>: the structural checks

@@ -77,7 +77,7 @@ diagnosticMode:
 ## @param image.digest WordPress image digest in the way sha256:aa.... Please note this parameter, if set, will override the tag
 ## @param image.pullPolicy WordPress image pull policy
 ## @param image.pullSecrets WordPress image pull secrets
-## @param image.debug Specify if debug values should be set
+## @param image.debug Has no effect; kept for values files written for the Bitnami WordPress chart
 ##
 image:
   registry: ghcr.io
@@ -95,8 +95,10 @@ image:
   ## pullSecrets:
   ##   - myRegistryKeySecretName
   ##
-  ## pullSecrets: []
-  ## Enable debug mode
+  pullSecrets: []
+  ## NOTE: `debug` has no effect: nothing in the chart or the image reads it.
+  ## The key is kept so that a values file written for the Bitnami WordPress
+  ## chart carries over.
   ##
   debug: false
 ## @section WordPress Configuration parameters
@@ -119,11 +121,13 @@ existingSecret: ""
 ## @param wordpressEmail WordPress user email
 ##
 wordpressEmail: user@example.com
-## @param wordpressFirstName WordPress user first name
+## @param wordpressFirstName Has no effect: the image's installer sets no first name
+## @param wordpressLastName Has no effect: the image's installer sets no last name
+## NOTE: the installer creates the administrator from wordpressUsername,
+## wordpressPassword and wordpressEmail alone. The keys are kept so that a
+## values file written for the Bitnami WordPress chart carries over.
 ##
 wordpressFirstName: FirstName
-## @param wordpressLastName WordPress user last name
-##
 wordpressLastName: LastName
 ## @param wordpressBlogName Blog name
 ##
@@ -134,15 +138,28 @@ wordpressTablePrefix: wp_
 ## @param wordpressScheme Scheme to use to generate WordPress URLs
 ##
 wordpressScheme: http
-## @param wordpressSkipInstall Skip wizard installation
-## NOTE: useful if you use an external database that already contains WordPress data
-## ref: https://github.com/ioanalytica/wordpress-nginx
+## @param wordpressSkipInstall Does not skip the installation; only `wordpressConfiguration` and `existingWordPressConfigurationSecret` require it to be `true`
+## NOTE: the image decides by the database, not by this value. On every
+## container start it checks whether the database holds a WordPress
+## installation: where it does, the site is left as it is; where it does not,
+## the installer creates it with wordpressUsername, wordpressPassword,
+## wordpressEmail and wordpressBlogName. An external database that already
+## contains a site therefore needs no setting here.
 ##
 wordpressSkipInstall: false
-## @param wordpressExtraConfigContent Add extra content to the default wp-config.php file
+## @param wordpressExtraConfigContent PHP statements the generated wp-config.php evaluates before it loads WordPress, for constants and settings of your own
+## The content reaches the container as the environment variable
+## WORDPRESS_CONFIG_EXTRA, which the generated wp-config.php evaluates. Write
+## statements, without an opening `<?php` tag. A statement PHP cannot parse
+## stops every request, so try the content on a test release first.
+## NOTE: an entry named WORDPRESS_CONFIG_EXTRA in extraEnvVars takes
+## precedence; this value is then not rendered. A variable of that name from
+## extraEnvVarsCM or extraEnvVarsSecret does not: the chart cannot see into
+## those, and a container's own variable wins over one from such a source.
+## Set the content in one place.
 ## e.g:
 ## wordpressExtraConfigContent: |
-##   @ini_set( 'post_max_size', '128M');
+##   define( 'WP_POST_REVISIONS', 10 );
 ##   @ini_set( 'memory_limit', '256M' );
 ##
 wordpressExtraConfigContent: ""
@@ -175,9 +192,10 @@ wordpressCacheInstanceId: ~
 ## silently degrades to no page caching at all.
 ##
 ## Those plugins normally write the constant into wp-config.php themselves.
-## That does not survive here: this chart regenerates wp-config.php on every
-## container start, so a plugin-written constant is gone after the next
-## restart or rollout. Setting it from the chart makes it durable.
+## That does not survive here: the init container writes wp-config.php anew
+## for every pod, so a plugin-written constant is gone with the next pod - a
+## rollout, or a pod that is rescheduled or deleted. Setting it from the
+## chart makes it durable.
 ##
 ## Leave unset (`null`) to follow `wordpressConfigureCache`, which is the right
 ## default when the bundled W3 Total Cache integration configures the cache.
@@ -186,16 +204,19 @@ wordpressCacheInstanceId: ~
 ## @param wordpressWpCache [nullable] Define `WP_CACHE` in wp-config.php. `null` follows `wordpressConfigureCache`; `true`/`false` set it explicitly
 ##
 wordpressWpCache: ~
-## @param wordpressPlugins Array of plugins to install and activate. Can be specified as `all` or `none`.
-## NOTE: If set to all, only plugins that are already installed will be activated, and if set to none, no plugins will be activated
+## @param wordpressPlugins Has no effect; use `wordpressPreinstallPlugins` to install and activate plugins
+## NOTE: the image does not read the list. The key is kept so that a values
+## file written for the Bitnami WordPress chart carries over.
 ##
 wordpressPlugins: none
-## @param nginxConfiguration The content for your custom nginx.conf file (advanced feature)
+## @param nginxConfiguration Has no effect on NGINX: the content is rendered into a ConfigMap that no container mounts
+## @param existingNginxConfigurationConfigMap Has no effect on NGINX: the ConfigMap it names becomes a pod volume that no container mounts. The ConfigMap has to exist, or the pod does not start
+## NOTE: the image's own nginx.conf stays in place. To add to the server
+## block use nginxCustomServerBlockAddition below; rules of a single site also
+## go into the nginx.conf on the site's volume, which the server block
+## includes.
 ##
 nginxConfiguration: ""
-## @param existingNginxConfigurationConfigMap The name of an existing secret with your custom nginx.conf file (advanced feature)
-## NOTE: When it's set the `nginxConfiguration` parameter is ignored
-##
 existingNginxConfigurationConfigMap: ""
 ## @param nginxCustomServerBlockAddition Additional content that's being added to all NGINX server blocks
 ## The content is projected into the nginx container as `/etc/nginx/custom.d/01_userconfig.conf`
@@ -273,8 +294,8 @@ restApiHardening:
 ##         /wp-content/uploads/x does not match /wp-content/uploads/xy) or,
 ##         when it starts with "~", a complete NGINX regex taken verbatim.
 ## action: deny (403) or honeypot (418). CrowdSec's http-teapot-ban scenario
-##         bans any source that receives a 418, so a honeypot makes probers of
-##         a known-removed backdoor ban themselves.
+##         bans any source that receives a 418, so a honeypot on a path that
+##         no visitor has a reason to request makes probers ban themselves.
 ## reason: free text, rendered as a comment above the rule.
 ## @param nginx.deniedPaths [array] Paths NGINX refuses for every caller. Each entry: `path`, `action` (`deny` | `honeypot`), `reason`
 ## @param nginx.htaccessPolicy What the init container does when it finds `.htaccess` files under wp-content: `warn` logs them and lists the directories that are not covered by `nginx.deniedPaths`; `fail` refuses to start the pod while any such directory is uncovered
@@ -286,9 +307,9 @@ nginx:
   ##   - path: /wp-content/uploads/dlm_uploads
   ##     action: deny
   ##     reason: Download Monitor - force downloads through the permission check
-  ##   - path: ~* ^/wp-content/themes/config-1785900943/
+  ##   - path: ~* ^/wp-content/plugins/retired-plugin/
   ##     action: honeypot
-  ##     reason: incident 2026-08, removed backdoor; probers ban themselves via 418
+  ##     reason: plugin no longer installed here - only scanners ask for it, and ban themselves via 418
   htaccessPolicy: warn
 ## @param wordpressPreinstallPlugins [array] Plugins installed, activated and set to auto-update on every container start. Each entry: `name` (wordpress.org slug), `activate` (default true), `autoUpdate` (default true)
 ## The install step needs egress to wordpress.org; without it the step is
@@ -320,7 +341,7 @@ customPostInitScripts: {}
 ## Without smtpHost, every send fails loudly in the container log
 ## ("[mail error] SMTP_HOST is not defined").
 ## @param smtpHost SMTP relay host
-## @param smtpPort SMTP relay port (empty: msmtp's default, 25)
+## @param smtpPort SMTP relay port (empty: msmtp's default, which is 25, or 465 with smtpProtocol "ssl")
 ## @param smtpUser SMTP username. Authentication switches on as soon as a user or password is set
 ## @param smtpPassword SMTP user password
 ## @param smtpProtocol Connection security: "tls" = STARTTLS (usually port 587), "ssl" = implicit TLS (smtps, port 465), "none" = unencrypted even with credentials (internal relays without TLS only), empty = unencrypted without credentials and STARTTLS as soon as smtpUser or a password is set. Any other value fails the render
@@ -339,16 +360,13 @@ smtpFromName: ""
 ## NOTE: When it's set, the `smtpPassword` parameter is ignored
 ##
 smtpExistingSecret: ""
-## @param allowEmptyPassword Allow the container to be started with blank passwords
+## @param allowEmptyPassword Has no effect: the image does not read it
+## @param overrideDatabaseSettings Has no effect: wp-config.php is written anew for every pod and takes the database settings from the values each time
+## NOTE: the keys are kept so that a values file written for the Bitnami
+## WordPress chart carries over.
 ##
 allowEmptyPassword: true
-## @param overrideDatabaseSettings Allow overriding the database settings persisted in wp-config.php
-##
 overrideDatabaseSettings: false
-## @param customHTAccessCM The name of an existing ConfigMap with custom htaccess rules
-## NOTE: Must contain key `wordpress-htaccess.conf` with the file content TODO
-##
-customHTAccessCM: ""
 ## @param command Override default container command (useful when using custom images)
 ##
 command: []
@@ -369,13 +387,16 @@ extraEnvVarsCM: ""
 ##
 extraEnvVarsSecret: ""
 ## @section WordPress Multisite Configuration parameters
-## WordPress Multisite configuration
+## NOTE: these values have no effect. The chart passes them to the container
+## as environment variables, and the image reads none of them: it neither
+## converts a site into a network nor configures one. The keys are kept so
+## that a values file written for the Bitnami WordPress chart carries over.
 ##
 
-## @param multisite.enable Whether to enable WordPress Multisite configuration.
-## @param multisite.host WordPress Multisite hostname/address. This value is mandatory when enabling Multisite mode.
-## @param multisite.networkType WordPress Multisite network type to enable. Allowed values: `subfolder`, `subdirectory` or `subdomain`.
-## @param multisite.enableNipIoRedirect Whether to enable IP address redirection to nip.io wildcard DNS. Useful when running on an IP address with subdomain network type.
+## @param multisite.enable Has no effect: the image does not set up WordPress Multisite
+## @param multisite.host Has no effect, see `multisite.enable`
+## @param multisite.networkType Has no effect, see `multisite.enable`
+## @param multisite.enableNipIoRedirect Has no effect, see `multisite.enable`
 ##
 multisite:
   enable: false
@@ -542,30 +563,42 @@ podSecurityContext:
   sysctls: []
   supplementalGroups: []
   fsGroup: 1001
-## Configure Container Security Context (only main container)
+## Configure Container Security Context, of the WordPress container and of
+## the init container that prepares the volume
 ## ref: https://kubernetes.io/docs/tasks/configure-pod-container/security-context/#set-the-security-context-for-a-container
+##
+## The image has to start as root: its init system refuses any other user and
+## writes to the root filesystem while starting. The init container sets the
+## owner of the files it creates on the volume. So the defaults keep the user
+## root, the root filesystem writable and the container runtime's default
+## capabilities, and what `enabled: true` adds is
+## `allowPrivilegeEscalation: false`, `privileged: false` and the
+## `RuntimeDefault` seccomp profile.
+## With `runAsNonRoot: true`, a `runAsUser` other than 0,
+## `readOnlyRootFilesystem: true` or all capabilities dropped the pod does not
+## start.
 ## @param containerSecurityContext.enabled Enabled containers' Security Context
 ## @param containerSecurityContext.seLinuxOptions [object,nullable] Set SELinux options in container
-## @param containerSecurityContext.runAsUser Set containers' Security Context runAsUser
+## @param containerSecurityContext.runAsUser Set containers' Security Context runAsUser; the image needs 0
 ## @param containerSecurityContext.runAsGroup Set containers' Security Context runAsGroup
-## @param containerSecurityContext.runAsNonRoot Set container's Security Context runAsNonRoot
+## @param containerSecurityContext.runAsNonRoot Set container's Security Context runAsNonRoot; the image does not start with `true`
 ## @param containerSecurityContext.privileged Set container's Security Context privileged
-## @param containerSecurityContext.readOnlyRootFilesystem Set container's Security Context readOnlyRootFilesystem
+## @param containerSecurityContext.readOnlyRootFilesystem Set container's Security Context readOnlyRootFilesystem; the image does not start with `true`
 ## @param containerSecurityContext.allowPrivilegeEscalation Set container's Security Context allowPrivilegeEscalation
-## @param containerSecurityContext.capabilities.drop List of capabilities to be dropped
+## @param containerSecurityContext.capabilities.drop List of capabilities to be dropped; the image does not start with `ALL`
 ## @param containerSecurityContext.seccompProfile.type Set container's Security Context seccomp profile
 ##
 containerSecurityContext:
   enabled: false
   seLinuxOptions: {}
-  runAsUser: 1001
-  runAsGroup: 1001
-  runAsNonRoot: true
+  runAsUser: 0
+  runAsGroup: 0
+  runAsNonRoot: false
   privileged: false
-  readOnlyRootFilesystem: true
+  readOnlyRootFilesystem: false
   allowPrivilegeEscalation: false
   capabilities:
-    drop: ["ALL"]
+    drop: []
   seccompProfile:
     type: "RuntimeDefault"
 ## Configure extra options for WordPress containers' liveness, readiness and startup probes
@@ -730,7 +763,7 @@ ingress:
   ## @param ingress.pathType Ingress path type
   ##
   pathType: ImplementationSpecific
-  ## @param ingress.apiVersion Force Ingress API version (automatically detected if not set)
+  ## @param ingress.apiVersion Has no effect: the Ingress API version is always detected from the cluster
   ##
   apiVersion: ""
   ## @param ingress.ingressClassName IngressClass that will be be used to implement the Ingress (Kubernetes 1.18+)
@@ -845,7 +878,7 @@ secondaryIngress:
   ## @param secondaryIngress.pathType Ingress path type
   ##
   pathType: ImplementationSpecific
-  ## @param secondaryIngress.apiVersion Force Ingress API version (automatically detected if not set)
+  ## @param secondaryIngress.apiVersion Has no effect: the Ingress API version is always detected from the cluster
   ##
   apiVersion: ""
   ## @param secondaryIngress.ingressClassName IngressClass that will be be used to implement the Ingress (Kubernetes 1.18+)
@@ -875,9 +908,10 @@ secondaryIngress:
   ## @param secondaryIngress.tls Enable TLS configuration for the host defined at `secondaryIngress.hostname` parameter
   ## TLS certificates will be retrieved from a TLS secret with name: `{{- printf "%s-tls" .Values.secondaryIngress.hostname }}`
   ## You can:
-  ##   - Use the `secondaryIngress.secrets` parameter to create this TLS secret
+  ##   - Use the `ingress.secrets` parameter to create this TLS secret
   ##   - Rely on cert-manager to create it by setting the corresponding annotations
-  ##   - Rely on Helm to create self-signed certificates by setting `ingress.selfSigned=true`
+  ##   - Create the secret outside of this chart and set `secondaryIngress.selfSigned=true`,
+  ##     which adds the TLS entry without generating a certificate
   ##
   tls: false
   ## @param secondaryIngress.tlsWwwPrefix Adds www subdomain to default cert
@@ -885,7 +919,7 @@ secondaryIngress:
   ## Use only when the secondary should SERVE both apex and www variants.
   ## For www→apex (or vanity-domain) REDIRECTS use the `redirect:` block instead.
   tlsWwwPrefix: false
-  ## @param secondaryIngress.selfSigned Create a TLS secret for this ingress record using self-signed certificates generated by Helm
+  ## @param secondaryIngress.selfSigned Add a TLS entry for `secondaryIngress.hostname` to the Ingress. No certificate is generated for it: provide the secret `<hostname>-tls` yourself
   ##
   selfSigned: false
   ## @param secondaryIngress.extraHosts An array with additional hostname(s) to be covered with the ingress record. The host names are templated and thus can contain other variable references.
@@ -913,24 +947,7 @@ secondaryIngress:
   ##   secretName: wordpress.local-tls
   ##
   extraTls: []
-  ## @param secondaryIngress.secrets Custom TLS certificates as secrets
-  ## NOTE: 'key' and 'certificate' are expected in PEM format
-  ## NOTE: 'name' should line up with a 'secretName' set further up
-  ## If it is not set and you're using cert-manager, this is unneeded, as it will create a secret for you with valid certificates
-  ## If it is not set and you're NOT using cert-manager either, self-signed certificates will be created valid for 365 days
-  ## It is also possible to create and manage the certificates outside of this helm chart
-  ## Please see README.md for more information
-  ## e.g:
-  ## secrets:
-  ##   - name: wordpress.local-tls
-  ##     key: |-
-  ##       -----BEGIN RSA PRIVATE KEY-----
-  ##       ...
-  ##       -----END RSA PRIVATE KEY-----
-  ##     certificate: |-
-  ##       -----BEGIN CERTIFICATE-----
-  ##       ...
-  ##       -----END CERTIFICATE-----
+  ## @param secondaryIngress.secrets Has no effect: the chart creates TLS secrets from `ingress.secrets` only, which may name the secret of this Ingress as well
   ##
   secrets: []
   ## @param secondaryIngress.extraRules Additional rules to be covered with this ingress record
@@ -1093,8 +1110,8 @@ pdb:
 ## @param autoscaling.enabled Enable Horizontal POD autoscaling for WordPress
 ## @param autoscaling.minReplicas Minimum number of WordPress replicas
 ## @param autoscaling.maxReplicas Maximum number of WordPress replicas
-## @param autoscaling.targetCPU Target CPU utilization percentage
-## @param autoscaling.targetMemory Target Memory utilization percentage
+## @param autoscaling.targetCPU Target CPU utilization percentage; `false` or `""` leaves the CPU metric out
+## @param autoscaling.targetMemory Target Memory utilization percentage; `false` or `""` leaves the memory metric out
 ##
 autoscaling:
   enabled: false
@@ -1161,6 +1178,7 @@ metrics:
   podAnnotations: {}
   ## Container Security Context
   ## @param metrics.containerSecurityContext.enabled Enabled NGINX Exporter containers' Security Context
+  ## @param metrics.containerSecurityContext.seLinuxOptions [object,nullable] Set SELinux options in the NGINX Exporter container
   ## @param metrics.containerSecurityContext.runAsUser Set NGINX Exporter container's Security Context runAsUser
   ##
   containerSecurityContext:
@@ -1168,6 +1186,29 @@ metrics:
     seLinuxOptions: {}
     runAsUser: 1001
   ## Metrics liveness/readiness/startup probes
+  ## The chart adds what each probe asks: liveness and readiness GET /metrics
+  ## on the exporter's port, startup opens a TCP connection to it.
+  ## @param metrics.livenessProbe.enabled Enable livenessProbe on the NGINX Exporter container
+  ## @param metrics.livenessProbe.initialDelaySeconds Initial delay seconds for livenessProbe
+  ## @param metrics.livenessProbe.periodSeconds Period seconds for livenessProbe
+  ## @param metrics.livenessProbe.timeoutSeconds Timeout seconds for livenessProbe
+  ## @param metrics.livenessProbe.failureThreshold Failure threshold for livenessProbe
+  ## @param metrics.livenessProbe.successThreshold Success threshold for livenessProbe
+  ## @param metrics.readinessProbe.enabled Enable readinessProbe on the NGINX Exporter container
+  ## @param metrics.readinessProbe.initialDelaySeconds Initial delay seconds for readinessProbe
+  ## @param metrics.readinessProbe.periodSeconds Period seconds for readinessProbe
+  ## @param metrics.readinessProbe.timeoutSeconds Timeout seconds for readinessProbe
+  ## @param metrics.readinessProbe.failureThreshold Failure threshold for readinessProbe
+  ## @param metrics.readinessProbe.successThreshold Success threshold for readinessProbe
+  ## @param metrics.startupProbe.enabled Enable startupProbe on the NGINX Exporter container
+  ## @param metrics.startupProbe.initialDelaySeconds Initial delay seconds for startupProbe
+  ## @param metrics.startupProbe.periodSeconds Period seconds for startupProbe
+  ## @param metrics.startupProbe.timeoutSeconds Timeout seconds for startupProbe
+  ## @param metrics.startupProbe.failureThreshold Failure threshold for startupProbe
+  ## @param metrics.startupProbe.successThreshold Success threshold for startupProbe
+  ## @param metrics.customLivenessProbe Custom livenessProbe that overrides the default one
+  ## @param metrics.customReadinessProbe Custom readinessProbe that overrides the default one
+  ## @param metrics.customStartupProbe Custom startupProbe that overrides the default one
   ##
   livenessProbe:
     enabled: true
@@ -1249,14 +1290,14 @@ metrics:
     ## scrapeTimeout: 10s
     ##
     scrapeTimeout: ""
-    ## @param metrics.serviceMonitor.selector Prometheus instance selector labels
+    ## @param metrics.serviceMonitor.selector Labels the Prometheus instance selects its ServiceMonitors by; added to the ServiceMonitor's labels
     ## ref: https://github.com/prometheus-operator/prometheus-operator
     ##
     ## selector:
     ##   prometheus: my-prometheus
     ##
     selector: {}
-    ## @param metrics.serviceMonitor.labels Additional labels that can be used so PodMonitor will be discovered by Prometheus
+    ## @param metrics.serviceMonitor.labels Additional labels of the ServiceMonitor; a key set here wins over the same key in `selector`
     ##
     labels: {}
     ## @param metrics.serviceMonitor.relabelings RelabelConfigs to apply to samples before scraping
@@ -1268,35 +1309,12 @@ metrics:
     ## @param metrics.serviceMonitor.honorLabels honorLabels chooses the metric's labels on collisions with target labels
     ##
     honorLabels: false
-  ## Prometheus Operator PrometheusRule configuration
-  ##
-  prometheusRule:
-    ## @param metrics.prometheusRule.enabled if `true`, creates a Prometheus Operator PrometheusRule (also requires `metrics.enabled` to be `true` and `metrics.prometheusRule.rules`)
-    ##
-    enabled: false
-    ## @param metrics.prometheusRule.namespace Namespace for the PrometheusRule Resource (defaults to the Release Namespace)
-    ##
-    namespace: ""
-    ## @param metrics.prometheusRule.additionalLabels Additional labels that can be used so PrometheusRule will be discovered by Prometheus
-    ##
-    additionalLabels: {}
-    ## @param metrics.prometheusRule.rules Prometheus Rule definitions
-    ##   - alert: LowInstance
-    ##     expr: up{service="{{ template "common.names.fullname" . }}"} < 1
-    ##     for: 1m
-    ##     labels:
-    ##       severity: critical
-    ##     annotations:
-    ##       description: Service {{ template "common.names.fullname" . }} Tomcat is down since 1m.
-    ##       summary: Tomcat instance is down.
-    ##
-    rules: []
 
 ## @section Search Index (idx) Parameters
 ##
 
 ## wordpress-idx search sidecar configuration
-## ref: https://gitlab.ioanalytica.com/io/wordpress-idx
+## ref: https://github.com/ioanalytica/wordpress-idx
 ##
 idx:
   ## @param idx.enabled Enable wordpress-idx search sidecar container
@@ -1692,7 +1710,11 @@ externalDatabase:
   ## @param externalDatabase.database External Database database name
   ##
   database: wordpress
+  ## @param externalDatabase.databaseCharset External Database character set (`DB_CHARSET` in wp-config.php)
+  ##
   databaseCharset: "utf8mb4"
+  ## @param externalDatabase.databaseCollation External Database collation (`DB_COLLATE` in wp-config.php); empty leaves it to the character set
+  ##
   databaseCollation: ""
   ## @param externalDatabase.existingSecret The name of an existing secret with database credentials. Evaluated as a template
   ## NOTE: Must contain key `mariadb-password`

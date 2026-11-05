@@ -9,9 +9,15 @@ kind: ServiceMonitor
 metadata:
   name: {{ include "common.names.fullname" . }}
   namespace: {{ default .Release.Namespace .Values.metrics.serviceMonitor.namespace | quote }}
-  {{- $labels := include "common.tplvalues.merge" ( dict "values" ( list .Values.metrics.serviceMonitor.labels .Values.commonLabels ) "context" . ) }}
+  {{- /*
+  selector holds the labels a Prometheus selects its ServiceMonitors by, as
+  in the Bitnami chart; they are labels of this object like `labels`, which
+  wins where both name a key. The component label is part of the same merge
+  and wins over both: written out below the others, a value that names it
+  too would put the key into the manifest twice.
+  */}}
+  {{- $labels := include "common.tplvalues.merge" ( dict "values" ( list (dict "app.kubernetes.io/component" "metrics") .Values.metrics.serviceMonitor.labels .Values.metrics.serviceMonitor.selector .Values.commonLabels ) "context" . ) }}
   labels: {{- include "common.labels.standard" ( dict "customLabels" $labels "context" $ ) | nindent 4 }}
-    app.kubernetes.io/component: metrics
   {{- if .Values.commonAnnotations }}
   annotations: {{- include "common.tplvalues.render" ( dict "value" .Values.commonAnnotations "context" $ ) | nindent 4 }}
   {{- end }}
@@ -28,8 +34,14 @@ spec:
       scrapeTimeout: {{ .Values.metrics.serviceMonitor.scrapeTimeout }}
       {{- end }}
       honorLabels: {{ .Values.metrics.serviceMonitor.honorLabels }}
-      {{- if .Values.metrics.serviceMonitor.relabellings }}
-      metricRelabelings: {{- toYaml .Values.metrics.serviceMonitor.relabellings | nindent 8 }}
+      {{- /*
+      Up to 7.1.408 this read a key of another spelling (relabellings), so
+      the documented metricRelabelings did nothing. A release that set the
+      other spelling to get its rules applied keeps them.
+      */}}
+      {{- $metricRelabelings := .Values.metrics.serviceMonitor.metricRelabelings | default .Values.metrics.serviceMonitor.relabellings }}
+      {{- if $metricRelabelings }}
+      metricRelabelings: {{- toYaml $metricRelabelings | nindent 8 }}
       {{- end }}
       {{- if .Values.metrics.serviceMonitor.relabelings }}
       relabelings: {{- toYaml .Values.metrics.serviceMonitor.relabelings | nindent 6 }}

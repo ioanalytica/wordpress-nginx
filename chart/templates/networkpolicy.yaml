@@ -67,8 +67,21 @@ spec:
         {{- if and .Values.fim.enabled (eq .Values.fim.mode "sidecar") }}
         - port: {{ .Values.fim.port }}
         {{- end }}
-        {{- range .Values.extraContainerPorts }}
-        - port: {{ . }}
+        {{- if .Values.metrics.enabled }}
+        - port: {{ .Values.metrics.containerPorts.metrics }}
+        {{- end }}
+        {{- /*
+        extraContainerPorts holds container ports (name, containerPort,
+        protocol), as a list or as text for the template engine, which is
+        how the Deployment renders it. The policy takes number and protocol.
+        */}}
+        {{- range (include "wordpress.renderedList" (dict "value" .Values.extraContainerPorts "context" $) | fromYaml).items }}
+        {{- if kindIs "map" . }}
+        - port: {{ .containerPort }}
+          {{- if .protocol }}
+          protocol: {{ .protocol }}
+          {{- end }}
+        {{- end }}
         {{- end }}
       {{- if not .Values.networkPolicy.allowExternal }}
       from:
