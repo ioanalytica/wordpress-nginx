@@ -2018,18 +2018,20 @@
           "default": 11
         },
         "targetCPU": {
-          "description": "Target CPU utilization percentage",
+          "description": "Target CPU utilization percentage; `false` or `\"\"` leaves the CPU metric out",
           "type": [
             "integer",
-            "string"
+            "string",
+            "boolean"
           ],
           "default": 50
         },
         "targetMemory": {
-          "description": "Target Memory utilization percentage",
+          "description": "Target Memory utilization percentage; `false` or `\"\"` leaves the memory metric out",
           "type": [
             "integer",
-            "string"
+            "string",
+            "boolean"
           ],
           "default": 50
         }
@@ -2469,6 +2471,7 @@
                 "string"
               ],
               "maxItems": 0,
+              "maxLength": 0,
               "default": {}
             },
             "labels": {
@@ -2479,6 +2482,7 @@
                 "string"
               ],
               "maxItems": 0,
+              "maxLength": 0,
               "default": {}
             },
             "relabelings": {

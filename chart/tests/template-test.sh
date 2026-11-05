@@ -729,6 +729,17 @@ expect "the overruled selector label is gone"    absent  "release: theirs" "${SM
         --set metrics.serviceMonitor.selector.release=theirs --set metrics.serviceMonitor.labels.release=mine
 check  "selector and labels naming one key"      "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true \
         --set metrics.serviceMonitor.selector.release=theirs --set metrics.serviceMonitor.labels.release=mine
+# The ServiceMonitor's own component label is one of these labels: a value
+# that names the key must not put it into the manifest a second time.
+expect "the component label stays metrics"       present "app.kubernetes.io/component: metrics" "${SM[@]}" \
+        --set-json 'metrics.serviceMonitor.selector={"app.kubernetes.io/component":"other"}'
+expect "a value cannot rename the component"     absent  "app.kubernetes.io/component: other" "${SM[@]}" \
+        --set-json 'metrics.serviceMonitor.selector={"app.kubernetes.io/component":"other"}' \
+        --set-json 'metrics.serviceMonitor.labels={"app.kubernetes.io/component":"other"}'
+check  "selector naming the component label"     "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true \
+        --set-json 'metrics.serviceMonitor.selector={"app.kubernetes.io/component":"metrics"}'
+check  "labels naming the component label"       "${METRICS[@]}" --set metrics.serviceMonitor.enabled=true \
+        --set-json 'metrics.serviceMonitor.labels={"app.kubernetes.io/component":"metrics"}'
 
 echo "=== NetworkPolicy admits the ports the pod declares"
 # extraContainerPorts entries are container ports (name, containerPort); the

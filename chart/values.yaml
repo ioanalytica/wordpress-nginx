@@ -1110,8 +1110,8 @@ pdb:
 ## @param autoscaling.enabled Enable Horizontal POD autoscaling for WordPress
 ## @param autoscaling.minReplicas Minimum number of WordPress replicas
 ## @param autoscaling.maxReplicas Maximum number of WordPress replicas
-## @param autoscaling.targetCPU Target CPU utilization percentage
-## @param autoscaling.targetMemory Target Memory utilization percentage
+## @param autoscaling.targetCPU Target CPU utilization percentage; `false` or `""` leaves the CPU metric out
+## @param autoscaling.targetMemory Target Memory utilization percentage; `false` or `""` leaves the memory metric out
 ##
 autoscaling:
   enabled: false

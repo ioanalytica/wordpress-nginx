@@ -102,6 +102,9 @@ passes --set-string externalDatabase.port=3306 --set mariadb.enabled=false --set
 passes --set wordpressCacheInstanceId=1512969306
 passes --set wordpressWpCache=true
 passes --set wordpressPlugins=all
+# false leaves a metric out of the HPA.
+passes --set autoscaling.enabled=true --set autoscaling.targetCPU=60 --set autoscaling.targetMemory=false
+passes --set autoscaling.enabled=true --set autoscaling.targetCPU= --set autoscaling.targetMemory=70
 passes --set-json 'wordpressPlugins=["akismet","hello"]'
 # Switches as 0/1, which a template's `if` reads as off and on, and as text.
 passes --set fim.enabled=1
