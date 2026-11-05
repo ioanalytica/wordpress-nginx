@@ -1,0 +1,4 @@
+[submodule "wordpress-idx"]
+	path = wordpress-idx
+	url = https://github.com/ioanalytica/wordpress-idx.git
+	branch = main
