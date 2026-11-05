@@ -97,7 +97,8 @@ image:
   ##
   pullSecrets: []
   ## NOTE: `debug` has no effect: nothing in the chart or the image reads it.
-  ## The key is kept so that a values file written for the Bitnami WordPress chart carries over.
+  ## The key is kept so that a values file written for the Bitnami WordPress
+  ## chart carries over.
   ##
   debug: false
 ## @section WordPress Configuration parameters
@@ -123,7 +124,8 @@ wordpressEmail: user@example.com
 ## @param wordpressFirstName Has no effect: the image's installer sets no first name
 ## @param wordpressLastName Has no effect: the image's installer sets no last name
 ## NOTE: the installer creates the administrator from wordpressUsername,
-## wordpressPassword and wordpressEmail alone. The key is kept so that a values file written for the Bitnami WordPress chart carries over.
+## wordpressPassword and wordpressEmail alone. The keys are kept so that a
+## values file written for the Bitnami WordPress chart carries over.
 ##
 wordpressFirstName: FirstName
 wordpressLastName: LastName
@@ -200,7 +202,8 @@ wordpressCacheInstanceId: ~
 ##
 wordpressWpCache: ~
 ## @param wordpressPlugins Has no effect; use `wordpressPreinstallPlugins` to install and activate plugins
-## NOTE: the image does not read the list. The key is kept so that a values file written for the Bitnami WordPress chart carries over.
+## NOTE: the image does not read the list. The key is kept so that a values
+## file written for the Bitnami WordPress chart carries over.
 ##
 wordpressPlugins: none
 ## @param nginxConfiguration Has no effect on NGINX: the content is rendered into a ConfigMap that no container mounts
@@ -356,7 +359,8 @@ smtpFromName: ""
 smtpExistingSecret: ""
 ## @param allowEmptyPassword Has no effect: the image does not read it
 ## @param overrideDatabaseSettings Has no effect: wp-config.php is written anew for every pod and takes the database settings from the values each time
-## NOTE: The key is kept so that a values file written for the Bitnami WordPress chart carries over.
+## NOTE: the keys are kept so that a values file written for the Bitnami
+## WordPress chart carries over.
 ##
 allowEmptyPassword: true
 overrideDatabaseSettings: false
@@ -382,7 +386,8 @@ extraEnvVarsSecret: ""
 ## @section WordPress Multisite Configuration parameters
 ## NOTE: these values have no effect. The chart passes them to the container
 ## as environment variables, and the image reads none of them: it neither
-## converts a site into a network nor configures one. The key is kept so that a values file written for the Bitnami WordPress chart carries over.
+## converts a site into a network nor configures one. The keys are kept so
+## that a values file written for the Bitnami WordPress chart carries over.
 ##
 
 ## @param multisite.enable Has no effect: the image does not set up WordPress Multisite
