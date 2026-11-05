@@ -25,7 +25,7 @@ wordpressExtraConfigContent: |
 ```
 
 The content reaches the container as the environment variable
-`WORDPRESS_CONFIG_EXTRA`. Chart versions up to 7.1.408 do not read
+`WORDPRESS_CONFIG_EXTRA`. Released chart versions up to 7.1.408 do not read
 `wordpressExtraConfigContent`; there, set that variable yourself:
 
 ```yaml
@@ -71,7 +71,7 @@ run with:
 
 <!--@include: ../../chart/README.md#security-context-->
 
-::: warning Chart versions up to 7.1.408
+::: warning Released chart versions up to 7.1.408
 There the defaults of `containerSecurityContext` were those of the Bitnami
 chart (user 1001, `runAsNonRoot`, a read-only root filesystem, all
 capabilities dropped), and a pod with `enabled: true` did not start. On such

@@ -263,8 +263,8 @@ without that integration, or to force page caching off regardless.
 
 Note the same regeneration applies to any other constant a plugin writes into
 `wp-config.php`. If you depend on one, put it in `wordpressExtraConfigContent`
-rather than relying on the plugin's edit to persist. Chart versions up to
-7.1.408 do not read that value; there, set the environment variable
+rather than relying on the plugin's edit to persist. Released chart versions
+up to 7.1.408 do not read that value; there, set the environment variable
 `WORDPRESS_CONFIG_EXTRA` through `extraEnvVars`.
 
 <!-- #endregion cache -->
@@ -439,8 +439,11 @@ and a configuration change appears to have no effect, `kubectl rollout restart`
 the deployment.
 
 `nginxConfiguration` and `existingNginxConfigurationConfigMap` do not belong
-to this list: their ConfigMap is rendered, but no container mounts it, so the
-image's `nginx.conf` stays in place. Additions to the server block go into
+to this list. The content of the first is rendered into a ConfigMap, the
+second names a ConfigMap of your own; either becomes a pod volume that no
+container mounts, so the image's `nginx.conf` stays in place. A ConfigMap
+named in `existingNginxConfigurationConfigMap` has to exist all the same, or
+the pod does not start. Additions to the server block go into
 `nginxCustomServerBlockAddition`.
 
 <!-- #endregion nginx-changes -->

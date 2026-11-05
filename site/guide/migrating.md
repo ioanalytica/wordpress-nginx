@@ -78,7 +78,8 @@ image has to start as root; see
   site is left as it is.
 - **`wordpressExtraConfigContent`** is evaluated by the generated
   `wp-config.php` as PHP statements, not appended to the file; write it
-  without an opening `<?php` tag. Chart versions up to 7.1.408 do not read it;
+  without an opening `<?php` tag. Released chart versions up to 7.1.408 do
+  not read it;
   see [Configuration](/guide/configuration#wordpress-settings).
 - **`secondaryIngress.selfSigned`** adds the TLS entry to the second Ingress
   and generates no certificate for it.
@@ -98,7 +99,8 @@ These keys exist so that a values file carries over, and nothing reads them:
 | `allowEmptyPassword` | A password left empty in the values is generated. |
 | `overrideDatabaseSettings` | `wp-config.php` is written anew for every pod and takes the database settings from the values each time. |
 | `multisite` | The image does not set up WordPress Multisite. |
-| `nginxConfiguration`, `existingNginxConfigurationConfigMap` | A ConfigMap is rendered and mounted nowhere. `nginxCustomServerBlockAddition` adds to the server block. |
+| `nginxConfiguration` | Its content is rendered into a ConfigMap that no container mounts. `nginxCustomServerBlockAddition` adds to the server block. |
+| `existingNginxConfigurationConfigMap` | Nothing is rendered for it; the ConfigMap it names becomes a pod volume that no container mounts. That ConfigMap has to exist all the same: a pod whose volume names a missing ConfigMap does not start. |
 | `image.debug` | |
 | `ingress.apiVersion`, `secondaryIngress.apiVersion` | The Ingress API version is detected from the cluster. |
 | `secondaryIngress.secrets` | `ingress.secrets` creates TLS secrets, also the one of the second Ingress. |

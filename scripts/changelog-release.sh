@@ -51,8 +51,9 @@ case "$unreleased" in
     first_section="$(grep -m 1 '^## ' "$file")"
     [ "$first_section" = "## Unreleased" ] \
       || fail "'## Unreleased' must be the first section of $file, which is '$first_section'"
+    # Lines that say something: a subheading alone ("### Chart") does not.
     entries="$(awk '$0 == "## Unreleased" { inside = 1; next } inside && /^## / { exit }
-                    inside && NF { n++ } END { print n + 0 }' "$file")"
+                    inside && NF && !/^#/ { n++ } END { print n + 0 }' "$file")"
     [ "$entries" -gt 0 ] || [ -n "$line" ] \
       || fail "the Unreleased section of $file is empty, so the entry for $version needs a LINE"
     ;;

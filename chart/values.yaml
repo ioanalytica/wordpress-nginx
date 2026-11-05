@@ -210,7 +210,7 @@ wordpressWpCache: ~
 ##
 wordpressPlugins: none
 ## @param nginxConfiguration Has no effect on NGINX: the content is rendered into a ConfigMap that no container mounts
-## @param existingNginxConfigurationConfigMap Has no effect on NGINX: the ConfigMap is referenced by a pod volume that no container mounts
+## @param existingNginxConfigurationConfigMap Has no effect on NGINX: the ConfigMap it names becomes a pod volume that no container mounts. The ConfigMap has to exist, or the pod does not start
 ## NOTE: the image's own nginx.conf stays in place. To add to the server
 ## block use nginxCustomServerBlockAddition below; rules of a single site also
 ## go into the nginx.conf on the site's volume, which the server block

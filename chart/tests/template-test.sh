@@ -283,6 +283,9 @@ release_refuses "an entry that would say nothing" \
 release_refuses "an empty Unreleased section without a line" \
     '# Changelog\n\n## Unreleased\n\n## 7.1.408\n\n* Old.\n' \
     7.1.409
+release_refuses "an Unreleased section with a subheading and no line below it" \
+    '# Changelog\n\n## Unreleased\n\n### Chart\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.409
 release_refuses "an Unreleased section below a version" \
     '# Changelog\n\n## 7.1.408\n\n* Old.\n\n## Unreleased\n\n* A fix.\n' \
     7.1.409

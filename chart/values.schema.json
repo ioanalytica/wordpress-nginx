@@ -358,7 +358,7 @@
       "default": ""
     },
     "existingNginxConfigurationConfigMap": {
-      "description": "Has no effect on NGINX: the ConfigMap is referenced by a pod volume that no container mounts",
+      "description": "Has no effect on NGINX: the ConfigMap it names becomes a pod volume that no container mounts. The ConfigMap has to exist, or the pod does not start",
       "type": [
         "string",
         "number"
