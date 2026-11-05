@@ -7,11 +7,13 @@ on:
     paths:
       - 'docker/**'
       - 'chart/**'
+      - 'scripts/**'
       - '.github/workflows/docker-test.yml'
   pull_request:
     paths:
       - 'docker/**'
       - 'chart/**'
+      - 'scripts/**'
       - '.github/workflows/docker-test.yml'
 
 jobs:
