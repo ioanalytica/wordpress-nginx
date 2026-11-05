@@ -6,13 +6,13 @@ name: Try it locally
 # with what the page shows.
 #
 # A pull request runs it with the chart of its checkout. The WordPress image
-# is the registry's as long as the pull request leaves docker/ alone and the
-# image the chart names is published; otherwise it is built from the
-# checkout and loaded into the cluster, so a change to the image, or a chart
-# version whose image does not exist yet, is tested before the release
-# (tests/try-locally/chart.sh decides). The same goes for the search
-# sidecar's image and the wordpress-idx submodule it is built from: the
-# chart version is the tag of both images.
+# is the registry's as long as the image the chart names is published and
+# docker/ is as the release's tag has it; otherwise it is built from the
+# checkout and loaded into the cluster, so a change to the image since the
+# last release, or a chart version whose image does not exist yet, is tested
+# before the release (tests/try-locally/chart.sh decides). The same goes for
+# the search sidecar's image and the wordpress-idx submodule it is built
+# from: the chart version is the tag of both images.
 #
 # A release pipeline can call this workflow with the version it has just
 # published: the chart is then pulled from the registry and installed with
@@ -76,13 +76,12 @@ jobs:
     # time to build the image and to report what it found.
     timeout-minutes: 30
     steps:
-      # Two commits deep: a pull request is checked out as its merge into
-      # the base branch, and chart.sh compares docker/ and the submodule
-      # with the first parent. With the submodule: the search sidecar's
-      # image is built from it when the registry does not have it.
+      # With the submodule: the search sidecar's image is built from it when
+      # the registry does not have it, or has it from another commit. chart.sh
+      # fetches the tag of the release the chart names by itself, to compare
+      # docker/ and the submodule with it.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 2
           submodules: true
           persist-credentials: false
 

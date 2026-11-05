@@ -245,7 +245,6 @@ else ok "no concurrency at the workflow level"; fi
 wf="$(cat "$WF")"
 has "a pull request's newer push replaces its run, no other run is cancelled" \
     "      cancel-in-progress: \${{ github.event_name == 'pull_request' }}" "$wf"
-has "the checkout is two commits deep, for the comparison with the base" "          fetch-depth: 2" "$wf"
 has "the checkout keeps no credentials" "          persist-credentials: false" "$wf"
 has "the checkout has the submodule the sidecar's image is built from" "          submodules: true" "$wf"
 has "the guard test runs before the cluster" "        run: tests/try-locally/test.sh" "$wf"
@@ -290,8 +289,8 @@ echo "=== chart.sh: which chart, and where the image comes from"
 # Stand-ins for helm, docker and git, steered by the environment: helm logs
 # its arguments and lays out what `helm pull --untar` would; docker knows an
 # image, does not know it, or cannot reach the registry, for the sidecar's
-# image by a setting of its own; git says whether HEAD is a merge and
-# whether docker/ or the submodule differ.
+# image by a setting of its own; git fetches the release's tag or fails to,
+# and says whether docker/ or the submodule differ from it.
 mkdir -p "$TMP/bin" "$TMP/runner"
 cat >"$TMP/bin/helm" <<'EOF'
 #!/bin/sh
@@ -314,7 +313,9 @@ EOF
 cat >"$TMP/bin/git" <<'EOF'
 #!/bin/sh
 case "$3" in
-  rev-parse) [ "$STUB_MERGE" = yes ] ;;
+  rev-parse)   # the tag is not in the checkout, which is a shallow one
+    case "$4" in --is-shallow-repository) echo true ;; *) exit 1 ;; esac ;;
+  fetch) shift 2; echo "$*" >>"$GIT_LOG"; [ "$STUB_TAG" = yes ] ;;
   diff)
     for last; do :; done
     case "$last" in
@@ -328,11 +329,12 @@ chmod +x "$TMP"/bin/*
 version="$(sed -n 's/^version: *//p' "$TRY_ROOT/chart/Chart.yaml" | tr -d '"')"
 image="ghcr.io/ioanalytica/wordpress-nginx:$version"
 idx_image="ghcr.io/ioanalytica/wordpress-idx:$version"
-# chart_sh VERSION CHOICE EVENT MERGE DOCKER_CHANGED PUBLISHED - the outputs in $out.
+# chart_sh VERSION CHOICE EVENT TAG DOCKER_CHANGED PUBLISHED - the outputs in $out.
 chart_sh() {
   : >"$TMP/helm.log"
-  out="$(PATH="$TMP/bin:$PATH" HELM_LOG="$TMP/helm.log" RUNNER_TEMP="$TMP/runner" \
-         VERSION="$1" CHOICE="$2" EVENT="$3" STUB_MERGE="$4" STUB_DOCKER_CHANGED="$5" STUB_PUBLISHED="$6" \
+  : >"$TMP/git.log"
+  out="$(PATH="$TMP/bin:$PATH" HELM_LOG="$TMP/helm.log" GIT_LOG="$TMP/git.log" RUNNER_TEMP="$TMP/runner" \
+         VERSION="$1" CHOICE="$2" EVENT="$3" STUB_TAG="$4" STUB_DOCKER_CHANGED="$5" STUB_PUBLISHED="$6" \
          "$HERE/chart.sh" 2>"$TMP/chart.err")" || { bad "chart.sh failed: $(cat "$TMP/chart.err")"; out=""; }
 }
 # get NAME - one output of the last chart_sh call.
@@ -348,13 +350,15 @@ chart_sh 7.1.408 checkout workflow_dispatch no no no
 
 chart_sh "" checkout pull_request yes no yes
 [ "$(get dir)" = "$TRY_ROOT/chart" ] && [ "$(get image)" = "$image" ] && [ -z "$(get build)" ] \
-  && ok "a pull request that leaves docker/ alone, image published: the registry's image" || bad "gives: $out"
+  && ok "docker/ as the release has it, image published: the registry's image" || bad "gives: $out"
 [ "$(get idx_image)" = "$idx_image" ] && [ -z "$(get idx_build)" ] \
-  && ok "... and leaves the submodule alone, sidecar image published: the registry's image" || bad "gives: $out"
+  && ok "the submodule as the release has it, sidecar image published: the registry's image" || bad "gives: $out"
+has "the comparison is with the tag of the chart's version, fetched for it" \
+    "fetch --quiet --depth 1 origin refs/tags/$version:refs/tags/$version" "$(cat "$TMP/git.log")"
 has "the checkout's chart gets its dependencies" "dependency update $TRY_ROOT/chart" "$(cat "$TMP/helm.log")"
 chart_sh "" checkout pull_request yes yes yes
-[ "$(get image)" = "$image" ] && [ "$(get build)" = "the pull request changes docker/" ] \
-  && ok "a pull request that changes docker/: built from the checkout" || bad "gives: $out"
+[ "$(get image)" = "$image" ] && [ "$(get build)" = "docker/ has changed since the release $version" ] \
+  && ok "docker/ changed since the release, in this pull request or before it: built from the checkout" || bad "gives: $out"
 chart_sh "" checkout pull_request yes no no
 [ "$(get build)" = "$image is not in the registry" ] && [ "$(get idx_build)" = "$idx_image is not in the registry" ] \
   && ok "a pull request whose images are not published: both built from the checkout" || bad "gives: $out"
@@ -363,16 +367,24 @@ STUB_IDX_PUBLISHED=no chart_sh "" checkout pull_request yes no yes
 [ -z "$(get build)" ] && [ "$(get idx_build)" = "$idx_image is not in the registry" ] \
   && ok "only the sidecar's image unpublished: only that one is built" || bad "gives: $out"
 STUB_IDX_CHANGED=yes chart_sh "" checkout pull_request yes no yes
-[ -z "$(get build)" ] && [ "$(get idx_build)" = "the pull request changes wordpress-idx" ] \
-  && ok "a pull request that moves the submodule: the sidecar's image is built from it" || bad "gives: $out"
+[ -z "$(get build)" ] && [ "$(get idx_build)" = "wordpress-idx has changed since the release $version" ] \
+  && ok "the submodule moved since the release: the sidecar's image is built from it" || bad "gives: $out"
 # A registry that cannot be reached is neither: the step fails rather than
 # test a rebuilt image in place of the published one.
 if PATH="$TMP/bin:$PATH" HELM_LOG="$TMP/helm.log" RUNNER_TEMP="$TMP/runner" VERSION="" CHOICE=checkout \
-   EVENT=pull_request STUB_MERGE=yes STUB_DOCKER_CHANGED=no STUB_PUBLISHED=down "$HERE/chart.sh" >/dev/null 2>&1; then
+   GIT_LOG="$TMP/git.log" EVENT=pull_request STUB_TAG=yes STUB_DOCKER_CHANGED=no STUB_PUBLISHED=down "$HERE/chart.sh" >/dev/null 2>&1; then
   bad "a registry that cannot be reached reads as an image to build"
 else ok "a registry that cannot be reached fails the step"; fi
-chart_sh "" checkout pull_request no no yes
-[ -n "$(get build)" ] && [ -n "$(get idx_build)" ] && ok "a checkout that is no merge commit: built from the checkout" || bad "gives: $out"
+# So is a release whose tag cannot be fetched: there is nothing to compare
+# the published image's source with.
+if PATH="$TMP/bin:$PATH" HELM_LOG="$TMP/helm.log" RUNNER_TEMP="$TMP/runner" VERSION="" CHOICE=checkout \
+   GIT_LOG="$TMP/git.log" EVENT=pull_request STUB_TAG=no STUB_DOCKER_CHANGED=no STUB_PUBLISHED=yes "$HERE/chart.sh" >/dev/null 2>&1; then
+  bad "a release tag that cannot be fetched reads as an unchanged image"
+else ok "a release tag that cannot be fetched fails the step"; fi
+# An image that is not published needs no tag: there is none yet.
+chart_sh "" checkout pull_request no no no
+[ "$(get build)" = "$image is not in the registry" ] && [ ! -s "$TMP/git.log" ] \
+  && ok "an unpublished image is built without asking for a tag" || bad "gives: $out, git: $(cat "$TMP/git.log")"
 chart_sh "" checkout workflow_dispatch no no yes
 [ -n "$(get build)" ] && [ -n "$(get idx_build)" ] && ok "the checkout by hand: built from the checkout" || bad "gives: $out"
 

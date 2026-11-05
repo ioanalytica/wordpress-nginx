@@ -18,7 +18,7 @@
 
 * A release candidate `x.y.P-rc.N` can be tagged on the commit of its release: it runs the whole release, publishes chart and images at the candidate's version, and leaves `latest` where it is. A version that is in the registry already is refused before anything is built.
 * The GitHub Release takes its notes from this changelog's entry for the version.
-* "Try it locally" builds the sidecar's image from the submodule when the registry does not have it yet, as it does for the WordPress image, and runs after every release against what the release published.
+* "Try it locally" builds the sidecar's image from the submodule when the registry does not have it yet, as it does for the WordPress image, and runs after every release against what the release published. On a pull request it builds an image whose source has changed since the release the chart names, also when an earlier pull request made the change, so the page is always tested with the images the next release would publish.
 * Renovate keeps the entries of the third-party images in the chart's images list in step with their pins; the wordpress-idx submodule moves by hand.
 
 ## 7.1.408

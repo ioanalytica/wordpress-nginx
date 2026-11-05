@@ -24,18 +24,21 @@
 #
 # A published version is pulled from the registry and runs with the images
 # it names. The checkout's chart runs with the registry's images as long as
-# nothing says that the checkout's would differ: on a pull request that
-# leaves docker/ alone and does not move the wordpress-idx submodule, with
-# the images the chart names published. In every other case an image is
-# built from the checkout, the WordPress image from docker/ and the
-# sidecar's from the submodule, each decided for itself, so a pull request
-# is tested with the images it would release:
+# the checkout would build the same ones: the images the chart names are
+# published, and their sources, docker/ and the wordpress-idx submodule, are
+# as the release's tag has them. In every other case an image is built from
+# the checkout, the WordPress image from docker/ and the sidecar's from the
+# submodule, each decided for itself, so a pull request is tested with the
+# images the next release would publish:
 #
-#   - the pull request changes docker/, or moves the submodule;
 #   - the chart names an image the registry does not have, as on a pull
 #     request that raises the chart version, which is the tag of both
 #     images;
-#   - the run was started by hand, where there is no base to compare with.
+#   - the image's source has changed since the release the chart names, in
+#     this pull request or in one merged since: the page is tested as the
+#     checkout has it, and may rely on a change to the image that no
+#     release has published yet;
+#   - the run was started by hand.
 
 set -euo pipefail
 
@@ -53,26 +56,38 @@ build=""
 idx_image=""
 idx_build=""
 
-# why_build IMAGE SOURCE - why IMAGE is built from SOURCE of the checkout
-# (docker/, or the submodule wordpress-idx); nothing when the registry's
-# image is the one to test.
+# why_build IMAGE SOURCE VERSION - why IMAGE is built from SOURCE of the
+# checkout (docker/, or the submodule wordpress-idx); nothing when the
+# registry's image, of the release VERSION, is the one to test.
 why_build() {
-  local missing
+  local missing depth tag="refs/tags/$3"
   if [ "${EVENT:-}" != pull_request ]; then
     echo "a run by hand takes the image from the checkout as well"
-  # A pull request is checked out as its merge into the base branch: the
-  # first parent is the base, the second the pull request's head.
-  elif ! git -C "$ROOT" rev-parse -q --verify 'HEAD^2' >/dev/null; then
-    echo "the checkout is no merge commit, so $2 cannot be compared with the base"
-  elif ! git -C "$ROOT" diff --quiet 'HEAD^1' HEAD -- "$2"; then
-    echo "the pull request changes $2"
-  else
-    # Only an image the registry says it does not have is built here. Any
-    # other answer fails the step (unpublished, in lib.sh): a registry that
-    # cannot be reached must not turn a run with the published image into
-    # one with a rebuilt image.
-    missing="$(unpublished "$1")" || return
-    [ -z "$missing" ] || echo "$1 is not in the registry"
+    return
+  fi
+  # Only an image the registry says it does not have counts as missing. Any
+  # other answer fails the step (unpublished, in lib.sh): a registry that
+  # cannot be reached must not turn a run with the published image into one
+  # with a rebuilt image.
+  missing="$(unpublished "$1")" || return
+  if [ -n "$missing" ]; then
+    echo "$1 is not in the registry"
+    return
+  fi
+  # The registry's image was built from the commit the release's tag names.
+  # A runner's checkout holds no tags, so that one is fetched, one commit
+  # deep where the checkout is shallow itself (a complete clone must not
+  # become a shallow one). A tag that cannot be fetched fails the step, for
+  # the same reason as above.
+  if ! git -C "$ROOT" rev-parse -q --verify "$tag^{commit}" >/dev/null; then
+    depth=""
+    [ "$(git -C "$ROOT" rev-parse --is-shallow-repository)" != true ] || depth="--depth 1"
+    # shellcheck disable=SC2086 # one option and its value, or nothing
+    git -C "$ROOT" fetch --quiet $depth origin "$tag:$tag" \
+      || { echo "ERROR: cannot fetch the tag $3, which $1 was built from" >&2; return 1; }
+  fi
+  if ! git -C "$ROOT" diff --quiet "$tag" HEAD -- "$2"; then
+    echo "$2 has changed since the release $3"
   fi
 }
 
@@ -88,9 +103,9 @@ elif [ "${CHOICE:-}" = checkout ]; then
   # The chart version is the tag of both images. Assignments of their own:
   # inside a test, a failure of why_build would be lost.
   image="$IMAGE_REPO:$version"
-  build="$(why_build "$image" docker/)"
+  build="$(why_build "$image" docker/ "$version")"
   idx_image="$IDX_REPO:$version"
-  idx_build="$(why_build "$idx_image" wordpress-idx)"
+  idx_build="$(why_build "$idx_image" wordpress-idx "$version")"
 fi
 
 echo "dir=$dir"
