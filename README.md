@@ -8,7 +8,7 @@ Documentation: [wordpress-nginx.ioanalytica.com](https://wordpress-nginx.ioanaly
 
 ### [Helm Chart](chart/)
 
-Deploys WordPress with NGINX on Kubernetes. Supports Memcached, Redis, and Dragonfly for caching, plus an optional [wordpress-idx](https://github.com/ioanalytica/wordpress-idx) sidecar for full-text search.
+Deploys WordPress with NGINX on Kubernetes. Supports Memcached, Redis, and Dragonfly for caching, plus an optional [wordpress-idx](https://github.com/ioanalytica/wordpress-idx) sidecar for full-text search, whose image is built here as well, from the `wordpress-idx` submodule.
 
 ```bash
 kubectl create secret generic my-wordpress-db --from-file=mariadb-password=./db-password.txt
@@ -42,6 +42,62 @@ Custom WordPress image based on [shinsenter/php](https://code.shin.company/php) 
 Includes WordPress, NGINX with optimised configuration, PHP extensions (imagick, memcache, redis), WP-CLI, and a health check endpoint at `/healthz.php`. A PHP execution allowlist restricts PHP execution to known WordPress entry points, so PHP files planted in writable locations such as `wp-content/uploads` are never executed (see the [chart README](chart/README.md#php-execution-allowlist)).
 
 <!-- #endregion image -->
+
+## Verify a release
+
+<!-- #region verify -->
+Releases after 7.1.408 sign both images and the chart with
+[Sigstore](https://www.sigstore.dev/) cosign, keyless: the certificate is
+issued to this repository's `release.yml` running for the release tag, and
+each signature is recorded in the public Rekor log. Every platform of an image
+also carries an SPDX SBOM and SLSA provenance. Both are attestation manifests
+listed in the image index, so the index's signature covers them.
+
+A release sets its tags only once the signatures are in place: until then the
+images and the chart are in the registry under their digests alone, so no tag
+names an artifact that is not signed yet.
+
+Resolve the tag once and use the digest from then on, so that what you read
+afterwards belongs to what you verified. The identity names the release's
+tag, so the check also fails for a tag that was pointed at the image of
+another release. With
+[cosign](https://docs.sigstore.dev/cosign/system_config/installation/) 3:
+
+```sh
+# Signed: ghcr.io/ioanalytica/wordpress-nginx, ghcr.io/ioanalytica/wordpress-idx
+# and ghcr.io/ioanalytica/charts/wordpress-nginx
+version=<version>
+repo=ghcr.io/ioanalytica/wordpress-nginx
+digest=$(docker buildx imagetools inspect "$repo:$version" --format '{{json .Manifest}}' | jq -r .digest)
+cosign verify "$repo@$digest" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity "https://github.com/ioanalytica/wordpress-nginx/.github/workflows/release.yml@refs/tags/$version"
+```
+
+The version in the identity is the release's, the chart version, also where
+an image has another tag: `latest`, or a `1.x.y` tag of the sidecar (below).
+For those, `--certificate-identity-regexp` with the same address up to
+`@refs/tags/`, written as a regular expression, accepts any release of this
+project, and the output names the release that signed.
+
+The SBOM and the provenance of an image, per platform:
+
+```sh
+docker buildx imagetools inspect "$repo@$digest" --format '{{json .SBOM}}'
+docker buildx imagetools inspect "$repo@$digest" --format '{{json .Provenance}}'
+```
+
+The image of the search sidecar, `ghcr.io/ioanalytica/wordpress-idx`, is
+built and signed by the same release, from the
+[wordpress-idx](https://github.com/ioanalytica/wordpress-idx) source this
+repository pins as a submodule, and carries the chart version as its tag. Its
+labels `org.opencontainers.image.version` and
+`org.opencontainers.image.revision` name the wordpress-idx version and commit
+it was built from. The first release that builds a new wordpress-idx version
+also gives its image that version as a tag, which then stays on that build.
+The tags `1.x.y` up to `1.3.7` were published by the wordpress-idx repository
+before that and are not signed.
+<!-- #endregion verify -->
 
 ## Related Projects
 

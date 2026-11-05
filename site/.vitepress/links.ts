@@ -17,6 +17,7 @@ export const repoUrl = 'https://github.com/ioanalytica/wordpress-nginx';
 // where it holds a dot, so such a section names its anchor on the page.
 const sitePages: Record<string, string> = {
   'CONTRIBUTING.md': '/reference/contributing',
+  'README.md#verify-a-release': '/security/verify',
   'SECURITY.md': '/security/reporting',
   'chart/CHANGELOG.md': '/reference/changelog',
   'chart/README.md#chart-versions': '/reference/versioning',

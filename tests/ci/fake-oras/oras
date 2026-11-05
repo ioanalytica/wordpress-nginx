@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# A stand-in for oras over a directory, for tests/ci/test.sh:
+# $ORAS_FAKE_STATE/tags/<image>/<tag> holds the digest a tag names,
+# $ORAS_FAKE_STATE/runs/<digest> the build-run annotation of that manifest
+# (empty for one without). ORAS_FAKE_BROKEN makes the registry answer every
+# question about a tag with an error that is not "not found".
+set -euo pipefail
+state="${ORAS_FAKE_STATE:?}"
+key() { echo "${1//\//_}"; }
+# digest_of REF - the digest of IMAGE@DIGEST or IMAGE:TAG.
+digest_of() {
+  local ref="$1" image tag file
+  case "$ref" in
+    *@*) echo "${ref#*@}" ;;
+    *)
+      [ -z "${ORAS_FAKE_BROKEN:-}" ] || { echo "Error: unauthorized" >&2; return 1; }
+      image="${ref%:*}"; tag="${ref##*:}"
+      file="$state/tags/$(key "$image")/$tag"
+      [ -e "$file" ] || { echo "Error: $ref: not found" >&2; return 1; }
+      cat "$file" ;;
+  esac
+}
+case "$1" in
+  manifest)   # manifest fetch REF
+    digest="$(digest_of "$3")"
+    [ -e "$state/runs/$digest" ] || { echo "Error: $3: not found" >&2; exit 1; }
+    run="$(cat "$state/runs/$digest")"
+    if [ -n "$run" ]; then printf '{"annotations":{"com.ioanalytica.wordpress-nginx.build-run":"%s"}}\n' "$run"
+    else echo '{}'; fi ;;
+  resolve)    # resolve IMAGE:TAG
+    digest_of "$2" ;;
+  tag)        # tag IMAGE@DIGEST TAG...
+    ref="$2"; image="${ref%@*}"; digest="${ref#*@}"; shift 2
+    mkdir -p "$state/tags/$(key "$image")"
+    for t in "$@"; do echo "$digest" >"$state/tags/$(key "$image")/$t"; done ;;
+  push)       # push IMAGE:TAG --annotation KEY=RUN --config ... FILE:TYPE
+    ref="$2"; image="${ref%:*}"; tag="${ref##*:}"; run=""; file=""
+    shift 2
+    while [ $# -gt 0 ]; do
+      case "$1" in
+        --annotation) run="${2#*=}"; shift ;;
+        --config) shift ;;
+        *) file="${1%%:*}" ;;
+      esac
+      shift
+    done
+    [ -r "$file" ] || { echo "Error: $file: no such file" >&2; exit 1; }
+    digest="sha256:pushed-by-run-$run"
+    mkdir -p "$state/tags/$(key "$image")" "$state/runs"
+    echo "$digest" >"$state/tags/$(key "$image")/$tag"
+    echo "$run" >"$state/runs/$digest" ;;
+  *) echo "fake oras: $*" >&2; exit 2 ;;
+esac

@@ -12,11 +12,13 @@
 #   tests/try-locally/run.sh --import IMAGE DIR   # ... with an image built locally
 #
 # A chart directory is installed with the images it names, which must be in
-# the registry. --import takes the WordPress image from the local Docker
-# daemon instead: the image is loaded into the cluster's node, and the
-# release must not pull it (image.pullPolicy=Never), so the run cannot fall
-# back to the registry's image of the same name. That is how a pull request
-# tests an image that is not published yet, or one it changes.
+# the registry. --import takes an image of this project from the local
+# Docker daemon instead, the WordPress image or the search sidecar's, and
+# can be given for both: the image is loaded into the cluster's node, and
+# the release must not pull it (image.pullPolicy=Never, or
+# idx.image.pullPolicy=Never for the sidecar), so the run cannot fall back
+# to the registry's image of the same name. That is how a pull request tests
+# an image that is not published yet, or one it changes.
 #
 # Creates the page's k3d cluster and deletes it with the page's own clean-up
 # command; KEEP_CLUSTER=1 keeps it. Refuses to start when a cluster of that
@@ -91,23 +93,23 @@ expect() {
   echo "ok:   $1"
 }
 
-# import_image - load $IMPORT from the local Docker daemon into the
+# import_image IMAGE - load IMAGE from the local Docker daemon into the
 # cluster's node. Saved for the daemon's platform alone: a daemon with the
 # containerd image store keeps a pulled image as its multi-platform index,
 # and the node's import fails on the platforms that are not there. k3d
 # reports success either way, so the node is asked whether it has the image.
 import_image() {
-  local node="k3d-$CLUSTER-server-0" tar="$WORK/image.tar" platform
+  local image="$1" node="k3d-$CLUSTER-server-0" tar="$WORK/image.tar" platform
   platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')"
-  echo "=== ${SECONDS}s, loading $IMPORT ($platform) into the cluster"
+  echo "=== ${SECONDS}s, loading $image ($platform) into the cluster"
   # A Docker without `save --platform` has no multi-platform store either.
-  docker save --platform "$platform" "$IMPORT" -o "$tar" 2>/dev/null \
-    || docker save "$IMPORT" -o "$tar"
+  docker save --platform "$platform" "$image" -o "$tar" 2>/dev/null \
+    || docker save "$image" -o "$tar"
   k3d image import "$tar" -c "$CLUSTER"
   rm -f "$tar"
-  docker exec "$node" crictl inspecti "$IMPORT" >/dev/null 2>&1 \
-    || fail "the node $node has no image $IMPORT after the import"
-  echo "ok:   the node has $IMPORT"
+  docker exec "$node" crictl inspecti "$image" >/dev/null 2>&1 \
+    || fail "the node $node has no image $image after the import"
+  echo "ok:   the node has $image"
 }
 
 # late_database - a first start whose database is not there yet, with a
@@ -204,15 +206,16 @@ cleanup() {
 # --- before the cluster ------------------------------------------------------
 
 CHART=""
+# The images to take from the local Docker daemon, one per line.
 IMPORT=""
 HELM_EXTRA=""
 WORK=""
 CREATED=""
 # usage - say how the script is called and exit with 2.
-usage() { echo "usage: $0 [--import IMAGE] [CHART_DIR]" >&2; exit 2; }
+usage() { echo "usage: $0 [--import IMAGE]... [CHART_DIR]" >&2; exit 2; }
 while [ $# -gt 0 ]; do
   case "$1" in
-    --import) [ $# -ge 2 ] || usage; IMPORT="$2"; shift ;;
+    --import) [ $# -ge 2 ] || usage; IMPORT="${IMPORT:+$IMPORT$'\n'}$2"; shift ;;
     -*) usage ;;
     *) [ -z "$CHART" ] || usage
        [ -f "$1/Chart.yaml" ] || { echo "ERROR: $1 is no chart directory" >&2; exit 2; }
@@ -260,18 +263,23 @@ if [ -n "$CHART" ]; then
     exit 1
   fi
   [ -n "$images" ] || fail "the chart names no image of ghcr.io/ioanalytica"
-  if [ -n "$IMPORT" ]; then
-    grep -qxF "$IMPORT" <<<"$images" \
-      || fail "the chart does not run $IMPORT, but: $(tr '\n' ' ' <<<"$images")"
-    docker image inspect "$IMPORT" >/dev/null 2>&1 \
-      || fail "the local Docker daemon has no image $IMPORT"
-    HELM_EXTRA="--set image.pullPolicy=Never"
-  fi
+  while IFS= read -r image; do
+    [ -n "$image" ] || continue
+    grep -qxF "$image" <<<"$images" \
+      || fail "the chart does not run $image, but: $(tr '\n' ' ' <<<"$images")"
+    docker image inspect "$image" >/dev/null 2>&1 \
+      || fail "the local Docker daemon has no image $image"
+    # The value that keeps the release from pulling this image.
+    case "$image" in
+      */wordpress-idx:*) HELM_EXTRA="${HELM_EXTRA:+$HELM_EXTRA }--set idx.image.pullPolicy=Never" ;;
+      *)                 HELM_EXTRA="${HELM_EXTRA:+$HELM_EXTRA }--set image.pullPolicy=Never" ;;
+    esac
+  done <<<"$IMPORT"
   # shellcheck disable=SC2046 # one image per word
-  missing="$(unpublished $(grep -vxF "$IMPORT" <<<"$images" || true))"
+  missing="$(unpublished $(grep -vxFf <(printf '%s\n' "$IMPORT") <<<"$images" || true))"
   [ -z "$missing" ] \
     || fail "the registry does not have $(tr '\n' ' ' <<<"$missing"); build the image and pass it with --import"
-  echo "=== the chart in $CHART, with $(tr '\n' ' ' <<<"$images")${IMPORT:+($IMPORT from the local Docker daemon)}"
+  echo "=== the chart in $CHART, with $(tr '\n' ' ' <<<"$images")${IMPORT:+($(tr '\n' ' ' <<<"$IMPORT")from the local Docker daemon)}"
 else
   echo "=== the latest release of $PAGE_CHART"
 fi
@@ -296,7 +304,9 @@ BLOCK_PATH="$WORK/bin:$PATH"
 # the name that another run made in the meantime, must not delete that one.
 page "## 1. " 1
 CREATED=1
-[ -z "$IMPORT" ] || import_image
+while IFS= read -r image; do
+  [ -z "$image" ] || import_image "$image"
+done <<<"$IMPORT"
 
 # 2. Install, and wait
 page "## 2. " 1

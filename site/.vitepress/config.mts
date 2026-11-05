@@ -1,4 +1,5 @@
 // Copyright IO ANALYTICA. SPDX-License-Identifier: Apache-2.0
+import { execFileSync } from 'node:child_process';
 import { copyFileSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,15 +14,21 @@ const repoRoot = resolve(siteRoot, '..');
 const icon = resolve(repoRoot, 'icon.png');
 
 export interface ThemeConfig extends DefaultTheme.Config {
-  idxVersion: string;
+  idxRef: string;
 }
 
-// The wordpress-idx release the chart pins; pages link to that release's
-// files instead of copying them. The chart's own version is not shown: the
-// site is built from main, where a version can stand before its release is
+// The wordpress-idx commit the repository pins as a submodule, which is what
+// a release builds the sidecar's image from; pages link to that commit's
+// files instead of copying them. Read from git's index, so it needs no
+// checkout of the submodule. The chart's own version is not shown: the site
+// is built from main, where a version can stand before its release is
 // published.
-const idxVersion =
-  readFileSync(resolve(repoRoot, 'chart/Chart.yaml'), 'utf8').match(/^\s*idxImageTag:\s*"?([^"\s]+)"?/m)?.[1] ?? '';
+const idxPath = resolve(repoRoot, 'wordpress-idx');
+const idxRef =
+  execFileSync('git', ['-C', repoRoot, 'ls-files', '--stage', '--', idxPath], { encoding: 'utf8' }).match(
+    /^160000 ([0-9a-f]{40}) /,
+  )?.[1] ?? '';
+if (!idxRef) throw new Error('the wordpress-idx submodule is not in the index of the repository');
 
 export default defineConfigWithTheme<ThemeConfig>({
   lang: 'en-US',
@@ -56,7 +63,7 @@ export default defineConfigWithTheme<ThemeConfig>({
     copyFileSync(icon, join(config.outDir, 'favicon.png'));
   },
   themeConfig: {
-    idxVersion,
+    idxRef,
     siteTitle: 'wordpress-nginx',
     nav: [
       { text: 'Home', link: '/' },
@@ -98,6 +105,7 @@ export default defineConfigWithTheme<ThemeConfig>({
           { text: 'Security headers', link: '/security/headers' },
           { text: 'File-integrity monitoring', link: '/security/file-integrity-monitoring' },
           { text: 'Update policy', link: '/security/update-policy' },
+          { text: 'Verify a release', link: '/security/verify' },
           { text: 'Report a vulnerability', link: '/security/reporting' },
         ],
       },

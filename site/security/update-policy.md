@@ -5,11 +5,14 @@ checks the published image every day, and what those checks cannot see.
 
 ## What a release contains
 
-A chart version names one image: the image tag is the chart version
-([Versioning](/reference/versioning)). The image holds WordPress, NGINX,
-PHP-FPM and the Alpine packages below them. A change to any of them is a new
-chart version; an existing version is never published again with different
-content.
+A chart version names the images a release builds with it: the chart version
+is their tag ([Versioning](/reference/versioning)). The WordPress image holds
+WordPress, NGINX, PHP-FPM and the Alpine packages below them; the image of
+the optional search sidecar is built from the wordpress-idx source the
+repository pins. A change to any of them is a new chart version; an existing
+version is never published again with different content. Images and chart
+are signed before their tags are set
+([Verify a release](/security/verify)).
 
 ## New WordPress releases
 
@@ -84,7 +87,7 @@ about PHP, WordPress or a site's plugins.
 |---|---|
 | Dragonfly (`memcached.image`) | weekly, by a workflow of its own; the pull request is opened only after a container has started with the flags the chart passes |
 | NGINX Prometheus exporter (`metrics.image`) | weekly, by [Renovate](https://docs.renovatebot.com/) |
-| wordpress-idx | weekly, by Renovate |
+| wordpress-idx | built by every release from the source this repository pins as a submodule; the pin is moved by hand, with a changelog line |
 | MariaDB (`mariadb.image`) | weekly, by Renovate. A new MariaDB series upgrades the data directory of an existing installation, so its pull request waits for a maintainer's approval. Set `mariadb.image` to follow MariaDB releases on your own schedule |
 
 Renovate also proposes new versions of the GitHub Actions and tools the

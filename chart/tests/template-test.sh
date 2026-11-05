@@ -64,39 +64,70 @@ expect() {
     fi
 }
 
-echo "=== Chart version and image tag agree"
-# The image tag is read from the Chart.yaml annotation, not from values. A
-# release that bumps version: but not imageTag ships a chart that deploys the
-# previous image - which happened in 7.1.0-4 and went unnoticed because the
-# feature that needed the new image was off by default.
+echo "=== Chart version and image tags agree"
+# The chart version is the tag of both images of this project: the templates
+# take it from .Chart.Version, and a release builds, signs and tags the two
+# images and the chart together. A chart that named another tag would deploy
+# an image its release did not build - which happened in 7.1.0-4, when the
+# tag was a value of its own, and went unnoticed because the feature that
+# needed the new image was off by default.
 chart_version=$(sed -n 's/^version: *//p' "$CHART/Chart.yaml" | tr -d '"')
-image_tag=$(sed -n 's/^  imageTag: *"\(.*\)"$/\1/p' "$CHART/Chart.yaml")
-images_tag=$(sed -n 's|^      image: ghcr.io/ioanalytica/wordpress-nginx:||p' "$CHART/Chart.yaml")
-if [ "$chart_version" = "$image_tag" ] && [ "$chart_version" = "$images_tag" ]; then
-    echo "ok:   version, imageTag and images annotation all say $chart_version"
+rendered_images=$(helm template tst "$CHART" --set idx.enabled=true | sed -n 's/^ *image: *//p' | tr -d '"')
+for name in wordpress-nginx wordpress-idx; do
+    rendered=$(sed -n "s|^ghcr.io/ioanalytica/$name:||p" <<<"$rendered_images" | sort -u)
+    if [ "$rendered" = "$chart_version" ]; then
+        echo "ok:   the rendered tag of $name is the chart version, $chart_version"
+    else
+        echo "FAIL: the rendered tag of $name is '$rendered', the chart version is $chart_version"
+        FAILURES=$((FAILURES + 1))
+    fi
+done
+# appVersion is the WordPress release in the image. The tracker raises both
+# together; a bump by hand that forgets one would ship a chart that names
+# another WordPress than its image holds.
+wp_version=$(sed -n 's/^ENV WP_VERSION=//p' "$(dirname "$0")/../../docker/Dockerfile")
+chart_app_version=$(sed -n 's/^appVersion: *//p' "$CHART/Chart.yaml" | tr -d '"')
+if [ -n "$wp_version" ] && [ "$wp_version" = "$chart_app_version" ]; then
+    echo "ok:   appVersion is the WordPress version of the image, $wp_version"
 else
-    echo "FAIL: version=$chart_version imageTag=$image_tag images=$images_tag - must be identical"
+    echo "FAIL: appVersion is '$chart_app_version', the Dockerfile's WP_VERSION is '$wp_version'"
     FAILURES=$((FAILURES + 1))
 fi
-rendered=$(helm template tst "$CHART" | sed -n 's|.*image: ghcr.io/ioanalytica/wordpress-nginx:||p' | head -1)
-if [ "$rendered" = "$chart_version" ]; then
-    echo "ok:   rendered image tag is $rendered"
+# An override of the sidecar's image keeps working: registry and repository
+# are taken from the values, a digest wins over the tag.
+expect "an idx.image override names the registry and repository" present \
+    "image: registry.example/mirror/idx:$chart_version" \
+    --set idx.enabled=true --set idx.image.registry=registry.example --set idx.image.repository=mirror/idx
+expect "an idx.image digest wins over the tag" present \
+    "image: ghcr.io/ioanalytica/wordpress-idx@sha256:0123" \
+    --set idx.enabled=true --set idx.image.digest=sha256:0123
+
+# What is left to drift is the list Artifact Hub reads and scans,
+# artifacthub.io/images in Chart.yaml: it names every image the chart can
+# run, the two of this project at the chart version, every other one at the
+# tag the chart runs it with. scripts/cve-scan-images.sh finds those images
+# in the values and the templates; in 7.1.0-16 the list kept the previous
+# sidecar tag unnoticed.
+listed=$(sed -n 's/^      image: *//p' "$CHART/Chart.yaml" | sort)
+expected=$("$(dirname "$0")/../../scripts/cve-scan-images.sh" "$CHART" \
+    | jq -r --arg v "$chart_version" '.[].ref | if startswith("ghcr.io/ioanalytica/") then sub(":latest$"; ":" + $v) else . end' | sort)
+if [ -n "$expected" ] && [ "$listed" = "$expected" ]; then
+    echo "ok:   artifacthub.io/images names the $(wc -l <<<"$listed" | tr -d ' ') images the chart can run, at their tags"
 else
-    echo "FAIL: rendered image tag is '$rendered', chart version is $chart_version"
+    echo "FAIL: artifacthub.io/images differs from the images the chart can run:"
+    diff <(echo "$expected") <(echo "$listed") | sed 's/^</      missing:/; s/^>/      not run by the chart:/' | grep '^ ' || true
     FAILURES=$((FAILURES + 1))
 fi
-# Same class of drift for the sidecar: idxImageTag and the images annotation
-# are two separate spots, and only the annotation feeds provenance tooling -
-# in 7.1.0-16 the annotation kept the previous sidecar tag unnoticed.
-idx_tag=$(sed -n 's/^  idxImageTag: *"\(.*\)"$/\1/p' "$CHART/Chart.yaml")
-idx_images=$(sed -n 's|^      image: ghcr.io/ioanalytica/wordpress-idx:||p' "$CHART/Chart.yaml")
-idx_rendered=$(helm template tst "$CHART" --set idx.enabled=true | sed -n 's|.*image: "*ghcr.io/ioanalytica/wordpress-idx:||p' | tr -d '"' | head -1)
-if [ "$idx_tag" = "$idx_images" ] && [ "$idx_tag" = "$idx_rendered" ]; then
-    echo "ok:   idxImageTag, images annotation and rendered sidecar all say $idx_tag"
-else
-    echo "FAIL: idxImageTag=$idx_tag images=$idx_images rendered=$idx_rendered - must be identical"
-    FAILURES=$((FAILURES + 1))
-fi
+# The two annotations of a release are written when it packages the chart
+# (scripts/artifacthub-annotations.sh), never here.
+for key in artifacthub.io/changes artifacthub.io/prerelease; do
+    if grep -q "^  $key:" "$CHART/Chart.yaml"; then
+        echo "FAIL: Chart.yaml carries $key; a release writes it"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   Chart.yaml leaves $key to the release"
+    fi
+done
 
 echo "=== Chart version scheme"
 # The chart version is x.y.P with P = z * 100 + N for WordPress x.y.z and
