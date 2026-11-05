@@ -1,0 +1,424 @@
+name: Release
+
+# A tag push is a release: both images and the chart are built, pushed to
+# GHCR under their digests, signed, and only then tagged. Nothing here runs
+# for a branch push or a pull request; those are docker-test.yml's business.
+#
+#   gate ─ prep ─┬─ wordpress ─ smoke ─┐
+#                └─ idx ───────────────┴─ chart ─ sign ─ tag ─┬─ release
+#                                                             └─ try-locally
+#
+# The tag is the chart version in chart/Chart.yaml, or a release candidate of
+# it: X.Y.P-rc.N goes on the commit whose chart/Chart.yaml says X.Y.P, the
+# commit X.Y.P is tagged on once the candidate has passed
+# (scripts/check-release-tag.sh). tests/ci/test.sh guards this file.
+on:
+  push:
+    tags: ['*']
+
+permissions: {}
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ioanalytica
+  # Whom a release's signatures name (the sign job): this workflow, run for a
+  # tag. The README ("Verify a release") gives users the same expression.
+  SIGNER: '^https://github\.com/ioanalytica/wordpress-nginx/\.github/workflows/release\.yml@refs/tags/'
+
+jobs:
+  # Green tests are a precondition for publishing: everything below that
+  # publishes sits downstream of this job.
+  gate:
+    uses: ./.github/workflows/docker-test.yml
+    permissions:
+      contents: read
+
+  # The tag check, and what the image builds need to know about the search
+  # sidecar. The workflow only triggers on tags; the per-job refs/tags guards
+  # stay anyway, so a future trigger cannot quietly turn a branch push into a
+  # release.
+  prep:
+    needs: gate
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      idx-version: ${{ steps.idx.outputs.version }}
+      idx-revision: ${{ steps.idx.outputs.revision }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      # Every image job needs this one, so failing here stops the whole
+      # release instead of publishing images under a tag the chart does not
+      # carry.
+      - name: Tag must match the chart version
+        run: scripts/check-release-tag.sh "$GITHUB_REF_NAME"
+      - uses: ./.github/actions/setup-oras
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # A tag pushed a second time stops here, before anything is built.
+      - name: The version must not be published yet
+        run: |
+          scripts/release-unpublished.sh "$GITHUB_REF_NAME" \
+            "$REGISTRY/$OWNER/wordpress-nginx" "$REGISTRY/$OWNER/wordpress-idx" "$REGISTRY/$OWNER/charts/wordpress-nginx"
+      # The sidecar's own version and commit, for its image labels: its image
+      # is tagged with the chart version, and these say what is inside.
+      - name: The search sidecar the release builds
+        id: idx
+        run: |
+          version="$(scripts/idx-version.sh)"
+          revision="$(git -C wordpress-idx rev-parse HEAD)"
+          echo "wordpress-idx $version at $revision"
+          {
+            echo "version=$version"
+            echo "revision=$revision"
+          } >> "$GITHUB_OUTPUT"
+
+  wordpress:
+    needs: prep
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-image.yml
+    with:
+      image: wordpress-nginx
+      context: ./docker
+      file: ./docker/Dockerfile
+      # Busts the cached apk upgrade layer once per release (see Dockerfile).
+      build-args: APK_REFRESH=${{ github.ref_name }}
+      # `latest` moves with releases only (here and for the sidecar): a
+      # version with a -suffix is a release candidate.
+      tags: |
+        type=raw,value=${{ github.ref_name }}
+        type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+
+  idx:
+    needs: prep
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/build-image.yml
+    with:
+      image: wordpress-idx
+      context: ./wordpress-idx
+      file: ./wordpress-idx/Dockerfile
+      # The image is built here from the wordpress-idx submodule; its labels
+      # name the sidecar's own repository, version and commit, not this
+      # repository's.
+      labels: |
+        org.opencontainers.image.title=wordpress-idx
+        org.opencontainers.image.description=Full-text search sidecar for WordPress
+        org.opencontainers.image.url=https://github.com/ioanalytica/wordpress-idx
+        org.opencontainers.image.source=https://github.com/ioanalytica/wordpress-idx
+        org.opencontainers.image.version=${{ needs.prep.outputs.idx-version }}
+        org.opencontainers.image.revision=${{ needs.prep.outputs.idx-revision }}
+      tags: |
+        type=raw,value=${{ github.ref_name }}
+        type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+
+  # The smoke test against the image this run built, on both platforms,
+  # before anything names it: the pull request's test ran on a build of the
+  # same source, but a release build upgrades the Alpine packages afresh.
+  smoke:
+    needs: wordpress
+    if: startsWith(github.ref, 'refs/tags/')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-26.04
+          - platform: linux/arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Run the smoke test on the built image
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.OWNER }}/wordpress-nginx@${{ needs.wordpress.outputs.digest }}
+        run: |
+          docker pull "$IMAGE"
+          ./docker/tests/smoke-test.sh "$IMAGE"
+
+  chart:
+    # Waits for the gate like the image jobs do, and for the images and their
+    # smoke test, so a failed image leaves no chart behind. The chart goes
+    # into its repository under its digest alone; the tag job gives it its
+    # version once it is signed.
+    needs: [gate, wordpress, idx, smoke]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    # helm push tags the chart's version as it pushes, so it pushes into this
+    # registry on the runner, which goes with the job; oras copies the chart
+    # from there into GHCR (the push step below).
+    services:
+      registry:
+        image: registry:3.1.2@sha256:d4032d4cc323c1731c707931ecada07a53076eac38e3b61ae57533f170f2c6c3
+        ports:
+          - 5000:5000
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # helm gets its own registry login; nothing needs a token left in
+          # .git/config.
+          persist-credentials: false
+      # Pinned: without a version the action asks the GitHub API for the
+      # latest release on every run.
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.1
+      # This job reads nothing of prep, so it runs the check of its own, and
+      # it is the one that would do the damage: package the version in the
+      # file and overwrite it in the registry.
+      - name: Tag must match the chart version
+        run: scripts/check-release-tag.sh "$GITHUB_REF_NAME"
+      # A release candidate is tagged on the commit its release will be
+      # tagged on, whose Chart.yaml says X.Y.P: its chart gets the tag's
+      # version, and with it the images this run built.
+      - name: Chart version from the tag
+        run: scripts/chart-release-version.sh "$GITHUB_REF_NAME"
+      # What Artifact Hub shows for this version: its changes, from the
+      # changelog entry, and whether it is a prerelease. Written into the
+      # chart before it is linted and packaged, so the pushed and signed
+      # chart carries them.
+      - name: Artifact Hub annotations
+        run: scripts/artifacthub-annotations.sh "$GITHUB_REF_NAME"
+      # chart/charts/ is gitignored, so the common dependency has to be
+      # resolved before the chart can be linted or packaged.
+      - name: Lint and package
+        run: |
+          mkdir -p "$RUNNER_TEMP/chart"
+          helm dependency update chart/
+          helm lint chart/
+          helm package chart/ --destination "$RUNNER_TEMP/chart"
+      # The release job attaches this very file, the bytes of the chart layer
+      # pushed below and then signed. Kept as long as GitHub lets a run's
+      # failed jobs be re-run. A re-run of this job after a failed push
+      # packages again and replaces the package of the failed attempt
+      # (overwrite): the new package is the one that gets pushed and signed.
+      - name: Hand the package to the release job
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: chart
+          path: ${{ runner.temp }}/chart/wordpress-nginx-*.tgz
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
+      - uses: ./.github/actions/setup-oras
+      # helm pushes into the job's own registry, and names the manifest it
+      # pushed ("Digest: sha256:…"). oras copies that digest into
+      # charts/wordpress-nginx under no tag; content-addressed, the copy has
+      # the same digest. The sign job signs it, and the tag job tags it.
+      - name: Push the chart to GHCR by digest
+        id: push
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          curl -fsS --retry 10 --retry-delay 1 --retry-connrefused -o /dev/null http://localhost:5000/v2/
+          out="$(helm push "$RUNNER_TEMP"/chart/wordpress-nginx-*.tgz oci://localhost:5000/charts --plain-http)"
+          echo "$out"
+          digest="$(sed -n 's/^Digest: \(sha256:[0-9a-f]\{64\}\)$/\1/p' <<<"$out")"
+          [ -n "$digest" ] || { echo "helm push reported no digest" >&2; exit 1; }
+          echo "$TOKEN" | oras login "$REGISTRY" -u "$ACTOR" --password-stdin
+          oras cp --from-plain-http "localhost:5000/charts/wordpress-nginx@$digest" "$REGISTRY/$OWNER/charts/wordpress-nginx"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+  # Keyless Sigstore signatures for everything the release pushed to GHCR,
+  # each by its digest: a tag can be moved to another manifest, the digest is
+  # what was built, and until the tag job nothing of the release has a tag.
+  # An image index lists the attestation manifests (SBOM and provenance) of
+  # its platforms, so its signature covers those as well.
+  # Fulcio certifies this job's GitHub OIDC token, the certificate names this
+  # workflow at the release tag, and the signature is logged in the public
+  # Rekor instance. The one job with an OIDC token: signing in
+  # build-image.yml would name that workflow instead, and users would need a
+  # second identity.
+  sign:
+    needs: [wordpress, idx, chart]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-26.04
+    # Signing and verifying take seconds; an unreachable Sigstore service
+    # must not hold the release run for hours.
+    timeout-minutes: 10
+    permissions:
+      packages: write        # cosign stores each signature next to its artifact
+      id-token: write        # the token Fulcio issues the signing certificate for
+    steps:
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.4
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # Verified right away with the command the README gives users, so a
+      # release cannot publish signatures that check fails on.
+      - name: Sign by digest
+        env:
+          WORDPRESS: ${{ env.REGISTRY }}/${{ env.OWNER }}/wordpress-nginx@${{ needs.wordpress.outputs.digest }}
+          IDX: ${{ env.REGISTRY }}/${{ env.OWNER }}/wordpress-idx@${{ needs.idx.outputs.digest }}
+          CHART: ${{ env.REGISTRY }}/${{ env.OWNER }}/charts/wordpress-nginx@${{ needs.chart.outputs.digest }}
+        run: |
+          cosign sign --yes "$WORDPRESS" "$IDX" "$CHART"
+          cosign verify "$WORDPRESS" "$IDX" "$CHART" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            --certificate-identity-regexp "$SIGNER" >/dev/null
+
+  # The tags of the release, set once its digests are signed: each image's
+  # tags from build-image.yml (the version, and `latest` for a release),
+  # Artifact Hub's repository metadata, and the chart's version last. Until
+  # here every artifact of the release sits in GHCR under its digest alone,
+  # so no tag names an unsigned one: Artifact Hub indexes a chart version
+  # when its tag appears, and does not check it again while its digest stays
+  # the same. A failed sign job leaves no tag behind; a re-run of this job
+  # sets the same tags on the same digests again. A tag moves only to the
+  # images of a later run: a late re-run of an older release's failed jobs
+  # leaves `latest` on the newer release's images.
+  tag:
+    needs: [prep, wordpress, idx, chart, sign]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    # One tag job at a time across runs: reading which run a tag names and
+    # moving it are two steps. The others wait in line instead of GitHub's
+    # one pending job, which a third would cancel.
+    concurrency:
+      group: release-tag
+      queue: max
+    permissions:
+      contents: read         # artifacthub-repo.yml and the oras action
+      packages: write        # tag the release's artifacts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-oras
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The images first: the chart, tagged last, names them by tag. Every
+      # list and the run number of every index are checked before the first
+      # tag is set.
+      - name: Tag the images
+        env:
+          WORDPRESS: ${{ env.REGISTRY }}/${{ env.OWNER }}/wordpress-nginx@${{ needs.wordpress.outputs.digest }}
+          WORDPRESS_TAGS: ${{ needs.wordpress.outputs.tags }}
+          IDX: ${{ env.REGISTRY }}/${{ env.OWNER }}/wordpress-idx@${{ needs.idx.outputs.digest }}
+          IDX_TAGS: ${{ needs.idx.outputs.tags }}
+        run: scripts/release-tag-images.sh "$GITHUB_REF_NAME" "$WORDPRESS" "$WORDPRESS_TAGS" "$IDX" "$IDX_TAGS"
+      # The sidecar's image is tagged with the chart version. The first
+      # release that builds a new wordpress-idx version gives its image that
+      # version as a tag too, so that someone who runs the sidecar without
+      # the chart finds it by the version its own repository names. A tag
+      # that exists stays where it is, the ones the wordpress-idx repository
+      # published itself included. Not for a release candidate.
+      - name: The sidecar's own version, where it is new
+        if: ${{ !contains(github.ref_name, '-') }}
+        env:
+          IDX: ${{ env.REGISTRY }}/${{ env.OWNER }}/wordpress-idx@${{ needs.idx.outputs.digest }}
+          IDX_VERSION: ${{ needs.prep.outputs.idx-version }}
+        run: scripts/release-tag-once.sh --keep "$IDX" "$IDX_VERSION"
+      # Artifact Hub reads artifacthub-repo.yml from the tag `artifacthub.io`
+      # of the chart's repository, as the layer of an ORAS artifact with
+      # these media types. It reads it when a new version appears, so it goes
+      # up before the chart's version. Not a semver tag: Helm, Flux and
+      # Artifact Hub's own version list pass over it.
+      - name: Artifact Hub repository metadata
+        run: |
+          oras push "$REGISTRY/$OWNER/charts/wordpress-nginx:artifacthub.io" \
+            --config /dev/null:application/vnd.cncf.artifacthub.config.v1+yaml \
+            artifacthub-repo.yml:application/vnd.cncf.artifacthub.repository-metadata.layer.v1.yaml
+      # The tag is the version check-release-tag.sh matched against the
+      # chart's, and the version chart-release-version.sh packaged. A version
+      # the registry has on another digest stops the job.
+      - name: Tag the chart
+        env:
+          CHART: ${{ env.REGISTRY }}/${{ env.OWNER }}/charts/wordpress-nginx@${{ needs.chart.outputs.digest }}
+        run: scripts/release-tag-once.sh "$CHART" "$GITHUB_REF_NAME"
+
+  # The GitHub Release comes last, once the signatures verified and the tags
+  # are set: a release page must not announce artifacts that fail the check
+  # the README gives users, or that cannot be pulled by their version yet. A
+  # failed sign or tag job leaves no release behind; re-running it publishes
+  # one.
+  release:
+    needs: [chart, sign, tag]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write        # create the GitHub Release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The release step gets its token through the action.
+          persist-credentials: false
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: chart
+          path: ${{ runner.temp }}/chart
+      - name: Release notes from the changelog
+        run: scripts/changelog-section.sh "$GITHUB_REF_NAME" > "$RUNNER_TEMP/release-notes.md"
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          name: Version ${{ github.ref_name }}
+          files: ${{ runner.temp }}/chart/wordpress-nginx-*.tgz
+          # The changelog entry, followed by GitHub's generated list of pull
+          # requests and the compare link.
+          body_path: ${{ runner.temp }}/release-notes.md
+          generate_release_notes: true
+          # A version with a -suffix is a release candidate, never the
+          # repository's Latest release.
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          make_latest: ${{ !contains(github.ref_name, '-') }}
+
+  # The page "Try it locally" against what this tag published: the chart at
+  # the tag's version, pulled from the registry and installed with the images
+  # it names, with the page and examples/k3d/ of the tag's commit. After the
+  # tagging, so the page meets the artifacts as users get them, signed and
+  # tagged; beside the release, and nothing may `needs:` it: on a release
+  # candidate a red run means the page or the release needs a fix before the
+  # release is tagged; on the release the candidate has passed the same page,
+  # and a flaky k3d run must not hold up a release. The pull request that
+  # prepared the release could not check this: its chart named images not
+  # published yet.
+  try-locally:
+    needs: tag
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: read
+    uses: ./.github/workflows/try-locally.yml
+    with:
+      chart-version: ${{ github.ref_name }}

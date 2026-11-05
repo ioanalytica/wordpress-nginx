@@ -25,6 +25,9 @@ on:
       - 'tests/**'
       - '.github/**'
   pull_request:
+  # A tag push runs these jobs as the `gate` job of release.yml: a release
+  # publishes only what they have passed.
+  workflow_call:
 
 # Every job only reads the repository. The build cache (type=gha) uses the
 # runner's own cache token, not GITHUB_TOKEN.
@@ -145,3 +148,19 @@ jobs:
       # says why a rule does not apply to a line.
       - name: Run hadolint
         run: git ls-files -z '*Dockerfile' '*Dockerfile.*' | xargs -0 hadolint
+
+  # The oras a release installs (.github/actions/setup-oras), against the sum
+  # the action pins: a new version without its sum fails here, not in the
+  # next tag's build, the only other place that installs it.
+  oras:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions
+
+      - name: Install oras
+        uses: ./.github/actions/setup-oras

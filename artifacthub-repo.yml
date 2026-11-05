@@ -1,0 +1,19 @@
+# Artifact Hub repository metadata for the chart.
+#
+# The tag job of .github/workflows/release.yml pushes this file to the tag
+# `artifacthub.io` of oci://ghcr.io/ioanalytica/charts/wordpress-nginx with
+# every release tag. Artifact Hub reads it when the repository has a new
+# version, so a change here takes effect with the next release.
+# Format: https://github.com/artifacthub/hub/blob/master/docs/metadata/artifacthub-repo.yml
+#
+# No repositoryID yet: Artifact Hub gives the repository its ID when it is
+# added there, and a matching ID in this file marks it as a verified
+# publisher.
+
+# Every version with a -suffix is left out of the listing: a release
+# candidate (7.1.409-rc.1), and the releases of the earlier version scheme
+# (7.1.4-7), which SemVer reads as pre-releases too. Artifact Hub shows the
+# highest version as the latest, a candidate above the last release included.
+ignore:
+  - name: wordpress-nginx
+    version: '-'

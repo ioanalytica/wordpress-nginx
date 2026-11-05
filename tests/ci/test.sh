@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 #
 # Test for what CI and a release rely on outside the chart and the image:
-# the rules every workflow follows, the release tag check, the list of images
-# the daily CVE scan covers, the findings that scan accepts, and the Renovate
-# configuration.
+# the rules every workflow follows, the scripts a release runs (tag check,
+# release candidates, release notes, Artifact Hub annotations, tags after
+# signing) and the order of its jobs, the list of images the daily CVE scan
+# covers, the findings that scan accepts, and the Renovate configuration.
+# tests/ci/fake-oras/oras stands in for the registry.
 #
 # Needs helm with the chart's dependencies resolved (helm dependency update
 # chart/), yq, jq and python3 with PyYAML, as the template test does.
@@ -104,6 +106,182 @@ refuses "the version with a v prefix"               "$TAG_CHECK" "v$version"
 refuses "no tag at all"                             "$TAG_CHECK"
 printf 'name: x\n' >"$WORK/noversion.yaml"
 refuses "a Chart.yaml without a version"            "$TAG_CHECK" "$version" "$WORK/noversion.yaml"
+
+echo "=== Release candidates"
+accepts "a release candidate of the chart's version"   "$TAG_CHECK" "$version-rc.1"
+accepts "a later candidate"                            "$TAG_CHECK" "$version-rc.12"
+refuses "a candidate of another version"               "$TAG_CHECK" "${version}9-rc.1"
+refuses "a candidate without a number"                 "$TAG_CHECK" "$version-rc"
+refuses "a candidate number with a leading zero"       "$TAG_CHECK" "$version-rc.01"
+refuses "another suffix than rc"                       "$TAG_CHECK" "$version-beta.1"
+refuses "the -N suffix of the earlier scheme"          "$TAG_CHECK" "$version-1"
+
+# The chart a candidate packages: the tag's version, and the two images of
+# this project at it; appVersion and every other image stay.
+RELEASE_VERSION="$ROOT/scripts/chart-release-version.sh"
+cp "$ROOT/chart/Chart.yaml" "$WORK/Chart.yaml"
+accepts "a release leaves the chart as it is"          "$RELEASE_VERSION" "$version" "$WORK/Chart.yaml"
+if cmp -s "$ROOT/chart/Chart.yaml" "$WORK/Chart.yaml"; then ok "the file is unchanged"
+else fail "chart-release-version.sh changed the chart of a release"; fi
+accepts "a candidate gets its version"                 "$RELEASE_VERSION" "$version-rc.1" "$WORK/Chart.yaml"
+changed="$(diff "$ROOT/chart/Chart.yaml" "$WORK/Chart.yaml" | grep -c '^>' || true)"
+if [ "$changed" = 3 ] \
+   && grep -qxF "version: $version-rc.1" "$WORK/Chart.yaml" \
+   && grep -qxF "      image: ghcr.io/ioanalytica/wordpress-nginx:$version-rc.1" "$WORK/Chart.yaml" \
+   && grep -qxF "      image: ghcr.io/ioanalytica/wordpress-idx:$version-rc.1" "$WORK/Chart.yaml"; then
+    ok "the candidate's chart names its version and its two images, and nothing else changed"
+else
+    fail "the candidate's chart: $changed lines changed, expected version and the two images"
+fi
+printf 'version: 1.0.0\n' >"$WORK/short.yaml"
+refuses "a chart without the two image entries"        "$RELEASE_VERSION" 1.0.0-rc.1 "$WORK/short.yaml"
+
+echo "=== Release notes and Artifact Hub changes come from the changelog"
+SECTION="$ROOT/scripts/changelog-section.sh"
+cat >"$WORK/CHANGELOG.md" <<'EOF'
+# Changelog
+
+## Unreleased
+
+* Not released yet.
+
+## 7.1.409
+
+* **A lead in bold.** More text. Another sentence.
+  * A nested bullet that belongs to the one above.
+* A bullet without a lead, e.g. this one. A second sentence.
+* See the [release notes](https://example.com/notes) and `code`.
+
+### Project and CI
+
+* A change to the repository alone.
+
+## 7.1.4-7
+
+* The earlier scheme.
+EOF
+got="$("$SECTION" 7.1.409 "$WORK/CHANGELOG.md" | head -n 1)"
+[ "$got" = "* **A lead in bold.** More text. Another sentence." ] && ok "a version's section starts at its first line" \
+    || fail "changelog-section 7.1.409 starts with '$got'"
+[ "$("$SECTION" 7.1.409-rc.2 "$WORK/CHANGELOG.md")" = "$("$SECTION" 7.1.409 "$WORK/CHANGELOG.md")" ] \
+    && ok "a candidate without a section gets its release's" || fail "a candidate's notes differ from its release's"
+[ "$("$SECTION" 7.1.4-7 "$WORK/CHANGELOG.md")" = "* The earlier scheme." ] \
+    && ok "a version of the earlier scheme has its own section" || fail "changelog-section 7.1.4-7"
+[ -z "$("$SECTION" 7.1.410 "$WORK/CHANGELOG.md")" ] && ok "a version without a section prints nothing" \
+    || fail "changelog-section printed something for a version without a section"
+if "$SECTION" 7.1.409 "$WORK/CHANGELOG.md" | grep -q 'earlier scheme\|Not released'; then
+    fail "a section runs into its neighbours"
+else ok "a section ends at the next version"; fi
+
+ANNOTATE="$ROOT/scripts/artifacthub-annotations.sh"
+cp "$ROOT/chart/Chart.yaml" "$WORK/Chart.yaml"
+accepts "the annotations of a release"                 "$ANNOTATE" 7.1.409 "$WORK/Chart.yaml" "$WORK/CHANGELOG.md"
+changes="$(yq '.annotations["artifacthub.io/changes"]' "$WORK/Chart.yaml" | yq -o=json -I=0 .)"
+want='["A lead in bold.","A bullet without a lead, e.g. this one.","See the release notes and code."]'
+if [ "$changes" = "$want" ]; then ok "changes are the leads, as plain text, without the repository's own"
+else fail "artifacthub.io/changes is $changes"; fi
+[ "$(yq '.annotations["artifacthub.io/prerelease"]' "$WORK/Chart.yaml")" = false ] && ok "a release is no prerelease" \
+    || fail "a release is marked as a prerelease"
+[ "$(yq '.annotations["artifacthub.io/images"]' "$WORK/Chart.yaml" | yq 'length')" -gt 0 ] && ok "the images list is still there" \
+    || fail "the images list is gone"
+refuses "a chart that has the annotations already"     "$ANNOTATE" 7.1.409 "$WORK/Chart.yaml" "$WORK/CHANGELOG.md"
+cp "$ROOT/chart/Chart.yaml" "$WORK/Chart.yaml"
+accepts "the annotations of a candidate"               "$ANNOTATE" 7.1.409-rc.1 "$WORK/Chart.yaml" "$WORK/CHANGELOG.md"
+grep -qxF '  artifacthub.io/prerelease: "true"' "$WORK/Chart.yaml" && ok "a candidate is a prerelease" \
+    || fail "a candidate is not marked as a prerelease"
+for key in artifacthub.io/changes artifacthub.io/prerelease; do
+    if grep -q "^  $key:" "$ROOT/chart/Chart.yaml"; then fail "chart/Chart.yaml carries $key; a release writes it"
+    else ok "chart/Chart.yaml leaves $key to the release"; fi
+done
+
+echo "=== Tags are set after signing, and a published version stays"
+TAG_IMAGES="$ROOT/scripts/release-tag-images.sh"
+W=ghcr.io/ioanalytica/wordpress-nginx
+I=ghcr.io/ioanalytica/wordpress-idx
+nl=$'\n'
+export ORAS_FAKE_STATE="$WORK/registry"
+mkdir -p "$ORAS_FAKE_STATE/runs"
+for pair in aaa:12 bbb:12 ccc:13 ddd:14 old:; do echo "${pair#*:}" >"$ORAS_FAKE_STATE/runs/sha256:${pair%%:*}"; done
+# tagged <image> <tag>: the digest the stand-in registry has for a tag.
+tagged() { cat "$ORAS_FAKE_STATE/tags/${1//\//_}/$2" 2>/dev/null || true; }
+with_oras() { PATH="$HERE/fake-oras:$PATH" "$@"; }
+
+accepts "a release tags both images"   with_oras "$TAG_IMAGES" 7.1.409 \
+    "$W@sha256:aaa" "$W:7.1.409$nl$W:latest" "$I@sha256:bbb" "$I:7.1.409$nl$I:latest"
+if [ "$(tagged "$W" 7.1.409)$(tagged "$W" latest)$(tagged "$I" 7.1.409)$(tagged "$I" latest)" = "sha256:aaasha256:aaasha256:bbbsha256:bbb" ]; then
+    ok "the version and latest name the release's digests"
+else fail "tags after a release: $(grep -r . "$ORAS_FAKE_STATE/tags")"; fi
+accepts "a re-run of the tag job"      with_oras "$TAG_IMAGES" 7.1.409 "$W@sha256:aaa" "$W:7.1.409$nl$W:latest"
+refuses "latest for a candidate"       with_oras "$TAG_IMAGES" 7.1.410-rc.1 "$W@sha256:ccc" "$W:7.1.410-rc.1$nl$W:latest"
+[ -z "$(tagged "$W" 7.1.410-rc.1)" ] && ok "a refused list sets no tag at all" || fail "a refused list left a tag behind"
+refuses "a tag of another image"       with_oras "$TAG_IMAGES" 7.1.410 "$W@sha256:ccc" "$I:7.1.410"
+refuses "an empty list"                with_oras "$TAG_IMAGES" 7.1.410 "$W@sha256:ccc" ""
+refuses "an index of no release run"   with_oras "$TAG_IMAGES" 7.1.410 "$W@sha256:old" "$W:7.1.410"
+refuses "a version published already"  with_oras "$TAG_IMAGES" 7.1.409 "$W@sha256:ddd" "$W:7.1.409$nl$W:latest"
+[ "$(tagged "$W" 7.1.409)$(tagged "$W" latest)" = "sha256:aaasha256:aaa" ] && ok "the published version and latest stay" \
+    || fail "a second build of 7.1.409 moved a tag"
+accepts "a later release moves latest" with_oras "$TAG_IMAGES" 7.1.410 "$W@sha256:ddd" "$W:7.1.410$nl$W:latest"
+accepts "a late re-run of an older release" with_oras "$TAG_IMAGES" 7.1.411 "$W@sha256:ccc" "$W:7.1.411$nl$W:latest"
+[ "$(tagged "$W" latest)" = "sha256:ddd" ] && [ "$(tagged "$W" 7.1.411)" = "sha256:ccc" ] \
+    && ok "latest stays on the later run's image" || fail "a late re-run moved latest back"
+refuses "a registry that answers with an error" env ORAS_FAKE_BROKEN=1 PATH="$HERE/fake-oras:$PATH" \
+    "$TAG_IMAGES" 7.1.412 "$W@sha256:ddd" "$W:7.1.412"
+
+# The chart's tag, and the sidecar's own version: set once, never moved.
+TAG_ONCE="$ROOT/scripts/release-tag-once.sh"
+C=ghcr.io/ioanalytica/charts/wordpress-nginx
+accepts "the chart gets its version"   with_oras "$TAG_ONCE" "$C@sha256:eee" 7.1.409
+accepts "a re-run finds it there"      with_oras "$TAG_ONCE" "$C@sha256:eee" 7.1.409
+refuses "another chart under the same version" with_oras "$TAG_ONCE" "$C@sha256:fff" 7.1.409
+[ "$(tagged "$C" 7.1.409)" = "sha256:eee" ] && ok "the chart's version stays on the first chart" || fail "the chart's version moved"
+accepts "the sidecar's own version, when it is new" with_oras "$TAG_ONCE" --keep "$I@sha256:bbb" 1.3.8
+accepts "a later build of the same sidecar version" with_oras "$TAG_ONCE" --keep "$I@sha256:ccc" 1.3.8
+[ "$(tagged "$I" 1.3.8)" = "sha256:bbb" ] && ok "the sidecar's version stays on its first build" || fail "the sidecar's version moved"
+refuses "a registry error while tagging once" env ORAS_FAKE_BROKEN=1 PATH="$HERE/fake-oras:$PATH" "$TAG_ONCE" "$C@sha256:eee" 7.1.410
+refuses "a reference without a digest"  with_oras "$TAG_ONCE" "$C:7.1.409" 7.1.409
+
+UNPUBLISHED="$ROOT/scripts/release-unpublished.sh"
+accepts "a version no repository has"   with_oras "$UNPUBLISHED" 7.1.499 "$W" "$I" "$C"
+refuses "a version one repository has"  with_oras "$UNPUBLISHED" 7.1.409 "$W" "$I" "$C"
+refuses "a registry error while asking" env ORAS_FAKE_BROKEN=1 PATH="$HERE/fake-oras:$PATH" "$UNPUBLISHED" 7.1.499 "$W"
+
+echo "=== The search sidecar's version comes from the submodule"
+IDX_VERSION="$ROOT/scripts/idx-version.sh"
+mkdir -p "$WORK/idx/app"
+echo '{"version": "1.4.0"}' >"$WORK/idx/app/package.json"
+[ "$("$IDX_VERSION" "$WORK/idx")" = 1.4.0 ] && ok "the version of app/package.json" || fail "idx-version.sh on a fixture"
+echo '{"version": "1.4"}' >"$WORK/idx/app/package.json"
+refuses "a version that is not x.y.z"   "$IDX_VERSION" "$WORK/idx"
+refuses "a directory without the app"   "$IDX_VERSION" "$WORK"
+# The pinned submodule itself, where it is checked out: a pin without a
+# readable version would fail the release's first job.
+if [ -e "$ROOT/wordpress-idx/app/package.json" ]; then
+    accepts "the pinned wordpress-idx has a version" "$IDX_VERSION"
+elif [ -n "${CI:-}" ]; then
+    fail "the wordpress-idx submodule is not checked out"
+else
+    echo "skip: the wordpress-idx submodule is not checked out (git submodule update --init)"
+fi
+if [ "$(git -C "$ROOT" config -f .gitmodules submodule.wordpress-idx.url)" = "https://github.com/ioanalytica/wordpress-idx.git" ]; then
+    ok "the submodule is wordpress-idx, by its public address"
+else
+    fail ".gitmodules does not name https://github.com/ioanalytica/wordpress-idx.git"
+fi
+
+echo "=== The release signs before it tags"
+RELEASE="$ROOT/.github/workflows/release.yml"
+BUILD="$ROOT/.github/workflows/build-image.yml"
+if out="$(python3 "$HERE/check-release-workflow.py" "$RELEASE" "$BUILD" 2>&1)"; then ok "one job signs, tags follow the signatures, the release follows the tags"
+else
+    fail "the release workflow"
+    printf '%s\n' "$out" | sed 's/^/      /'
+fi
+signer="$(sed -n "s/^  SIGNER: '\(.*\)'$/\1/p" "$RELEASE")"
+if [ -n "$signer" ] && grep -qF -- "--certificate-identity-regexp '$signer'" "$ROOT/README.md"; then
+    ok "the README verifies with the identity the release signs and checks with"
+else
+    fail "README.md does not give cosign verify the workflow's SIGNER, '$signer'"
+fi
 
 echo "=== The CVE scan covers every image the chart can run"
 IMAGES="$ROOT/scripts/cve-scan-images.sh"

@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# A stand-in for oras over a directory: STATE/tags/<image>/<tag> holds a
+# digest, STATE/runs/<digest> the build-run annotation of that index.
+set -euo pipefail
+state="${ORAS_FAKE_STATE:?}"
+key() { echo "${1//\//_}"; }
+case "$1" in
+  manifest)   # manifest fetch IMAGE@DIGEST
+    ref="$3"; digest="${ref#*@}"
+    [ -e "$state/runs/$digest" ] || { echo "Error: $ref: not found" >&2; exit 1; }
+    run="$(cat "$state/runs/$digest")"
+    if [ -n "$run" ]; then printf '{"annotations":{"com.ioanalytica.wordpress-nginx.build-run":"%s"}}\n' "$run"
+    else echo '{}'; fi ;;
+  resolve)    # resolve IMAGE:TAG
+    ref="$2"; image="${ref%:*}"; tag="${ref##*:}"
+    [ "${ORAS_FAKE_BROKEN:-}" = "" ] || { echo "Error: unauthorized" >&2; exit 1; }
+    f="$state/tags/$(key "$image")/$tag"
+    [ -e "$f" ] || { echo "Error: $ref: not found" >&2; exit 1; }
+    cat "$f" ;;
+  tag)        # tag IMAGE@DIGEST TAG...
+    ref="$2"; image="${ref%@*}"; digest="${ref#*@}"; shift 2
+    mkdir -p "$state/tags/$(key "$image")"
+    for t in "$@"; do echo "$digest" >"$state/tags/$(key "$image")/$t"; done ;;
+  *) echo "fake oras: $*" >&2; exit 2 ;;
+esac

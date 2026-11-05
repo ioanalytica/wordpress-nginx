@@ -1,0 +1,205 @@
+name: build-image (reusable)
+
+# Builds one image for both platforms without emulation: each platform builds
+# on a runner of its own architecture, then the two digests are merged into
+# one image index.
+#
+# Every platform image carries an SBOM and provenance as an attestation
+# manifest, which the merge keeps in the index. The digest of that index is the
+# workflow's output: release.yml signs it there rather than here, so that every
+# certificate of a release names the one workflow, release.yml, that the README
+# tells users to verify.
+#
+# Nothing here pushes a tag. The index goes up under its digest alone, and its
+# tags are the second output: release.yml's tag job sets them once the index is
+# signed, so no tag ever names an unsigned image.
+
+on:
+  workflow_call:
+    outputs:
+      digest:
+        description: Digest of the merged image index
+        value: ${{ jobs.merge.outputs.digest }}
+      tags:
+        description: The index's tags, one image:tag a line, for release.yml's tag job to set
+        value: ${{ jobs.merge.outputs.tags }}
+    inputs:
+      image:
+        description: Short image name under ghcr.io/ioanalytica/
+        required: true
+        type: string
+      context:
+        description: Build context path
+        required: true
+        type: string
+      file:
+        description: Path to the Dockerfile
+        required: true
+        type: string
+      build-args:
+        required: false
+        type: string
+        default: ""
+      labels:
+        description: Image labels that replace the ones docker/metadata-action derives from this repository
+        required: false
+        type: string
+        default: ""
+      tags:
+        description: docker/metadata-action tags config (the index's tags, set by release.yml's tag job)
+        required: true
+        type: string
+
+permissions: {}
+
+env:
+  REGISTRY: ghcr.io
+  OWNER: ioanalytica
+
+jobs:
+  build:
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-26.04
+          - platform: linux/arm64
+            runner: ubuntu-26.04-arm
+    runs-on: ${{ matrix.runner }}
+    # A build without a cache took a few minutes per platform.
+    timeout-minutes: 30
+    steps:
+      - name: Prepare
+        env:
+          PLATFORM: ${{ matrix.platform }}
+        run: echo "PLATFORM_PAIR=${PLATFORM//\//-}" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The search sidecar is built from the wordpress-idx submodule.
+          submodules: true
+          # This job uploads artifacts, which is how a token left in
+          # .git/config leaves the runner. Nothing here pushes back.
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ inputs.image }}
+          labels: ${{ inputs.labels }}
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.file }}
+          platforms: ${{ matrix.platform }}
+          build-args: ${{ inputs.build-args }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ inputs.image }}
+          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          # An SPDX SBOM of the final image and SLSA v1 provenance, stated
+          # rather than left to the action's defaults, which depend on the
+          # repository's visibility. mode=max records the build arguments, so
+          # none may carry a secret (tests/ci/test.sh).
+          sbom: true
+          provenance: mode=max,version=v1
+          cache-from: type=gha,scope=${{ inputs.image }}-${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ inputs.image }}-${{ matrix.platform }}
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/digests"
+          touch "$RUNNER_TEMP/digests/${DIGEST#sha256:}"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          # "__" separator so an image name that is a prefix of another
+          # cannot cross-match on download.
+          name: digests-${{ inputs.image }}__${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    needs: build
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.index.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+    steps:
+      # The action that installs oras, nothing else.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/actions
+      - uses: ./.github/actions/setup-oras
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          path: ${{ runner.temp }}/digests
+          pattern: digests-${{ inputs.image }}__*
+          merge-multiple: true
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The tags the index gets once it is signed, computed here and set in
+      # release.yml's tag job.
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ inputs.image }}
+          tags: ${{ inputs.tags }}
+      # imagetools create pushes an index only under a tag, so it prints the
+      # index instead (--dry-run), and oras pushes it under its digest alone.
+      # The print ends in a newline the index lacks: what goes up are the
+      # bytes imagetools would have pushed. The index carries the number of
+      # the release run that built it, which a re-run keeps: the tag job
+      # moves a tag only to an index of a later run.
+      - name: Create the image index and push it by digest
+        working-directory: ${{ runner.temp }}/digests
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ inputs.image }}
+          BUILD_RUN: ${{ github.run_number }}
+        run: |
+          sources=()
+          for d in *; do sources+=("$IMAGE@sha256:$d"); done
+          index="$(docker buildx imagetools create --dry-run \
+            --annotation "index:com.ioanalytica.wordpress-nginx.build-run=$BUILD_RUN" "${sources[@]}")"
+          printf '%s' "$index" >"$RUNNER_TEMP/index.json"
+          oras manifest push "$IMAGE" "$RUNNER_TEMP/index.json"
+      # The digest is that of the bytes pushed, not one read back through a
+      # tag. From here on the index is named by that digest, which is what
+      # gets signed and then tagged. A signature over the index covers the
+      # attestation manifests it lists, so a merge that dropped one would
+      # publish a signed image without its SBOM or provenance: fail instead.
+      - name: Inspect
+        id: index
+        env:
+          IMAGE: ${{ env.REGISTRY }}/${{ env.OWNER }}/${{ inputs.image }}
+        run: |
+          [ -s "$RUNNER_TEMP/index.json" ] || { echo "no index was pushed for $IMAGE" >&2; exit 1; }
+          digest="sha256:$(sha256sum "$RUNNER_TEMP/index.json" | cut -d' ' -f1)"
+          ref="$IMAGE@$digest"
+          docker buildx imagetools inspect "$ref"
+          platforms="$(docker buildx imagetools inspect --raw "$ref" | jq '[.manifests[] | select(.platform.os != "unknown")] | length')"
+          [ "$platforms" -eq 2 ] || { echo "$ref has $platforms platforms, not the two this workflow builds" >&2; exit 1; }
+          for att in SBOM:SPDX Provenance:SLSA; do
+            docker buildx imagetools inspect "$ref" --format "{{json .${att%%:*}}}" \
+              | jq -e --argjson n "$platforms" --arg kind "${att#*:}" '[.[] | select(.[$kind])] | length == $n' >/dev/null \
+              || { echo "$ref: not every one of its $platforms platforms has a ${att%%:*} attestation" >&2; exit 1; }
+          done
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
