@@ -55,7 +55,14 @@ The default is `resourcesPreset: "micro"`.
 ## Security context
 
 Both security contexts are off by default (`enabled: false`), so the
-containers run as the image defines. Enabling them applies the settings shown
-here:
+containers run as the image defines. The values exist for clusters that
+require them:
 
 <!--@include: ../../chart/README.md#security-context-->
+
+::: warning Test before relying on it
+The chart's tests do not cover a release with the security contexts enabled.
+The container security context applies to the init container as well, which
+sets the owner of the files it creates on the volume, something a user other
+than root is not allowed to do. Try such values on a fresh release first.
+:::

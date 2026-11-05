@@ -248,7 +248,7 @@ echo '<h2 id="intro">i</h2>' > "$WORK/good/guide/index.html"
 cp -R "$WORK/good/." "$WORK/bad/"
 echo '<a href="chart/values.yaml">a</a> <a href=".github/workflows/site.yml">b</a> <a href="/guide/install#gone">c</a> <a href="#nowhere">d</a>' > "$WORK/bad/guide/other.html"
 check "a clean site passes" "$CHECK" "$WORK/good"
-out=$("$CHECK" "$WORK/bad" 2>&1) && fail "a site with broken links passes" || ok "a site with broken links fails"
+if out=$("$CHECK" "$WORK/bad" 2>&1); then fail "a site with broken links passes"; else ok "a site with broken links fails"; fi
 equal "it names each broken link with its page" "$out" \
 'link relative to the repository, leads nowhere on the site: guide/other.html:href=".github/workflows/site.yml"
 link relative to the repository, leads nowhere on the site: guide/other.html:href="chart/values.yaml"

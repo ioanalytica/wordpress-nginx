@@ -25,6 +25,17 @@ metrics:
 | `metrics.serviceMonitor.enabled` | Create a ServiceMonitor for the Prometheus Operator | `false` |
 | `metrics.serviceMonitor.interval`, `.scrapeTimeout`, `.labels`, `.selector`, `.relabelings`, `.metricRelabelings`, `.honorLabels`, `.jobLabel`, `.namespace` | Settings of the ServiceMonitor | |
 
+The chart's NetworkPolicy, which is on by default, does not list the
+exporter's port. Where the cluster enforces network policies, admit the
+scrape:
+
+```yaml
+networkPolicy:
+  extraIngress:
+    - ports:
+        - port: 9113
+```
+
 Without the Prometheus Operator, the Service's `prometheus.io/scrape`
 annotations let a Prometheus that discovers targets by annotation find the
 exporter.

@@ -25,8 +25,13 @@ other layers on purpose.
 | [File-integrity monitoring](/security/file-integrity-monitoring) | A watcher reads the site's volume read-only and reports unexpected files, changed drop-ins and changed baselined files as Prometheus metrics. | `fim.enabled` |
 | [REST API hardening](/security/rest-api-hardening) | NGINX answers 403 for anonymous requests that list the site's login names. The page says what this does not prevent, which is why it is off by default. | `restApiHardening.mode` |
 | Restricted `wp-admin` | A second Ingress for `/wp-admin` with annotations of its own, for example a source range. See [Ingress and redirects](/features/ingress). | `secondaryIngress` |
-| Security contexts | Non-root user, read-only root file system, no privilege escalation, all capabilities dropped. Off by default; see [Configuration](/guide/configuration#security-context). | `podSecurityContext`, `containerSecurityContext` |
 | Network policy rules | The chart creates a NetworkPolicy, which by default admits any source to the pod's ports and allows all egress. `allowExternal: false` and `allowExternalEgress: false` narrow it; without external egress, add rules for what the site needs to reach, such as wordpress.org for plugin updates. | `networkPolicy` |
+
+## Not covered
+
+The pod and container security contexts are off by default, and a release
+with them enabled is not part of the chart's tests; see
+[Configuration](/guide/configuration#security-context) before enabling them.
 
 ## Left to other layers
 

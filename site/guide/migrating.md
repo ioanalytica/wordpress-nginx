@@ -52,7 +52,9 @@ Go through the lists below instead of relying on an error.
 | `hostAliases` | an entry for `status.localhost` | empty |
 
 A values file that names the database and its user explicitly is not affected
-by the changed defaults; one that relied on them is.
+by the changed defaults; one that relied on them is. One that enables the
+security contexts explicitly needs a test first; see
+[Configuration](/guide/configuration#security-context).
 
 ## Same key, different meaning
 
