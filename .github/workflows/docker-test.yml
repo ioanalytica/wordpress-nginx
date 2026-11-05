@@ -67,9 +67,12 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     steps:
+      # With the wordpress-idx submodule: tests/ci/test.sh reads the search
+      # sidecar's version from it, as a release does.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          submodules: true
           persist-credentials: false
 
       # Pinned: without a version the action asks the GitHub API for the

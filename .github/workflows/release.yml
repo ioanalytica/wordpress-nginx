@@ -233,7 +233,8 @@ jobs:
           overwrite: true
       - uses: ./.github/actions/setup-oras
       # helm pushes into the job's own registry, and names the manifest it
-      # pushed ("Digest: sha256:…"). oras copies that digest into
+      # pushed ("Digest: sha256:…", on its standard output as of Helm 4; the
+      # step fails when it finds none). oras copies that digest into
       # charts/wordpress-nginx under no tag; content-addressed, the copy has
       # the same digest. The sign job signs it, and the tag job tags it.
       - name: Push the chart to GHCR by digest
