@@ -128,7 +128,9 @@ while IFS= read -r image; do
         *.*/*|*:*/*)           want="$image" ;;
         *)                     want="docker.io/$image" ;;
     esac
-    case "$want" in *:*) ;; *) want="$want:latest" ;; esac
+    # A tag or a digest stands in the last component; a colon before it is
+    # a registry's port.
+    case "${want##*/}" in *:*|*@*) ;; *) want="$want:latest" ;; esac
     if jq -e --arg ref "$want" 'any(.[]; .ref == $ref)' <<<"$list" >/dev/null; then
         ok "scanned: $want"
     else
@@ -145,10 +147,10 @@ refuses "a tag that is a number"                    "$IMAGES" "$WORK/chart"
 printf 'a:\n  image:\n    repository: one/thing\n    tag: "1"\nb:\n  image: "two/thing:2"\n' >"$WORK/chart/values.yaml"
 refuses "two images of one name"                    "$IMAGES" "$WORK/chart"
 printf 'a:\n  image: "registry.example:5000/group/thing:1.2"\nb:\n  image:\n    repository: other\n    tag: "3"\n' >"$WORK/chart/values.yaml"
-printf '      containers:\n        - image: busybox\n        - image: {{ .Values.b.image }}\n' >"$WORK/chart/templates/x.yaml"
+printf '      containers:\n        - image: busybox\n        - image: {{ .Values.b.image }}\n          image: "alpine:3.24"  # a comment\n' >"$WORK/chart/templates/x.yaml"
 got="$("$IMAGES" "$WORK/chart" | jq -r 'map(.ref) | sort | join(" ")')"
-want="docker.io/busybox:latest docker.io/other:3 registry.example:5000/group/thing:1.2"
-if [ "$got" = "$want" ]; then ok "a registry with a port, a bare name and a template's own image"
+want="docker.io/alpine:3.24 docker.io/busybox:latest docker.io/other:3 registry.example:5000/group/thing:1.2"
+if [ "$got" = "$want" ]; then ok "a registry with a port, a bare name and a template's own images, one with a comment"
 else fail "expected '$want', got '$got'"; fi
 # A digest in the values is what the chart runs, whatever the tag says.
 digest="sha256:$(printf '%064d' 1)"
