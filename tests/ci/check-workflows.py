@@ -115,7 +115,8 @@ def check(path, problems, oidc_jobs):
             if "${{" in str(step.get("run", "")):
                 problems.append(f"{where}, {label}: a ${{{{ }}}} expression inside the run script; pass it through env")
             if str(step.get("uses", "")).startswith("actions/checkout@") and not pushes:
-                if (step.get("with") or {}).get("persist-credentials") is not False:
+                # false, or "false": the action reads either as false.
+                if str((step.get("with") or {}).get("persist-credentials")).lower() != "false":
                     problems.append(f"{where}: the checkout keeps its token (persist-credentials: false is missing)")
 
 

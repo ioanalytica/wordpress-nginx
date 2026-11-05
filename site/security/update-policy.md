@@ -60,8 +60,9 @@ In the project's own image the scan sees the Alpine packages. It does not cover:
 - **Plugins and themes.** They live on the site's volume, not in the image.
 
 A green scan therefore says that the Alpine packages have no known high or
-critical vulnerability with a fixed version; one without a fix is listed in
-code scanning. It says nothing about PHP, WordPress or a site's plugins.
+critical vulnerability with a fixed version, apart from any accepted finding
+named above; one without a fix is listed in code scanning. It says nothing
+about PHP, WordPress or a site's plugins.
 
 ### What covers the rest
 
