@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in the chart, the image or the file-integrity watcher does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. A security issue goes to a [private report](https://github.com/ioanalytica/wordpress-nginx/security/advisories/new) instead, and a problem in the search API or the search plugin to [wordpress-idx](https://github.com/ioanalytica/wordpress-idx/issues).
+  - type: input
+    id: version
+    attributes:
+      label: Chart version
+      description: The chart version (`helm list`), which is also the tag of the `ghcr.io/ioanalytica/wordpress-nginx` image.
+      placeholder: "7.1.408"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where is the problem?
+      options:
+        - Chart (templates, values)
+        - Image (NGINX, PHP, WordPress setup)
+        - File-integrity monitoring
+        - Search sidecar, as the chart deploys it
+        - Documentation
+        - Not sure
+    validations:
+      required: true
+  - type: input
+    id: kubernetes
+    attributes:
+      label: Kubernetes
+      description: Distribution and version, and the ingress controller if requests are affected.
+      placeholder: "k3s v1.34.1 with Traefik, kubeadm 1.33 with ingress-nginx, …"
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: values
+    attributes:
+      label: Values
+      description: The chart values that differ from the defaults, with hosts, keys and passwords removed.
+      render: yaml
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: The pod's log around the failure (`kubectl logs`, with `--all-containers` for the init container and sidecars), with secrets removed.
+      render: text

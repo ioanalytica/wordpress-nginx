@@ -2,8 +2,8 @@
 # Tests what the documentation site (site/) is put together from, where a
 # mistake does not fail the VitePress build.
 #
-# Pages show sections of README.md, chart/README.md and the changelog by
-# include. A broken include fails quietly: a missing file renders nothing, a
+# Pages show sections of README.md and chart/README.md by include, and the
+# changelog, CONTRIBUTING.md and SECURITY.md whole. A broken include fails quietly: a missing file renders nothing, a
 # missing region the whole file. The links of an included section are written
 # for GitHub and are rewritten for the site (site/.vitepress/links.ts); a wrong
 # target shows only on the live site. The sidebar is a list in the config that
@@ -191,6 +191,16 @@ targets "the same link from the top-level README" README.md \
     chart/README.md#chart-versions /reference/versioning \
     chart/README.md#php-execution-allowlist /security/php-execution-allowlist \
     chart/CHANGELOG.md /reference/changelog
+targets "a file shown whole has a page of its own" README.md \
+    CONTRIBUTING.md /reference/contributing \
+    'CONTRIBUTING.md#versions-and-releases' '/reference/contributing#versions-and-releases' \
+    SECURITY.md /security/reporting
+targets "links of such a file are read from the repository root" CONTRIBUTING.md \
+    SECURITY.md /security/reporting \
+    chart/README.md#chart-versions /reference/versioning \
+    CODE_OF_CONDUCT.md "$REPO_URL/blob/main/CODE_OF_CONDUCT.md" \
+    .github/workflows/docker-test.yml "$REPO_URL/blob/main/.github/workflows/docker-test.yml" \
+    '#versions-and-releases' '#versions-and-releases'
 targets "what stays as it is" chart/README.md \
     '#no-such-section' '#no-such-section' \
     no-such-file.md no-such-file.md \

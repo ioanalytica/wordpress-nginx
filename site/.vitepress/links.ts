@@ -16,6 +16,8 @@ export const repoUrl = 'https://github.com/ioanalytica/wordpress-nginx';
 // them goes there. A heading's anchor differs between GitHub and VitePress
 // where it holds a dot, so such a section names its anchor on the page.
 const sitePages: Record<string, string> = {
+  'CONTRIBUTING.md': '/reference/contributing',
+  'SECURITY.md': '/security/reporting',
   'chart/CHANGELOG.md': '/reference/changelog',
   'chart/README.md#chart-versions': '/reference/versioning',
   'chart/README.md#php-execution-allowlist': '/security/php-execution-allowlist',
@@ -23,14 +25,14 @@ const sitePages: Record<string, string> = {
   'examples/k3d/README.md': '/guide/try-locally',
 };
 
-// Pages include sections of README.md, chart/README.md and the changelog,
-// whose links are written for GitHub: relative to the file they stand in, or
-// to this site by its full address. A page names that file as `source` in its
-// frontmatter. On the site, a link to the repository leads to GitHub, or to
-// the page that shows the file or section; an address of the site stays on
-// the site. An address with a scheme and an absolute path stay as they are,
-// and so does everything on a page without a source: its links are the site's
-// own.
+// Pages include sections of README.md and chart/README.md, and the changelog,
+// CONTRIBUTING.md and SECURITY.md whole. Their links are written for GitHub:
+// relative to the file they stand in, or to this site by its full address. A
+// page names that file as `source` in its frontmatter. On the site, a link to
+// the repository leads to GitHub, or to the page that shows the file or
+// section; an address of the site stays on the site. An address with a scheme
+// and an absolute path stay as they are, and so does everything on a page
+// without a source: its links are the site's own.
 export function siteHref(href: string, source?: string): string {
   if (href === siteUrl || href.startsWith(`${siteUrl}/`) || href.startsWith(`${siteUrl}#`)) {
     const rest = href.slice(siteUrl.length);

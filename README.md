@@ -40,6 +40,10 @@ Includes WordPress, NGINX with optimised configuration, PHP extensions (imagick,
 
 - [wordpress-idx](https://github.com/ioanalytica/wordpress-idx) — FlexSearch-based full-text search sidecar for WordPress
 
+## Contributing
+
+Issues, questions in [Discussions](https://github.com/ioanalytica/wordpress-nginx/discussions) and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md). Report security issues privately, as [SECURITY.md](SECURITY.md) describes.
+
 ## License
 
 Copyright &copy; 2024-2026 [IO ANALYTICA](https://ioanalytica.com).
