@@ -244,10 +244,11 @@ W3 Total Cache, WP Rocket, LiteSpeed Cache — installs its drop-in and then
 silently never uses it.
 
 Those plugins normally write the constant into `wp-config.php` themselves.
-That does not hold here: the chart regenerates `wp-config.php` on every
-container start, so a plugin-written constant is gone after the next restart
-or rollout, and the page cache quietly stops working until someone touches the
-plugin's settings again. The chart therefore owns the constant:
+That does not hold here: the init container writes `wp-config.php` anew for
+every pod, so a plugin-written constant is gone with the next pod (a rollout,
+or a pod that is rescheduled or deleted), and the page cache quietly stops
+working until someone touches the plugin's settings again. The chart
+therefore owns the constant:
 
 ```yaml
 wordpressWpCache: true     # null (default) follows wordpressConfigureCache
@@ -450,9 +451,9 @@ nginx:
     - path: /wp-content/uploads/dlm_uploads
       action: deny              # 403 (default)
       reason: Download Monitor - force downloads through the permission check
-    - path: ~* ^/wp-content/themes/config-1785900943/
+    - path: ~* ^/wp-content/plugins/retired-plugin/
       action: honeypot          # 418
-      reason: incident 2026-08, removed backdoor
+      reason: plugin no longer installed here - only scanners ask for it
   htaccessPolicy: warn          # warn (default) | fail
 ```
 
@@ -469,8 +470,8 @@ Rendered, the example above becomes:
 # Download Monitor - force downloads through the permission check
 "~*^/wp-content/uploads/dlm_uploads(/|$)" 403;
 
-# incident 2026-08, removed backdoor
-"~*^/wp-content/themes/config-1785900943/" 418;
+# plugin no longer installed here - only scanners ask for it
+"~*^/wp-content/plugins/retired-plugin/" 418;
 ```
 
 #### Why not a `location` in the per-site `nginx.conf`
@@ -489,9 +490,11 @@ allowlist, and never enters location matching at all.
 
 A 418 is a deliberate signal, not an error. If your edge runs a CrowdSec
 scenario that bans any source receiving a 418 (`http-teapot-ban` or similar),
-a honeypot rule on a known-removed backdoor path makes probers ban themselves,
-whatever throwaway IP they use next — no per-IP rules to maintain. Without such
-a scenario, `honeypot` is just a more conspicuous `deny`.
+a honeypot rule on a path that no visitor has a reason to request, such as
+the directory of a plugin the site no longer has, makes probers ban
+themselves, whatever throwaway IP they use next — no per-IP rules to
+maintain. Without such a scenario, `honeypot` is just a more conspicuous
+`deny`.
 
 #### `.htaccess` files: the plugin thinks it is protected
 
@@ -901,16 +904,24 @@ its rule in the `rule` label; `values.yaml` lists them all.
 
 ### Metrics & Monitoring
 
+With `metrics.enabled` the pod gets a sidecar running the
+[NGINX Prometheus exporter](https://github.com/nginx/nginx-prometheus-exporter)
+(`metrics.image`, pinned in `values.yaml`). It serves NGINX's connection and
+request counters on port 9113 through a Service of its own, and the chart's
+NetworkPolicy admits that port.
+
 ```yaml
 metrics:
   enabled: true
-  image:
-    registry: docker.io
-    repository: bitnami/nginx-exporter
-    tag: 1.4.1-debian-12-r5
   serviceMonitor:
-    enabled: true
+    enabled: true          # needs the Prometheus Operator
+    labels:
+      release: prometheus  # whatever your Prometheus selects ServiceMonitors by
 ```
+
+Without the Prometheus Operator, the Service's `prometheus.io/scrape`
+annotations let a Prometheus that discovers targets by annotation find the
+exporter.
 
 ### Resources
 

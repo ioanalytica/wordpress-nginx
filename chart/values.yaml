@@ -95,7 +95,7 @@ image:
   ## pullSecrets:
   ##   - myRegistryKeySecretName
   ##
-  ## pullSecrets: []
+  pullSecrets: []
   ## Enable debug mode
   ##
   debug: false
@@ -175,9 +175,10 @@ wordpressCacheInstanceId: ~
 ## silently degrades to no page caching at all.
 ##
 ## Those plugins normally write the constant into wp-config.php themselves.
-## That does not survive here: this chart regenerates wp-config.php on every
-## container start, so a plugin-written constant is gone after the next
-## restart or rollout. Setting it from the chart makes it durable.
+## That does not survive here: the init container writes wp-config.php anew
+## for every pod, so a plugin-written constant is gone with the next pod - a
+## rollout, or a pod that is rescheduled or deleted. Setting it from the
+## chart makes it durable.
 ##
 ## Leave unset (`null`) to follow `wordpressConfigureCache`, which is the right
 ## default when the bundled W3 Total Cache integration configures the cache.
@@ -273,8 +274,8 @@ restApiHardening:
 ##         /wp-content/uploads/x does not match /wp-content/uploads/xy) or,
 ##         when it starts with "~", a complete NGINX regex taken verbatim.
 ## action: deny (403) or honeypot (418). CrowdSec's http-teapot-ban scenario
-##         bans any source that receives a 418, so a honeypot makes probers of
-##         a known-removed backdoor ban themselves.
+##         bans any source that receives a 418, so a honeypot on a path that
+##         no visitor has a reason to request makes probers ban themselves.
 ## reason: free text, rendered as a comment above the rule.
 ## @param nginx.deniedPaths [array] Paths NGINX refuses for every caller. Each entry: `path`, `action` (`deny` | `honeypot`), `reason`
 ## @param nginx.htaccessPolicy What the init container does when it finds `.htaccess` files under wp-content: `warn` logs them and lists the directories that are not covered by `nginx.deniedPaths`; `fail` refuses to start the pod while any such directory is uncovered
@@ -286,9 +287,9 @@ nginx:
   ##   - path: /wp-content/uploads/dlm_uploads
   ##     action: deny
   ##     reason: Download Monitor - force downloads through the permission check
-  ##   - path: ~* ^/wp-content/themes/config-1785900943/
+  ##   - path: ~* ^/wp-content/plugins/retired-plugin/
   ##     action: honeypot
-  ##     reason: incident 2026-08, removed backdoor; probers ban themselves via 418
+  ##     reason: plugin no longer installed here - only scanners ask for it, and ban themselves via 418
   htaccessPolicy: warn
 ## @param wordpressPreinstallPlugins [array] Plugins installed, activated and set to auto-update on every container start. Each entry: `name` (wordpress.org slug), `activate` (default true), `autoUpdate` (default true)
 ## The install step needs egress to wordpress.org; without it the step is
@@ -320,7 +321,7 @@ customPostInitScripts: {}
 ## Without smtpHost, every send fails loudly in the container log
 ## ("[mail error] SMTP_HOST is not defined").
 ## @param smtpHost SMTP relay host
-## @param smtpPort SMTP relay port (empty: msmtp's default, 25)
+## @param smtpPort SMTP relay port (empty: msmtp's default, which is 25, or 465 with smtpProtocol "ssl")
 ## @param smtpUser SMTP username. Authentication switches on as soon as a user or password is set
 ## @param smtpPassword SMTP user password
 ## @param smtpProtocol Connection security: "tls" = STARTTLS (usually port 587), "ssl" = implicit TLS (smtps, port 465), "none" = unencrypted even with credentials (internal relays without TLS only), empty = unencrypted without credentials and STARTTLS as soon as smtpUser or a password is set. Any other value fails the render
@@ -1161,6 +1162,7 @@ metrics:
   podAnnotations: {}
   ## Container Security Context
   ## @param metrics.containerSecurityContext.enabled Enabled NGINX Exporter containers' Security Context
+  ## @param metrics.containerSecurityContext.seLinuxOptions [object,nullable] Set SELinux options in the NGINX Exporter container
   ## @param metrics.containerSecurityContext.runAsUser Set NGINX Exporter container's Security Context runAsUser
   ##
   containerSecurityContext:
@@ -1168,6 +1170,29 @@ metrics:
     seLinuxOptions: {}
     runAsUser: 1001
   ## Metrics liveness/readiness/startup probes
+  ## The chart adds what each probe asks: liveness and readiness GET /metrics
+  ## on the exporter's port, startup opens a TCP connection to it.
+  ## @param metrics.livenessProbe.enabled Enable livenessProbe on the NGINX Exporter container
+  ## @param metrics.livenessProbe.initialDelaySeconds Initial delay seconds for livenessProbe
+  ## @param metrics.livenessProbe.periodSeconds Period seconds for livenessProbe
+  ## @param metrics.livenessProbe.timeoutSeconds Timeout seconds for livenessProbe
+  ## @param metrics.livenessProbe.failureThreshold Failure threshold for livenessProbe
+  ## @param metrics.livenessProbe.successThreshold Success threshold for livenessProbe
+  ## @param metrics.readinessProbe.enabled Enable readinessProbe on the NGINX Exporter container
+  ## @param metrics.readinessProbe.initialDelaySeconds Initial delay seconds for readinessProbe
+  ## @param metrics.readinessProbe.periodSeconds Period seconds for readinessProbe
+  ## @param metrics.readinessProbe.timeoutSeconds Timeout seconds for readinessProbe
+  ## @param metrics.readinessProbe.failureThreshold Failure threshold for readinessProbe
+  ## @param metrics.readinessProbe.successThreshold Success threshold for readinessProbe
+  ## @param metrics.startupProbe.enabled Enable startupProbe on the NGINX Exporter container
+  ## @param metrics.startupProbe.initialDelaySeconds Initial delay seconds for startupProbe
+  ## @param metrics.startupProbe.periodSeconds Period seconds for startupProbe
+  ## @param metrics.startupProbe.timeoutSeconds Timeout seconds for startupProbe
+  ## @param metrics.startupProbe.failureThreshold Failure threshold for startupProbe
+  ## @param metrics.startupProbe.successThreshold Success threshold for startupProbe
+  ## @param metrics.customLivenessProbe Custom livenessProbe that overrides the default one
+  ## @param metrics.customReadinessProbe Custom readinessProbe that overrides the default one
+  ## @param metrics.customStartupProbe Custom startupProbe that overrides the default one
   ##
   livenessProbe:
     enabled: true
@@ -1296,7 +1321,7 @@ metrics:
 ##
 
 ## wordpress-idx search sidecar configuration
-## ref: https://gitlab.ioanalytica.com/io/wordpress-idx
+## ref: https://github.com/ioanalytica/wordpress-idx
 ##
 idx:
   ## @param idx.enabled Enable wordpress-idx search sidecar container
@@ -1692,7 +1717,11 @@ externalDatabase:
   ## @param externalDatabase.database External Database database name
   ##
   database: wordpress
+  ## @param externalDatabase.databaseCharset External Database character set (`DB_CHARSET` in wp-config.php)
+  ##
   databaseCharset: "utf8mb4"
+  ## @param externalDatabase.databaseCollation External Database collation (`DB_COLLATE` in wp-config.php); empty leaves it to the character set
+  ##
   databaseCollation: ""
   ## @param externalDatabase.existingSecret The name of an existing secret with database credentials. Evaluated as a template
   ## NOTE: Must contain key `mariadb-password`
