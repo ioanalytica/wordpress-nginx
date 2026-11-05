@@ -996,24 +996,16 @@ fim_refuses "a digest of the wrong length"       --set-json 'fim.baseline={"salt
 
 echo
 echo "=== The bundled MariaDB takes over an existing data directory"
-# A new MariaDB series starts on the data of the earlier one. Two settings
-# belong to that: the image updates its system tables itself, and the old
-# pod is told to stop before the new one is created. Both were tried on a
-# cluster (12.2.2 to 12.3.3), as an upgrade of an installed release, also
-# with an old pod that takes 30 seconds to stop: the new server then waits
-# for MariaDB's lock on the data directory. The strategy must be one an
-# existing Deployment can be changed to, which Recreate is not. This pins
-# the settings on the rendered Deployment; the order of the pods is not
-# something a rendered manifest can show.
+# A new MariaDB series starts on the data of the earlier one, and the image
+# then updates its system tables itself. Tried on a cluster (12.2.2 to
+# 12.3.3) as an upgrade of an installed release; this pins the setting on
+# the rendered Deployment.
 mariadb_upgrade=$(helm template tst "$CHART" 2>&1 | python3 -c '
 import sys, yaml
 problems = []
 for d in yaml.safe_load_all(sys.stdin):
     if not d or d.get("kind") != "Deployment" or d["metadata"]["name"] != "tst-wordpress-nginx-mariadb":
         continue
-    strategy = d["spec"].get("strategy") or {}
-    if strategy.get("type") != "RollingUpdate" or strategy.get("rollingUpdate") != {"maxSurge": 0, "maxUnavailable": 1}:
-        problems.append("strategy is not a rolling update with maxSurge 0 and maxUnavailable 1")
     env = {e["name"]: e.get("value") for e in d["spec"]["template"]["spec"]["containers"][0]["env"]}
     if env.get("MARIADB_AUTO_UPGRADE") != "1":
         problems.append("MARIADB_AUTO_UPGRADE is not \"1\"")
@@ -1023,7 +1015,7 @@ else:
 print("; ".join(problems))
 ' 2>&1) || mariadb_upgrade="render failed"
 if [ -z "$mariadb_upgrade" ]; then
-    echo "ok:   the database's pod is stopped first and updates its system tables"
+    echo "ok:   the database updates its system tables itself"
 else
     echo "FAIL: the bundled MariaDB — $mariadb_upgrade"
     FAILURES=$((FAILURES + 1))

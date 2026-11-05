@@ -71,25 +71,6 @@ metadata:
   {{- end }}
 spec:
   replicas: 1
-  # The old pod is told to stop before a new one is created, never the other
-  # way round. The default creates the new pod first and stops the old one
-  # once the new container has started; where the volume attaches to one node
-  # at a time and the new pod is scheduled to another node, it never starts
-  # and the rollout cannot finish.
-  # Kubernetes does not wait for the old pod to be gone, though: the new
-  # server can start while the old one is still shutting down. What keeps two
-  # servers off the same files is MariaDB's lock on the data directory. The
-  # new server waits for it, up to 30 seconds, and the container starts again
-  # if that was not enough.
-  # It stays a rolling update on purpose. The strategy Recreate would wait for
-  # the old pod, but an existing Deployment cannot move to it: Kubernetes
-  # refuses the change while the rolling update's defaults are set, and a
-  # server-side apply cannot take them away.
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 0
-      maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: {{ include "common.names.name" . }}-mariadb
