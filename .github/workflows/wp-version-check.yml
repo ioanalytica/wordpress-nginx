@@ -88,21 +88,15 @@ jobs:
           sed -i "s/^appVersion: .*/appVersion: \"${NEW}\"/" chart/Chart.yaml
           sed -i "s|^      image: ghcr.io/ioanalytica/wordpress-nginx:.*|      image: ghcr.io/ioanalytica/wordpress-nginx:${CHART_VERSION}|" chart/Chart.yaml
           sed -i "s|^      image: ghcr.io/ioanalytica/wordpress-idx:.*|      image: ghcr.io/ioanalytica/wordpress-idx:${CHART_VERSION}|" chart/Chart.yaml
-          # Prepend a CHANGELOG entry directly under the "# Changelog" header.
-          awk -v ver="${CHART_VERSION}" -v wp="$NEW" '
-            NR==1 {
-              print
-              print ""
-              print "## " ver
-              print ""
-              print "* Update to WordPress " wp ". Review the [WordPress release notes](https://wordpress.org/news/) before upgrading."
-              next
-            }
-            { print }
-          ' chart/CHANGELOG.md > chart/CHANGELOG.md.tmp
-          mv chart/CHANGELOG.md.tmp chart/CHANGELOG.md
+          # The changelog entry of the new version. This pull request is a
+          # release pull request: what earlier pull requests left under
+          # "## Unreleased" ships with it, so that section becomes the
+          # version's, below the line for the WordPress update.
+          scripts/changelog-release.sh "${CHART_VERSION}" \
+            "* Update to WordPress ${NEW}. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading."
           echo "----- Dockerfile -----"; grep '^ENV WP_VERSION=' docker/Dockerfile
           echo "----- Chart.yaml -----"; grep -E '^(version|appVersion):|ioanalytica/wordpress-(nginx|idx):' chart/Chart.yaml
+          echo "----- CHANGELOG.md -----"; sed -n '1,12p' chart/CHANGELOG.md
 
       - name: Create Pull Request
         if: steps.cmp.outputs.update == 'true'
@@ -123,7 +117,7 @@ jobs:
             Bumped:
             - `docker/Dockerfile` — `WP_VERSION=${{ steps.wp.outputs.latest }}`
             - `chart/Chart.yaml` — `version` and both images of this project in `artifacthub.io/images` → `${{ steps.cmp.outputs.chart_version }}`, `appVersion` → `${{ steps.wp.outputs.latest }}`
-            - `chart/CHANGELOG.md` — new entry
+            - `chart/CHANGELOG.md` — the entry for `${{ steps.cmp.outputs.chart_version }}`. Changes merged since the last release were listed under `## Unreleased`; they are part of this entry now and ship with this version.
 
             **After the merge, tag the merge commit** to start the release, which builds, signs and publishes both images and the chart. A release candidate first, `${{ steps.cmp.outputs.chart_version }}-rc.1` on the same commit, runs the whole release without moving `latest`:
 

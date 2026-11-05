@@ -191,6 +191,122 @@ version_refuses "a version with a v prefix"                   check v7.1.408 7.1
 version_refuses "a version with build metadata"               check 7.1.408+1 7.1.4
 version_refuses "a version of two components"                 check 7.1 7.1
 
+echo "=== Changelog and releases"
+# A pull request that changes the chart or the image adds its lines under
+# "## Unreleased" and leaves the version alone; the release pull request sets
+# the version and turns that section into the version's
+# (scripts/changelog-release.sh). So the newest version in the changelog is
+# always the one Chart.yaml names: a bumped version without an entry, or an
+# entry for a version the chart does not have yet, fails here.
+CHANGELOG="$CHART/CHANGELOG.md"
+RELEASE_SCRIPT="$(dirname "$0")/../../scripts/changelog-release.sh"
+newest_heading=$(awk '/^## / && $0 != "## Unreleased" { print; exit }' "$CHANGELOG")
+if [ "$newest_heading" = "## $chart_version" ]; then
+    echo "ok:   the newest version in the changelog is $chart_version, the chart's"
+else
+    echo "FAIL: the newest version in the changelog is '${newest_heading#\#\# }', Chart.yaml says $chart_version"
+    FAILURES=$((FAILURES + 1))
+fi
+first_heading=$(awk '/^## / { print; exit }' "$CHANGELOG")
+case "$(grep -cxF '## Unreleased' "$CHANGELOG" || true)" in
+    0) echo "ok:   no Unreleased section" ;;
+    1) if [ "$first_heading" = "## Unreleased" ]; then
+           echo "ok:   Unreleased is the first section"
+       else
+           echo "FAIL: '## Unreleased' must be the first section, which is '$first_heading'"
+           FAILURES=$((FAILURES + 1))
+       fi ;;
+    *) echo "FAIL: more than one Unreleased section"; FAILURES=$((FAILURES + 1)) ;;
+esac
+
+CL_TMP="$(mktemp -d)"
+trap 'rm -rf "$CL_TMP"' EXIT
+
+# release_gives <desc> <changelog> <expected> <version> [line]: the script
+# turns <changelog> into <expected>. Both are given with \n for line ends.
+release_gives() {
+    local desc="$1" before="$2" expected="$3" out; shift 3
+    printf '%b' "$before" > "$CL_TMP/CHANGELOG.md"
+    if out="$("$RELEASE_SCRIPT" "$1" "${2:-}" "$CL_TMP/CHANGELOG.md" 2>&1)" \
+       && [ "$(cat "$CL_TMP/CHANGELOG.md")" = "$(printf '%b' "$expected")" ]; then
+        echo "ok:   $desc"
+    else
+        echo "FAIL: $desc — got: $out"
+        sed 's/^/      /' "$CL_TMP/CHANGELOG.md"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+
+# release_refuses <desc> <changelog> <version> [line]: the script fails and
+# leaves the file as it was.
+release_refuses() {
+    local desc="$1" before="$2" out; shift 2
+    printf '%b' "$before" > "$CL_TMP/CHANGELOG.md"
+    if out="$("$RELEASE_SCRIPT" "$1" "${2:-}" "$CL_TMP/CHANGELOG.md" 2>&1)"; then
+        echo "FAIL: $desc — accepted"
+        FAILURES=$((FAILURES + 1))
+    elif [ "$(cat "$CL_TMP/CHANGELOG.md")" != "$(printf '%b' "$before")" ]; then
+        echo "FAIL: $desc — refused, but the file changed"
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   $desc"
+    fi
+}
+
+WP_LINE='* Update to WordPress 7.1.5.'
+release_gives "a release takes the Unreleased lines over, below its own" \
+    '# Changelog\n\n## Unreleased\n\n* A fix.\n* Another one.\n\n## 7.1.408\n\n* Old.\n' \
+    '# Changelog\n\n## 7.1.500\n\n* Update to WordPress 7.1.5.\n* A fix.\n* Another one.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.500 "$WP_LINE"
+release_gives "a release without a line of its own keeps the Unreleased lines as they are" \
+    '# Changelog\n\n## Unreleased\n\n* A fix.\n\n## 7.1.408\n\n* Old.\n' \
+    '# Changelog\n\n## 7.1.409\n\n* A fix.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.409
+release_gives "without an Unreleased section the version gets a new one" \
+    '# Changelog\n\n## 7.1.408\n\n* Old.\n' \
+    '# Changelog\n\n## 7.1.500\n\n* Update to WordPress 7.1.5.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.500 "$WP_LINE"
+release_gives "an empty Unreleased section becomes the version's" \
+    '# Changelog\n\n## Unreleased\n\n## 7.1.408\n\n* Old.\n' \
+    '# Changelog\n\n## 7.1.500\n\n* Update to WordPress 7.1.5.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.500 "$WP_LINE"
+release_gives "a subheading under Unreleased keeps its blank line" \
+    '# Changelog\n\n## Unreleased\n\n### Chart\n\n* A fix.\n\n## 7.1.408\n\n* Old.\n' \
+    '# Changelog\n\n## 7.1.500\n\n* Update to WordPress 7.1.5.\n\n### Chart\n\n* A fix.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.500 "$WP_LINE"
+release_refuses "a version that has its section already" \
+    '# Changelog\n\n## Unreleased\n\n* A fix.\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.408 "$WP_LINE"
+release_refuses "an entry that would say nothing" \
+    '# Changelog\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.409
+release_refuses "an empty Unreleased section without a line" \
+    '# Changelog\n\n## Unreleased\n\n## 7.1.408\n\n* Old.\n' \
+    7.1.409
+release_refuses "an Unreleased section below a version" \
+    '# Changelog\n\n## 7.1.408\n\n* Old.\n\n## Unreleased\n\n* A fix.\n' \
+    7.1.409
+# The tracker's pull request is built from the repository's own files: the
+# workflow must call the script, and the script must take this changelog.
+if grep -qF 'scripts/changelog-release.sh "${CHART_VERSION}"' \
+        "$(dirname "$0")/../../.github/workflows/wp-version-check.yml"; then
+    echo "ok:   the WordPress release tracker writes its entry with the script"
+else
+    echo "FAIL: .github/workflows/wp-version-check.yml does not call scripts/changelog-release.sh"
+    FAILURES=$((FAILURES + 1))
+fi
+cp "$CHANGELOG" "$CL_TMP/real.md"
+next_version="$("$VERSION_SCRIPT" next "$chart_version")"
+if "$RELEASE_SCRIPT" "$next_version" "$WP_LINE" "$CL_TMP/real.md" 2>/dev/null \
+   && [ "$(awk '/^## / { print; exit }' "$CL_TMP/real.md")" = "## $next_version" ] \
+   && ! grep -qxF '## Unreleased' "$CL_TMP/real.md" \
+   && [ "$(grep -c '' "$CL_TMP/real.md")" -ge "$(grep -c '' "$CHANGELOG")" ]; then
+    echo "ok:   the next release of this changelog would be $next_version, with every line kept"
+else
+    echo "FAIL: scripts/changelog-release.sh cannot release this changelog as $next_version"
+    FAILURES=$((FAILURES + 1))
+fi
+
 echo "=== Structural invariants across the value matrix"
 check "defaults"
 check "php allowlist report"        --set phpExecutionAllowlist.mode=report
