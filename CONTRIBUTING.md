@@ -148,36 +148,68 @@ there yet, and says in them what a user of the chart notices.
 A release is a pull request of its own. It
 
 1. sets `version` in `chart/Chart.yaml`;
-2. sets `annotations.imageTag` there, which must equal `version`;
-3. sets the tag of the `wordpress-nginx` entry in `annotations.images` there,
-   which must equal `version` too;
-4. turns `## Unreleased` in `chart/CHANGELOG.md` into the heading of that
+2. sets the tags of the `wordpress-nginx` and the `wordpress-idx` entry in
+   `artifacthub.io/images` there, which must equal `version`: the chart
+   version is the tag of both images;
+3. turns `## Unreleased` in `chart/CHANGELOG.md` into the heading of that
    version, so that no line is left under `## Unreleased` when it is merged.
 
-`./chart/tests/template-test.sh` fails while the three places in
-`chart/Chart.yaml` disagree and on a version outside the scheme.
+`./chart/tests/template-test.sh` fails while the places in `chart/Chart.yaml`
+disagree and on a version outside the scheme. The templates take the image
+tags from the chart version itself.
 
 After its merge the maintainers push a tag with the version's name on that
-commit. The tag's build tests the image and the chart again, builds the image
-for both platforms, publishes image and chart under that version and creates
-the GitHub release.
+commit, and the release workflow (`.github/workflows/release.yml`) runs:
+
+1. the tests, as a gate for everything that follows;
+2. both images, the WordPress image and the search sidecar's, built for each
+   platform and pushed to the registry under their digests, with an SBOM and
+   provenance, and the smoke test on the built WordPress image;
+3. the chart, packaged and pushed under its digest;
+4. one job that signs the two images and the chart;
+5. only then the tags: the version on both images and the chart, and
+   `latest`;
+6. the GitHub release, with the changelog entry of the version as its notes,
+   and "Try it locally" against what was published.
+
+A failed job can be re-run. [Verify a release](README.md#verify-a-release)
+has the commands that check the signatures afterwards.
+
+Where a change calls for it, a release candidate comes first: the tag
+`<version>-rc.1` on the same commit runs the whole release and publishes
+chart and images at the candidate's version, without moving `latest`. A fix
+goes to `main` by pull request, and the next candidate, `-rc.2`, on the new
+head. The release is then tagged on the commit its last candidate tested.
+
+Tag and push as steps of their own, once the commit is on `origin/main`:
+
+```sh
+git fetch origin
+git tag <version> origin/main
+git push origin <version>
+```
 
 A workflow asks wordpress.org every day for the current WordPress release. The
 pull request it opens for a new one is such a release pull request, and the
-four points hold for it as well: whoever merges it sees to it that the lines
+three points hold for it as well: whoever merges it sees to it that the lines
 under `## Unreleased` stand under the new version's heading. It also raises
 `WP_VERSION` in `docker/Dockerfile` and `appVersion` in `chart/Chart.yaml`,
 which no test compares with each other.
 
-A new release of the search sidecar is pinned in two places of
-`chart/Chart.yaml`: `annotations.idxImageTag` and the tag of the
-`wordpress-idx` entry in `annotations.images`. The template test fails while
-they disagree. Check that the image exists before pinning it
-(`docker manifest inspect ghcr.io/ioanalytica/wordpress-idx:<tag>`); a release
-tag alone does not say that its image was published.
+The search sidecar is the git submodule `wordpress-idx`; a release builds its
+image from the commit the submodule is pinned to. Moving the pin is a change
+to that image: a pull request with the new commit and a line under
+`## Unreleased` that names the wordpress-idx version. After a fresh clone,
+`git submodule update --init` checks the submodule out.
+
+Renovate opens the pull requests for new versions of GitHub Actions, base
+images, the third-party images the chart pins and the site's packages
+(`.github/renovate.json`). A pull request that moves an image the chart pins
+needs its line under `## Unreleased` as well; the bot's pull request says so.
 
 A tag is never moved and a version is never published a second time: a
-deployment that pins a version would not see the change. Any change after a
+deployment that pins a version would not see the change. The release workflow
+refuses a version that is in the registry already. Any change after a
 release, however small, gets the next build number.
 
 ## The documentation site
