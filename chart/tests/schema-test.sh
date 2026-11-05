@@ -37,7 +37,7 @@ CHART="${1:-$(dirname "$0")/..}"
 FAILURES=0
 
 preflight="$(helm template tst "$CHART" 2>&1 || true)"
-if printf '%s' "$preflight" | grep -q "missing in charts/ directory"; then
+if grep -q "missing in charts/ directory" <<<"$preflight"; then
     echo "ERROR: chart dependencies are missing. Run:"
     echo "         helm dependency update $CHART"
     exit 1
@@ -248,8 +248,11 @@ else
 fi
 
 echo "=== The packaged chart carries the schema"
+# The listing is captured first: grep -q leaves at the first match, and tar,
+# still writing into the closed pipe, then fails the pipeline under pipefail.
 if helm package "$CHART" -d "$PKG_TMP" >/dev/null 2>&1 \
-   && tar -tzf "$PKG_TMP"/wordpress-nginx-*.tgz | grep -qx 'wordpress-nginx/values.schema.json'; then
+   && packaged="$(tar -tzf "$PKG_TMP"/wordpress-nginx-*.tgz)" \
+   && grep -qx 'wordpress-nginx/values.schema.json' <<<"$packaged"; then
     ok "values.schema.json is in the package"
 else
     fail "values.schema.json is not in the package"
