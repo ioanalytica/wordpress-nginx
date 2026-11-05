@@ -36,6 +36,22 @@ ENUMS = {
 }
 
 
+# Switches the schema limited to true and false before it listed every
+# value. A template's `if` reads the text "false" as on, so text for one of
+# these would deploy the bundled database, an Ingress or the exporter against
+# the value's wording. Releases cannot have set them as text: the schema
+# refused it. The other switches accept 0/1 and text, which rendered before
+# the schema knew them and must keep rendering.
+STRICT_SWITCHES = [
+    "mariadb.enabled",
+    "ingress.enabled",
+    "ingress.tls",
+    "secondaryIngress.enabled",
+    "secondaryIngress.tls",
+    "metrics.enabled",
+]
+
+
 def types(node):
     t = node.get("type")
     return t if isinstance(t, list) else [t]
@@ -152,10 +168,37 @@ def main():
     if found != ENUMS:
         problems.append(f"enums are {found}, expected {ENUMS}")
 
+    for name in STRICT_SWITCHES:
+        node = schema_node(schema, name.split("."))
+        if node is None or node.get("type") != "boolean":
+            problems.append(f"must stay limited to true and false: {name}")
+
     # Text is a form the chart reads for every value it renders through
     # common.tplvalues.render or merges with common.tplvalues.merge, so the
     # schema may not limit such a value to a list, a map or an empty text.
+    # The call names the value as .Values.x, or as `.` inside `with .Values.x`.
     rendered = set(re.findall(r'tplvalues\.render" *\( *dict "value" \.Values\.([A-Za-z0-9.]+)', templates))
+    rendered.update(
+        re.findall(
+            r'with \.Values\.([A-Za-z0-9.]+) *}}\s*\n[^\n]*tplvalues\.render" *\( *dict "value" \. ',
+            templates,
+        )
+    )
+    # Every call has to be in one of these two forms or in one that cannot
+    # take text, or a value rendered as a template goes unnoticed here:
+    # $annotations is the result of a merge (read above), a helper's output
+    # and `omit` need a map, and .value is the argument of
+    # wordpress.renderedList, whose callers render the same values directly.
+    calls = len(re.findall(r'tplvalues\.render" *\( *dict "value" ', templates))
+    known = len(
+        re.findall(
+            r'tplvalues\.render" *\( *dict "value" '
+            r'(\.Values\.|\. |\$annotations |\(include "|\(omit \.Values\.|\.value )',
+            templates,
+        )
+    )
+    if calls != known:
+        problems.append(f"{calls - known} tplvalues.render call(s) name their value in a form this check does not read")
     for merged in re.findall(r'tplvalues\.merge" *\( *dict "values" *\( *list ([^)]*)\)', templates):
         rendered.update(re.findall(r"\.Values\.([A-Za-z0-9.]+)", merged))
     if len(rendered) < 30:

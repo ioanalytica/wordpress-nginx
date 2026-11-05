@@ -23,7 +23,9 @@
 #     as text where the chart renders the value as a template.
 # It lets such values through; it does not make the chart read them right. A
 # switch given as the text "false" still counts as on in a template's `if`,
-# as it did before the schema listed the switch.
+# as it did before the schema listed the switch. The six switches the schema
+# listed before (mariadb.enabled, metrics.enabled, and enabled and tls of both
+# Ingresses) stay limited to true and false.
 #
 # --skip-schema-validation needs Helm 3.16 or later.
 #
@@ -102,7 +104,7 @@ passes --set wordpressWpCache=true
 passes --set wordpressPlugins=all
 passes --set-json 'wordpressPlugins=["akismet","hello"]'
 # Switches as 0/1, which a template's `if` reads as off and on, and as text.
-passes --set metrics.enabled=1
+passes --set fim.enabled=1
 passes --set idx.enabled=0
 passes --set-string networkPolicy.enabled=true
 
@@ -116,6 +118,8 @@ passes --set-json 'persistence.storageClass=null'
 passes --set-string 'podAnnotations=team: ops'
 passes --set-string 'commonLabels=team: ops'
 passes --set-string 'tolerations=- operator: Exists'
+passes --set fim.enabled=true --set-string 'fim.tolerations=- operator: Exists'
+passes --set fim.enabled=true --set-string 'fim.nodeSelector=kubernetes.io/os: linux'
 
 echo "=== A key the schema does not list is left to the chart"
 passes --set unknownTopLevel.key=1
@@ -133,6 +137,11 @@ refused /replicaCount              --set-json 'replicaCount=1.5'
 refused /smtpHost                  --set-json 'smtpHost=["mail.example.com"]'
 refused /extraDeploy               --set-json 'extraDeploy="kind: ConfigMap"'
 refused /wordpressWpCache          --set-json 'wordpressWpCache="true"'
+# Switches that were limited to true and false before: the text "false"
+# would count as on.
+refused /mariadb/enabled           --set-string mariadb.enabled=false
+refused /ingress/enabled           --set-string ingress.enabled=false
+refused /metrics/enabled           --set metrics.enabled=1
 # The two lists of rules: an entry with a misspelled or missing key.
 refused /nginx/deniedPaths/0       --set-json 'nginx.deniedPaths=[{"pth":"/wp-content/uploads/x"}]'
 refused /nginx/deniedPaths/0       --set-json 'nginx.deniedPaths=[{"path":"/a","acton":"honeypot"}]'

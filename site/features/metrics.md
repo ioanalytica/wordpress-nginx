@@ -27,7 +27,8 @@ metrics:
 | `metrics.serviceMonitor.labels`, `.selector` | Labels of the ServiceMonitor, such as the ones your Prometheus selects ServiceMonitors by | `{}` |
 
 The chart's NetworkPolicy, which is on by default, admits the exporter's port
-along with the pod's other ports. Chart versions up to 7.1.408 did not list
+along with the pod's other ports, and from the same sources: any, unless
+`networkPolicy.allowExternal` is `false`. Chart versions up to 7.1.408 did not list
 it, and `metrics.serviceMonitor.metricRelabelings` and `.selector` had no
 effect there. On such a version, where the cluster enforces network policies,
 admit the scrape yourself, and only from where Prometheus runs; here that is

@@ -1544,11 +1544,7 @@
       "properties": {
         "enabled": {
           "description": "Enable ingress record generation for WordPress",
-          "type": [
-            "boolean",
-            "integer",
-            "string"
-          ],
+          "type": "boolean",
           "default": false
         },
         "pathType": {
@@ -1603,11 +1599,7 @@
         },
         "tls": {
           "description": "Enable TLS configuration for the host defined at `ingress.hostname` parameter",
-          "type": [
-            "boolean",
-            "integer",
-            "string"
-          ],
+          "type": "boolean",
           "default": false
         },
         "tlsWwwPrefix": {
@@ -1689,11 +1681,7 @@
       "properties": {
         "enabled": {
           "description": "Enable ingress record generation for WordPress",
-          "type": [
-            "boolean",
-            "integer",
-            "string"
-          ],
+          "type": "boolean",
           "default": false
         },
         "pathType": {
@@ -1748,11 +1736,7 @@
         },
         "tls": {
           "description": "Enable TLS configuration for the host defined at `secondaryIngress.hostname` parameter",
-          "type": [
-            "boolean",
-            "integer",
-            "string"
-          ],
+          "type": "boolean",
           "default": false
         },
         "tlsWwwPrefix": {
@@ -1890,7 +1874,6 @@
             "string"
           ],
           "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         }
       }
@@ -2111,11 +2094,7 @@
       "properties": {
         "enabled": {
           "description": "Start a Prometheus exporter sidecar container",
-          "type": [
-            "boolean",
-            "integer",
-            "string"
-          ],
+          "type": "boolean",
           "default": false
         },
         "image": {
@@ -2945,7 +2924,6 @@
             "string"
           ],
           "maxItems": 0,
-          "maxLength": 0,
           "default": {}
         },
         "tolerations": {
@@ -2956,7 +2934,6 @@
             "string"
           ],
           "maxProperties": 0,
-          "maxLength": 0,
           "default": []
         },
         "affinity": {
@@ -3126,11 +3103,7 @@
       "properties": {
         "enabled": {
           "description": "Deploy an internal MariaDB server",
-          "type": [
-            "boolean",
-            "integer",
-            "string"
-          ],
+          "type": "boolean",
           "default": true
         },
         "image": {

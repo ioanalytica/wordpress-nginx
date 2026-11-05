@@ -296,12 +296,14 @@ else
     FAILURES=$((FAILURES + 1))
 fi
 cp "$CHANGELOG" "$CL_TMP/real.md"
-next_version="$("$VERSION_SCRIPT" next "$chart_version")"
+# Any version the changelog does not have will do; the script does not ask
+# whether it follows the chart's scheme.
+next_version=9999.0.0
 if "$RELEASE_SCRIPT" "$next_version" "$WP_LINE" "$CL_TMP/real.md" 2>/dev/null \
    && [ "$(awk '/^## / { print; exit }' "$CL_TMP/real.md")" = "## $next_version" ] \
    && ! grep -qxF '## Unreleased' "$CL_TMP/real.md" \
    && [ "$(grep -c '' "$CL_TMP/real.md")" -ge "$(grep -c '' "$CHANGELOG")" ]; then
-    echo "ok:   the next release of this changelog would be $next_version, with every line kept"
+    echo "ok:   this changelog can be released: its first section becomes the version's, every line kept"
 else
     echo "FAIL: scripts/changelog-release.sh cannot release this changelog as $next_version"
     FAILURES=$((FAILURES + 1))
