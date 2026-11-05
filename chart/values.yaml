@@ -153,7 +153,10 @@ wordpressSkipInstall: false
 ## statements, without an opening `<?php` tag. A statement PHP cannot parse
 ## stops every request, so try the content on a test release first.
 ## NOTE: an entry named WORDPRESS_CONFIG_EXTRA in extraEnvVars takes
-## precedence; this value is then not rendered.
+## precedence; this value is then not rendered. A variable of that name from
+## extraEnvVarsCM or extraEnvVarsSecret does not: the chart cannot see into
+## those, and a container's own variable wins over one from such a source.
+## Set the content in one place.
 ## e.g:
 ## wordpressExtraConfigContent: |
 ##   define( 'WP_POST_REVISIONS', 10 );

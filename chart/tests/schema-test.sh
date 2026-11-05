@@ -121,6 +121,12 @@ passes --set-string 'tolerations=- operator: Exists'
 passes --set fim.enabled=true --set-string 'fim.tolerations=- operator: Exists'
 passes --set fim.enabled=true --set-string 'fim.nodeSelector=kubernetes.io/os: linux'
 
+# extraDeploy as a map of objects: the chart ranges over the value, so the
+# entries of a map render like those of a list. Releases use the form to
+# merge extra objects from several values files.
+passes --set-json 'extraDeploy={"extra":{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"extra"}}}'
+passes --set-json 'extraDeploy=[{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"extra"}}]'
+
 echo "=== A key the schema does not list is left to the chart"
 passes --set unknownTopLevel.key=1
 passes --set image.tag=1.2.3
