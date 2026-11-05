@@ -997,11 +997,14 @@ fim_refuses "a digest of the wrong length"       --set-json 'fim.baseline={"salt
 echo
 echo "=== The bundled MariaDB takes over an existing data directory"
 # A new MariaDB series starts on the data of the earlier one. Two settings
-# make that safe: the image updates its system tables itself, and the old
-# pod is taken down before the new one is created. Both were tried on a
-# cluster (12.2.2 to 12.3.3), as an upgrade of an installed release: the
-# strategy must be one an existing Deployment can be changed to, which
-# Recreate is not. This pins them on the rendered Deployment.
+# belong to that: the image updates its system tables itself, and the old
+# pod is told to stop before the new one is created. Both were tried on a
+# cluster (12.2.2 to 12.3.3), as an upgrade of an installed release, also
+# with an old pod that takes 30 seconds to stop: the new server then waits
+# for MariaDB's lock on the data directory. The strategy must be one an
+# existing Deployment can be changed to, which Recreate is not. This pins
+# the settings on the rendered Deployment; the order of the pods is not
+# something a rendered manifest can show.
 mariadb_upgrade=$(helm template tst "$CHART" 2>&1 | python3 -c '
 import sys, yaml
 problems = []
@@ -1020,7 +1023,7 @@ else:
 print("; ".join(problems))
 ' 2>&1) || mariadb_upgrade="render failed"
 if [ -z "$mariadb_upgrade" ]; then
-    echo "ok:   the database's pod is taken down first and updates its system tables"
+    echo "ok:   the database's pod is stopped first and updates its system tables"
 else
     echo "FAIL: the bundled MariaDB — $mariadb_upgrade"
     FAILURES=$((FAILURES + 1))
