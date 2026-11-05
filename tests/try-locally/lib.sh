@@ -22,15 +22,15 @@ PAGE_NAMESPACE="wordpress"
 # The page's shell blocks the run takes, as "HEADING|N": all of them.
 # shellcheck disable=SC2034  # read by run.sh and test.sh
 PAGE_BLOCKS=("## 1. |1" "## 2. |1" "## 2. |2" "## 3. |1" "## 3. |2"
-             "## 4. |1" "## 4. |2" "## 5. |1" "## 6. |1" "## 6. |2"
-             "## 6. |3" "## 6. |4" "## Clean up|1")
+             "## 3. |3" "## 4. |1" "## 4. |2" "## 5. |1" "## 6. |1"
+             "## 6. |2" "## 6. |3" "## 6. |4" "## Clean up|1")
 
 # The output blocks the run compares word for word with what the commands
 # print, as "HEADING|N" of the plain blocks. The others are shortened on the
 # page or hold values that differ from run to run; run.sh checks those by
 # pattern.
 # shellcheck disable=SC2034  # read by run.sh and test.sh
-PAGE_OUTPUTS=("## 3. |1" "## 5. |1" "## 6. |1" "## 6. |3" "## 6. |4")
+PAGE_OUTPUTS=("## 3. |1" "## 3. |2" "## 5. |1" "## 6. |1" "## 6. |3" "## 6. |4")
 
 # page_block HEADING KIND N - the Nth code block of kind KIND ("sh", or ""
 # for a plain one, the output the page shows) in the section whose heading

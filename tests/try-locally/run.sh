@@ -55,7 +55,7 @@ page() {
   local code
   code="$(block "$1" "$2")"
   show "$1" "$2" "$code"
-  bash -euo pipefail -c "$code"
+  PATH="$BLOCK_PATH" bash -euo pipefail -c "$code"
 }
 
 # page_out HEADING N - the same, with the block's output on stdout and the
@@ -64,7 +64,7 @@ page_out() {
   local code
   code="$(block "$1" "$2")" || return 1
   show "$1" "$2" "$code" >&2
-  bash -euo pipefail -c "$code"
+  PATH="$BLOCK_PATH" bash -euo pipefail -c "$code"
 }
 
 # same_as_page WHAT HEADING N TEXT - fail unless TEXT is the page's Nth
@@ -181,9 +181,9 @@ done
 
 create="$(block "## 1. " 1)"
 CLUSTER="$(sed -n 's/^k3d cluster create \([^ ]*\).*/\1/p' <<<"$create")"
-PORT="$(sed -n 's/.* -p "\([0-9][0-9]*\):80@loadbalancer".*/\1/p' <<<"$create")"
+PORT="$(sed -n 's/.* -p "127\.0\.0\.1:\([0-9][0-9]*\):80@loadbalancer".*/\1/p' <<<"$create")"
 [ -n "$CLUSTER" ] && [ -n "$PORT" ] \
-  || fail "the page's step 1 creates no k3d cluster with a port for its load balancer"
+  || fail "the page's step 1 creates no k3d cluster with a loopback port for its load balancer"
 SITE="http://localhost:$PORT"
 if k3d cluster get "$CLUSTER" >/dev/null 2>&1; then
   fail "a k3d cluster $CLUSTER exists: this run creates its own and deletes it"
@@ -218,6 +218,15 @@ WORK="$(mktemp -d)"
 export KUBECONFIG="$WORK/kubeconfig"
 trap cleanup EXIT
 cd "$WORK"
+
+# The page's curl commands have no time limit, and a reader can interrupt
+# them. Here a port that takes the connection and never answers would hold
+# the run past its own deadlines, so the blocks get a curl that gives up.
+CURL="$(command -v curl)"
+mkdir "$WORK/bin"
+printf '#!/bin/sh\nexec "%s" --max-time 60 "$@"\n' "$CURL" >"$WORK/bin/curl"
+chmod +x "$WORK/bin/curl"
+BLOCK_PATH="$WORK/bin:$PATH"
 
 # --- the page ----------------------------------------------------------------
 
@@ -264,6 +273,8 @@ html="$(curl -fsS --max-time 30 -b "$jar" "$SITE/wp-admin/")"
 grep -q '<title>Dashboard ' <<<"$html" \
   || fail "signing in as $user with the generated password does not lead to the dashboard"
 echo "ok:   $user signs in with the generated password"
+out="$(page_out "## 3. " 3)"
+same_as_page "the two plugins are installed and active" "## 3. " 2 "$out"
 
 # 4. Search
 out="$(page_out "## 4. " 1)"

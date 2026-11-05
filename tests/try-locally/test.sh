@@ -131,11 +131,13 @@ else ok "the install pins no version"; fi
 echo
 echo "=== The steps are the shape the run relies on"
 create="$(sh_block "## 1. |1")"
-if grep -qxE 'k3d cluster create [a-z0-9-]+ --image rancher/k3s:v[0-9]+\.[0-9]+\.[0-9]+-k3s[0-9]+ -p "[0-9]+:80@loadbalancer"' <<<"$create"; then
-  ok "step 1 creates one cluster, by name, k3s image and port"
-else bad "step 1 is not 'k3d cluster create NAME --image rancher/k3s:TAG -p \"PORT:80@loadbalancer\"': $create"; fi
+# The port on the loopback address: the site is served over plain HTTP, with
+# a generated admin password, and is not for the network the machine is on.
+if grep -qxE 'k3d cluster create [a-z0-9-]+ --image rancher/k3s:v[0-9]+\.[0-9]+\.[0-9]+-k3s[0-9]+ -p "127\.0\.0\.1:[0-9]+:80@loadbalancer"' <<<"$create"; then
+  ok "step 1 creates one cluster, by name, k3s image and loopback port"
+else bad "step 1 is not 'k3d cluster create NAME --image rancher/k3s:TAG -p \"127.0.0.1:PORT:80@loadbalancer\"': $create"; fi
 cluster="$(sed -n 's/^k3d cluster create \([^ ]*\).*/\1/p' <<<"$create")"
-port="$(sed -n 's/.* -p "\([0-9][0-9]*\):80@loadbalancer".*/\1/p' <<<"$create")"
+port="$(sed -n 's/.* -p "127\.0\.0\.1:\([0-9][0-9]*\):80@loadbalancer".*/\1/p' <<<"$create")"
 has "the clean-up deletes the cluster of step 1" "k3d cluster delete $cluster" "$(sh_block "## Clean up|1")"
 # Every URL of the page is on the port step 1 maps.
 urls="$(grep -oE 'http://localhost(:[0-9]+)?' "$PAGE" | sort -u)"
@@ -167,7 +169,12 @@ is "the example values set a blog name for the run to look for" grep -q '^wordpr
 has "the example Ingress is for localhost" "  hostname: localhost" "$(cat "$VALUES")"
 
 echo
-echo "=== The example holds no secret, the page no link that needs GitHub"
+echo "=== The example sets known keys and no secret, the page has no link that needs GitHub"
+# The template test checks the same, but its workflow does not run on a
+# change to the example alone, and helm ignores a key it does not know.
+if unknown="$(python3 "$TRY_ROOT/chart/tests/check-example-keys.py" "$TRY_ROOT/chart/values.yaml" "$VALUES" 2>&1)" \
+    && [ -z "$unknown" ]; then ok "examples/k3d/values.yaml sets only keys the chart knows"
+else bad "examples/k3d/values.yaml sets keys the chart does not know: $(tr '\n' ' ' <<<"$unknown")"; fi
 secrets="$(grep -v '^ *#' "$VALUES" | grep -iE 'password|secret|apikey|token' || true)"
 if [ -z "$secrets" ]; then ok "examples/k3d/values.yaml sets no password, key or token"
 else bad "examples/k3d/values.yaml sets: $secrets"; fi

@@ -28,12 +28,13 @@ k3s 1.36.
 ## 1. A cluster
 
 ```sh
-k3d cluster create wordpress-nginx --image rancher/k3s:v1.36.6-k3s1 -p "8080:80@loadbalancer"
+k3d cluster create wordpress-nginx --image rancher/k3s:v1.36.6-k3s1 -p "127.0.0.1:8080:80@loadbalancer"
 ```
 
 The image is the k3s this page is tested with; without it, the k3s depends on
 how k3d was built. `-p` maps port 8080 of the host to port 80 of the
-cluster's load balancer, where Traefik listens. k3d makes
+cluster's load balancer, where Traefik listens, and binds it to the loopback
+address: the site is reachable from this machine only. k3d makes
 `k3d-wordpress-nginx` the current `kubectl` context.
 
 ## 2. Install
@@ -97,7 +98,17 @@ kubectl -n wordpress get secret demo-wordpress-nginx -o jsonpath='{.data.wordpre
 
 The chart has installed and activated two plugins: Two Factor, which lets
 each user add a second factor in their profile, and the search plugin of the
-sidecar.
+sidecar:
+
+```sh
+kubectl -n wordpress exec deployment/demo-wordpress-nginx -c wordpress -- \
+  wp plugin list --status=active --field=name
+```
+
+```
+two-factor
+wordpress-idx-search
+```
 
 ## 4. Search
 
@@ -230,7 +241,7 @@ and the pulled images included, and the `kubectl` context.
 
 | What you see | Why, and what to do |
 | --- | --- |
-| `k3d cluster create` fails with `port is already allocated` | another program listens on port 8080. Take another port in `-p`, `8081:80@loadbalancer` say, and use it in the URLs of this page |
+| `k3d cluster create` fails with `port is already allocated` | another program listens on port 8080. Take another port in `-p`, `127.0.0.1:8081:80@loadbalancer` say, and use it in the URLs of this page |
 | `curl` prints `404` right after the install | Traefik is up, but has not read the Ingress yet. Try again after a few seconds |
 | The WordPress pod stays at `1/2` ready for a minute | nothing is wrong: the search sidecar waits 30 seconds before it reads the database, and reports ready once its index is built |
 | The WordPress pod is not ready after several minutes, and `kubectl -n wordpress logs deployment/demo-wordpress-nginx -c wordpress` says `Error establishing a database connection` | WordPress installs itself when its container first starts, and MariaDB was not up yet. Start the pod again, then wait as in step 2: `kubectl -n wordpress rollout restart deployment/demo-wordpress-nginx` |

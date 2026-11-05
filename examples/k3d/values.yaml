@@ -4,7 +4,7 @@
 #
 # Written for the release "demo" in the namespace "wordpress", on a k3d
 # cluster whose load balancer maps port 8080 of the host to Traefik
-# (k3d cluster create ... -p "8080:80@loadbalancer").
+# (k3d cluster create ... -p "127.0.0.1:8080:80@loadbalancer").
 #
 # No password is set here. The chart generates the WordPress and MariaDB
 # passwords and keeps them in the release's Secret; the install command of
