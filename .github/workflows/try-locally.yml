@@ -1,0 +1,146 @@
+name: Try it locally
+
+# The page "Try it locally" (examples/k3d/README.md) end to end, in a k3d
+# cluster on the runner: tests/try-locally/run.sh runs the page's own shell
+# blocks with the values file of the checkout and compares what they print
+# with what the page shows.
+#
+# A pull request runs it with the chart of its checkout. The WordPress image
+# is the registry's as long as the pull request leaves docker/ alone and the
+# image the chart names is published; otherwise it is built from the
+# checkout and loaded into the cluster, so a change to the image, or a chart
+# version whose image does not exist yet, is tested before the release
+# (tests/try-locally/chart.sh decides). The search sidecar's image is always
+# the registry's.
+#
+# A release pipeline can call this workflow with the version it has just
+# published: the chart is then pulled from the registry and installed with
+# the images it names, which must be there as well. A run by hand takes a
+# version too. The weekly run, and a run by hand without a version, install
+# the latest release, as the page does, and catch what moves under it: the
+# runner, k3s's Traefik, the MariaDB image, wordpress.org.
+#
+# The cluster runs the k3s image the page's step 1 names, with the k3d
+# installed below; tests/try-locally/test.sh keeps both in step with the
+# page's "Tested with" line, and the paths below in step with what the run
+# reads.
+on:
+  pull_request:
+    paths:
+      - 'chart/**'
+      - 'docker/**'
+      - 'examples/k3d/**'
+      - 'tests/try-locally/**'
+      - '.github/workflows/try-locally.yml'
+  schedule:
+    # Mondays, before the working week.
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      chart:
+        description: The chart to install
+        type: choice
+        options: [release, checkout]
+        default: release
+      chart-version:
+        description: A published version to install instead, such as 7.1.408
+        type: string
+  workflow_call:
+    inputs:
+      chart-version:
+        description: The published version to install, with the images it names
+        type: string
+        required: true
+
+# The chart and the images are pulled without a token: the packages are
+# public. The build cache is read with the runner's own cache token.
+permissions:
+  contents: read
+
+jobs:
+  k3d:
+    runs-on: ubuntu-26.04
+    # A pull request's newer push replaces its run; any other run queues
+    # behind one of the same event, ref and chart. On the job, not the
+    # workflow: a called workflow's group is computed in the caller's
+    # context, and must not be able to cancel the caller's other jobs.
+    concurrency:
+      group: try-locally-${{ github.event_name }}-${{ github.ref }}-${{ inputs.chart }}-${{ inputs.chart-version }}
+      cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+    # About three minutes, most of them for pulling the images. The page's
+    # rollout waits give up after 10 minutes each; the limit leaves the run
+    # time to build the image and to report what it found.
+    timeout-minutes: 30
+    steps:
+      # Two commits deep: a pull request is checked out as its merge into
+      # the base branch, and chart.sh compares docker/ with the first parent.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+
+      # Pinned: without a version the action asks the GitHub API for the
+      # latest release on every run.
+      - uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: v4.3.1
+
+      # The k3d the page is tested with, checked against the sums its
+      # release publishes.
+      - name: Install k3d
+        env:
+          # renovate: datasource=github-releases depName=k3d-io/k3d
+          K3D_VERSION: 5.9.0
+        run: |
+          base="https://github.com/k3d-io/k3d/releases/download/v${K3D_VERSION}"
+          curl -fsSL -o "$RUNNER_TEMP/k3d" "$base/k3d-linux-amd64"
+          sum="$(curl -fsSL "$base/checksums.txt" | awk '$2 == "_dist/k3d-linux-amd64" { print $1 }')"
+          [ -n "$sum" ] || { echo "ERROR: checksums.txt of k3d $K3D_VERSION has no k3d-linux-amd64" >&2; exit 1; }
+          echo "$sum  $RUNNER_TEMP/k3d" | sha256sum -c -
+          sudo install -m 0755 "$RUNNER_TEMP/k3d" /usr/local/bin/k3d
+          k3d version
+          kubectl version --client
+
+      # Page, runner and this workflow still fit together; fails in a
+      # second, before the cluster.
+      - name: Guard test
+        run: tests/try-locally/test.sh
+
+      - name: The chart
+        id: chart
+        env:
+          VERSION: ${{ inputs.chart-version }}
+          CHOICE: ${{ github.event_name == 'pull_request' && 'checkout' || inputs.chart }}
+          EVENT: ${{ github.event_name }}
+        # Not piped into tee: the step's shell has no pipefail, and a
+        # failing chart.sh would be lost.
+        run: |
+          out="$(tests/try-locally/chart.sh)"
+          echo "$out"
+          echo "$out" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        if: steps.chart.outputs.build != ''
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Under the name the chart asks for, into the runner's Docker daemon;
+      # run.sh loads it into the cluster from there and has the release
+      # never pull it. A plain image, without a provenance attestation
+      # beside it: the node imports a single manifest. The cache is the one
+      # docker-test.yml writes; this job only reads it.
+      - name: Build the image from the checkout
+        if: steps.chart.outputs.build != ''
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: ./docker
+          platforms: linux/amd64
+          load: true
+          provenance: false
+          tags: ${{ steps.chart.outputs.image }}
+          cache-from: type=gha
+
+      - name: The page, end to end
+        env:
+          CHART: ${{ steps.chart.outputs.dir }}
+          IMAGE: ${{ steps.chart.outputs.build != '' && steps.chart.outputs.image || '' }}
+        run: tests/try-locally/run.sh ${IMAGE:+--import "$IMAGE"} ${CHART:+"$CHART"}

@@ -1,0 +1,313 @@
+#!/bin/bash
+# The page "Try it locally" (examples/k3d/README.md) end to end: a k3d
+# cluster and every shell block of the page, in the page's order, with the
+# values file of this checkout in place of its raw URL. Where the page shows
+# the output of a block, the run compares it; where the page sends the reader
+# to a browser, the run signs in with curl.
+#
+#   tests/try-locally/run.sh                      # the latest release, as the page installs it
+#   tests/try-locally/run.sh ./chart              # the chart of this checkout
+#   tests/try-locally/run.sh --import IMAGE DIR   # ... with an image built locally
+#
+# A chart directory is installed with the images it names, which must be in
+# the registry. --import takes the WordPress image from the local Docker
+# daemon instead: the image is loaded into the cluster's node, and the
+# release must not pull it (image.pullPolicy=Never), so the run cannot fall
+# back to the registry's image of the same name. That is how a pull request
+# tests an image that is not published yet, or one it changes.
+#
+# Creates the page's k3d cluster and deletes it with the page's own clean-up
+# command; KEEP_CLUSTER=1 keeps it. Refuses to start when a cluster of that
+# name exists. kubectl and helm use a kubeconfig of the run's own, so no
+# other cluster is reachable from here. Needs docker, k3d, kubectl, helm,
+# curl and openssl, and the page's port free on the host.
+
+set -euo pipefail
+
+# shellcheck source=lib.sh
+. "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+
+fail() { echo "FAIL: $*" >&2; exit 1; }
+
+# block HEADING N - the page's Nth shell block under HEADING, localized.
+block() {
+  local code
+  code="$(page_block "$1" sh "$2" | localize "$CHART" "$HELM_EXTRA")"
+  [ -n "$code" ] || { echo "FAIL: the page has no shell block $2 under '$1'" >&2; return 1; }
+  if grep -qF "$PAGE_URL" <<<"$code" || { [ -n "$CHART" ] && grep -qF "$PAGE_CHART" <<<"$code"; }; then
+    echo "FAIL: block $2 under '$1' still names the page's URL or chart:" >&2
+    echo "$code" >&2
+    return 1
+  fi
+  printf '%s\n' "$code"
+}
+
+# show HEADING N CODE - the block as the log shows it, after how many
+# seconds of the run.
+show() {
+  echo "=== ${SECONDS}s, the page, '$1' block $2"
+  sed 's/^/  $ /' <<<"$3"
+}
+
+# page HEADING N - run the block as a reader would paste it: in a shell of
+# its own, which stops at the first failing command.
+page() {
+  local code
+  code="$(block "$1" "$2")"
+  show "$1" "$2" "$code"
+  bash -euo pipefail -c "$code"
+}
+
+# page_out HEADING N - the same, with the block's output on stdout and the
+# log on stderr.
+page_out() {
+  local code
+  code="$(block "$1" "$2")" || return 1
+  show "$1" "$2" "$code" >&2
+  bash -euo pipefail -c "$code"
+}
+
+# same_as_page WHAT HEADING N TEXT - fail unless TEXT is the page's Nth
+# output block under HEADING.
+same_as_page() {
+  local want
+  want="$(page_block "$2" "" "$3")"
+  [ -n "$want" ] || fail "the page shows no output block $3 under '$2'"
+  if [ "$4" != "$want" ]; then
+    echo "FAIL: $1" >&2
+    echo "  the page shows:" >&2; sed 's/^/    /' <<<"$want" >&2
+    echo "  the command printed:" >&2; sed 's/^/    /' <<<"$4" >&2
+    exit 1
+  fi
+  echo "ok:   $1"
+}
+
+# expect WHAT REGEX TEXT - fail unless a line of TEXT matches REGEX.
+expect() {
+  grep -qE -- "$2" <<<"$3" || fail "$1: no line matches $2"
+  echo "ok:   $1"
+}
+
+# import_image - load $IMPORT from the local Docker daemon into the
+# cluster's node. Saved for the daemon's platform alone: a daemon with the
+# containerd image store keeps a pulled image as its multi-platform index,
+# and the node's import fails on the platforms that are not there. k3d
+# reports success either way, so the node is asked whether it has the image.
+import_image() {
+  local node="k3d-$CLUSTER-server-0" tar="$WORK/image.tar" platform
+  platform="$(docker version --format '{{.Server.Os}}/{{.Server.Arch}}')"
+  echo "=== ${SECONDS}s, loading $IMPORT ($platform) into the cluster"
+  # A Docker without `save --platform` has no multi-platform store either.
+  docker save --platform "$platform" "$IMPORT" -o "$tar" 2>/dev/null \
+    || docker save "$IMPORT" -o "$tar"
+  k3d image import "$tar" -c "$CLUSTER"
+  rm -f "$tar"
+  docker exec "$node" crictl inspecti "$IMPORT" >/dev/null 2>&1 \
+    || fail "the node $node has no image $IMPORT after the import"
+  echo "ok:   the node has $IMPORT"
+}
+
+# diagnose - what the cluster shows, for a run that failed.
+diagnose() {
+  local pod
+  echo "=== the cluster after the failure"
+  kubectl get pods -A -o wide || true
+  kubectl get pvc,ingress,svc -A || true
+  kubectl get events -A --sort-by=.lastTimestamp | tail -n 60 || true
+  for pod in $(kubectl -n "$PAGE_NAMESPACE" get pods -o name 2>/dev/null); do
+    echo "--- $pod"
+    kubectl -n "$PAGE_NAMESPACE" logs "$pod" --all-containers --prefix --tail=150 || true
+  done
+  kubectl -n kube-system logs deployment/traefik --tail=40 || true
+}
+
+cleanup() {
+  local rc=$?
+  if [ -n "$CREATED" ]; then
+    [ "$rc" -eq 0 ] || diagnose
+    if [ -n "${KEEP_CLUSTER:-}" ]; then
+      echo "kept: k3d cluster $CLUSTER, KUBECONFIG=$KUBECONFIG"
+      exit "$rc"
+    fi
+    # A cluster left behind would stop the next run, which refuses to start
+    # next to one of its name.
+    if ! k3d cluster delete "$CLUSTER" >/dev/null 2>&1; then
+      echo "FAIL: k3d cluster $CLUSTER is left: k3d cluster delete $CLUSTER" >&2
+      [ "$rc" -ne 0 ] || rc=1
+    fi
+  fi
+  [ -z "$WORK" ] || rm -rf "$WORK"
+  exit "$rc"
+}
+
+# --- before the cluster ------------------------------------------------------
+
+CHART=""
+IMPORT=""
+HELM_EXTRA=""
+WORK=""
+CREATED=""
+usage() { echo "usage: $0 [--import IMAGE] [CHART_DIR]" >&2; exit 2; }
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --import) [ $# -ge 2 ] || usage; IMPORT="$2"; shift ;;
+    -*) usage ;;
+    *) [ -z "$CHART" ] || usage
+       [ -f "$1/Chart.yaml" ] || { echo "ERROR: $1 is no chart directory" >&2; exit 2; }
+       CHART="$(cd "$1" && pwd)" ;;
+  esac
+  shift
+done
+[ -z "$IMPORT" ] || [ -n "$CHART" ] || { echo "ERROR: --import takes a chart directory" >&2; exit 2; }
+
+# The page's commands take $url unquoted, as a reader's raw URL can be, and
+# the paths go into them as they are: a space would split them.
+for path in "$EXAMPLES" ${CHART:+"$CHART"}; do
+  case "$path" in
+    *[!A-Za-z0-9._/+@-]*)
+      echo "ERROR: $path: the page's commands take paths of letters, digits and ._/+@- alone" >&2
+      exit 2 ;;
+  esac
+done
+
+for tool in docker k3d kubectl helm curl openssl; do
+  command -v "$tool" >/dev/null || { echo "ERROR: $tool is required" >&2; exit 1; }
+done
+
+# A block the page lost fails here, in a second, rather than after the install.
+for b in "${PAGE_BLOCKS[@]}"; do
+  block "${b%|*}" "${b#*|}" >/dev/null
+done
+
+create="$(block "## 1. " 1)"
+CLUSTER="$(sed -n 's/^k3d cluster create \([^ ]*\).*/\1/p' <<<"$create")"
+PORT="$(sed -n 's/.* -p "\([0-9][0-9]*\):80@loadbalancer".*/\1/p' <<<"$create")"
+[ -n "$CLUSTER" ] && [ -n "$PORT" ] \
+  || fail "the page's step 1 creates no k3d cluster with a port for its load balancer"
+SITE="http://localhost:$PORT"
+if k3d cluster get "$CLUSTER" >/dev/null 2>&1; then
+  fail "a k3d cluster $CLUSTER exists: this run creates its own and deletes it"
+fi
+
+if [ -n "$CHART" ]; then
+  if ! images="$(chart_images "$CHART" 2>&1)"; then
+    echo "$images" >&2
+    case "$images" in
+      *"missing in charts/ directory"*) echo "ERROR: run: helm dependency update $CHART" >&2 ;;
+    esac
+    exit 1
+  fi
+  [ -n "$images" ] || fail "the chart names no image of ghcr.io/ioanalytica"
+  if [ -n "$IMPORT" ]; then
+    grep -qxF "$IMPORT" <<<"$images" \
+      || fail "the chart does not run $IMPORT, but: $(tr '\n' ' ' <<<"$images")"
+    docker image inspect "$IMPORT" >/dev/null 2>&1 \
+      || fail "the local Docker daemon has no image $IMPORT"
+    HELM_EXTRA="--set image.pullPolicy=Never"
+  fi
+  # shellcheck disable=SC2046 # one image per word
+  missing="$(unpublished $(grep -vxF "$IMPORT" <<<"$images" || true))"
+  [ -z "$missing" ] \
+    || fail "the registry does not have $(tr '\n' ' ' <<<"$missing"); build the image and pass it with --import"
+  echo "=== the chart in $CHART, with $(tr '\n' ' ' <<<"$images")${IMPORT:+($IMPORT from the local Docker daemon)}"
+else
+  echo "=== the latest release of $PAGE_CHART"
+fi
+
+WORK="$(mktemp -d)"
+export KUBECONFIG="$WORK/kubeconfig"
+trap cleanup EXIT
+cd "$WORK"
+
+# --- the page ----------------------------------------------------------------
+
+# 1. A cluster. Ours once k3d made it: a create that fails, for a cluster of
+# the name that another run made in the meantime, must not delete that one.
+page "## 1. " 1
+CREATED=1
+[ -z "$IMPORT" ] || import_image
+
+# 2. Install, and wait
+page "## 2. " 1
+page "## 2. " 2
+
+# 3. The site and the login. Traefik reads the Ingress a moment after it is
+# up (the page's "When it hangs" says so): the first request may take a few
+# tries, every later one must answer at once.
+deadline=$((SECONDS + 60))
+until out="$(page_out "## 3. " 1)" && [ "$out" = "$(page_block "## 3. " "" 1)" ]; do
+  [ "$SECONDS" -lt "$deadline" ] || break
+  sleep 3
+done
+same_as_page "the site answers at $SITE" "## 3. " 1 "$out"
+title="$(sed -n 's/^wordpressBlogName: *//p' "$EXAMPLES/values.yaml")"
+[ -n "$title" ] || fail "examples/k3d/values.yaml sets no wordpressBlogName"
+# Into a variable first: grep -q ends at the first match, and curl, still
+# writing into the closed pipe, would fail the pipeline.
+html="$(curl -fsS --max-time 30 "$SITE/")"
+grep -qF "<title>$title</title>" <<<"$html" || fail "the front page is not titled '$title'"
+echo "ok:   the front page is titled '$title'"
+
+# The page sends the reader to wp-login.php with the user it names and the
+# password its command prints; curl signs in the same way.
+user="$(sed -n 's/.*the user is `\([^`]*\)`.*/\1/p' "$PAGE")"
+[ -n "$user" ] || fail "the page names no user to sign in as"
+password="$(page_out "## 3. " 2)"
+[ -n "$password" ] || fail "the page's command printed no password"
+jar="$WORK/cookies"
+curl -fsS --max-time 30 -c "$jar" -o /dev/null "$SITE/wp-login.php"
+curl -sS --max-time 30 -b "$jar" -c "$jar" -o /dev/null \
+  --data-urlencode "log=$user" --data-urlencode "pwd=$password" \
+  --data-urlencode "wp-submit=Log In" --data-urlencode "testcookie=1" \
+  --data-urlencode "redirect_to=$SITE/wp-admin/" "$SITE/wp-login.php"
+html="$(curl -fsS --max-time 30 -b "$jar" "$SITE/wp-admin/")"
+grep -q '<title>Dashboard ' <<<"$html" \
+  || fail "signing in as $user with the generated password does not lead to the dashboard"
+echo "ok:   $user signs in with the generated password"
+
+# 4. Search
+out="$(page_out "## 4. " 1)"
+echo "$out"
+expect "the index holds the first post and the sample page" '^\{"total":2,"posts":1,"pages":1,' "$out"
+expect "the search finds the first post" '^\{"total":1,"results":\[\{"id":1,"type":"post",.*"title":"Hello world!"' "$out"
+out="$(page_out "## 4. " 2)"
+echo "$out"
+expect "WP-CLI creates the post" '^Success: Created post [0-9]+\.$' "$out"
+expect "the reindex takes the generated key" '^\{"status":"ok","entries":3\}$' "$out"
+expect "the search finds the new post" '^\{"total":1,"results":\[\{.*"title":"Notes from k3d"' "$out"
+
+# 5. File-integrity monitoring
+out="$(page_out "## 5. " 1)"
+same_as_page "a scan of the new installation has no findings" "## 5. " 1 "$out"
+
+# 6. A PHP file under uploads
+out="$(page_out "## 6. " 1)"
+same_as_page "NGINX refuses the PHP file and serves the text file" "## 6. " 1 "$out"
+# The line reaches the container's log a moment after the request.
+deadline=$((SECONDS + 30))
+until out="$(page_out "## 6. " 2)"; do
+  [ "$SECONDS" -lt "$deadline" ] || fail "the WordPress container logged no [php-allowlist] line"
+  sleep 2
+done
+echo "$out"
+expect "the refused request is logged" '^\[php-allowlist\] 403 [^ ]+ "GET /wp-content/uploads/demo\.php HTTP/1\.1" ' "$out"
+out="$(page_out "## 6. " 3)"
+same_as_page "the watcher reports the PHP file" "## 6. " 3 "$out"
+out="$(page_out "## 6. " 4)"
+same_as_page "without the files the scan is clean again" "## 6. " 4 "$out"
+
+# Clean up, with the page's command
+if [ -z "${KEEP_CLUSTER:-}" ]; then
+  page "## Clean up" 1
+  if k3d cluster get "$CLUSTER" >/dev/null 2>&1; then
+    fail "the page's clean-up leaves the k3d cluster $CLUSTER"
+  fi
+  CREATED=""
+  left="$(docker ps -a --format '{{.Names}}')"
+  if grep -q "^k3d-$CLUSTER-" <<<"$left"; then
+    fail "the page's clean-up leaves containers of the cluster $CLUSTER"
+  fi
+  echo "ok:   the clean-up leaves no cluster and no container"
+fi
+
+echo "=== the page end to end in ${SECONDS}s"
