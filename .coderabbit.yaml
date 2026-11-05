@@ -26,9 +26,16 @@ language: en-US
 
 reviews:
   # Submit a real review verdict instead of a plain comment: "Changes requested"
-  # while actionable comments are open, "Approved" once they are resolved and no
-  # pre-merge check is in an error state (`@coderabbitai resolve` also triggers
-  # it). Without this, CodeRabbit only ever COMMENTs, the pull request has no
-  # review decision, and a ruleset that requires an approval cannot be met by
-  # CodeRabbit's review.
-  request_changes_workflow: true
+  # while actionable comments are open, "Approved" once they are resolved, the
+  # latest commit is reviewed and no pre-merge check is in an error state
+  # (`@coderabbitai resolve` also triggers it). Without this, CodeRabbit only
+  # ever COMMENTs, the pull request has no review decision, and a ruleset that
+  # requires an approval cannot be met by CodeRabbit's review.
+  #
+  # The schema's name for it. `reviews.request_changes_workflow`, the key this
+  # file had before, is marked there as a deprecated alias of this one; were
+  # the alias dropped, the old key would be an unknown one and ignored
+  # silently. No risk limit is set below it (max_merge_risk and the like), so
+  # none withholds an approval.
+  auto_approvals:
+    enabled: true
