@@ -890,7 +890,9 @@ The chart version scheme changed: `7.1.408` follows `7.1.4-7`. The build number 
 
 * A deployment that pins an exact version (`--version`, a Flux `HelmRelease`, an Argo CD `targetRevision`) changes the pin to the new form with its next upgrade.
 * `--devel` is no longer needed to install or upgrade without `--version`.
-* A range that named a pre-release to match the earlier versions (for example `>=7.1.0-0`) keeps matching. Its pre-release part is no longer needed: `>=7.1.0` selects the same versions of the current scheme.
+* A range that named a pre-release to match the earlier versions needs a look at its upper bound:
+  * Without one, it keeps matching. `>=7.1.0-0` selects the new versions too, and its pre-release part is no longer needed (`>=7.1.0`).
+  * Bounded to one WordPress patch release, it matches nothing new and upgrades stop without an error: `>=7.1.4-0 <7.1.5-0` accepts `7.1.4-7` but not `7.1.408`. The builds on WordPress 7.1.4 are now `>=7.1.400 <7.1.500`.
 * Earlier versions and their image tags stay published unchanged.
 
 ### To 7.0.0-2
