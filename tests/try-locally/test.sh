@@ -201,7 +201,8 @@ pr_paths="$(awk '
   ev && $1 == "paths:" { on = 1; next }
   on && $1 == "-" { p = $2; gsub(/\047/, "", p); print p; next }
   on { on = 0 }' "$WF")"
-for want in 'chart/**' 'docker/**' 'examples/k3d/**' 'tests/try-locally/**' '.github/workflows/try-locally.yml'; do
+for want in 'chart/**' 'docker/**' 'examples/k3d/**' 'site/guide/try-locally.md' 'tests/try-locally/**' \
+            '.github/workflows/try-locally.yml'; do
   has "pull requests run on $want" "$want" "$pr_paths"
 done
 has "a weekly run" "  schedule:" "$(cat "$WF")"

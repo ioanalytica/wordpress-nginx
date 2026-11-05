@@ -23,13 +23,15 @@ name: Try it locally
 # The cluster runs the k3s image the page's step 1 names, with the k3d
 # installed below; tests/try-locally/test.sh keeps both in step with the
 # page's "Tested with" line, and the paths below in step with what the run
-# reads.
+# and the guard test read. The site's page is among them: the guard test
+# holds it to the include of the tested page.
 on:
   pull_request:
     paths:
       - 'chart/**'
       - 'docker/**'
       - 'examples/k3d/**'
+      - 'site/guide/try-locally.md'
       - 'tests/try-locally/**'
       - '.github/workflows/try-locally.yml'
   schedule:
