@@ -15,8 +15,9 @@ concerned without blocking them, set `mode: report` and read the log:
 kubectl logs deploy/my-wordpress-wordpress-nginx | grep '\[php-allowlist\]'
 ```
 
-A 403 on `/healthz.php` is intended for every caller but the kubelet's
-probes: the endpoint answers them only.
+A 403 on `/healthz.php` is intended as well: NGINX answers the endpoint only
+for requests that carry the kubelet probe's User-Agent, which keeps crawlers
+and scanners off it. That is a filter on a request header, not access control.
 
 ## A change to the NGINX configuration has no effect
 

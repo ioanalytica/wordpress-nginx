@@ -11,6 +11,9 @@
 #   file fine, and the build takes a link to a file that is not a page for an
 #   asset. A link relative to the page (`.` or `..`, alone or before `/`, `#`
 #   or `?`) passes.
+# - A link to a page the site does not have. The build checks the links of the
+#   Markdown text only, not those of the home page's frontmatter (hero actions,
+#   feature cards), of the navigation or of HTML written into a page.
 # - An anchor no element of its page has. The build checks that a linked page
 #   exists, not that the heading does; a README heading that was renamed, or
 #   whose anchor differs between GitHub and VitePress, would go unnoticed.
@@ -60,14 +63,27 @@ while IFS=$sep read -r page target anchor; do
   [ -n "$page" ] || continue
   file=$page
   [ -z "$target" ] || file=$(page_of "$target")
-  # A link to a page that does not exist is the build's to report.
+  # A link to a page that does not exist is reported as such, below.
   [ -n "$file" ] && [ -f "./$file" ] || continue
   grep -qF -- " id=\"$anchor\"" "./$file" || missing+="$page: ${target}#$anchor"$'\n'
 done <<<"$anchors"
 
+# PAGE and TARGET of each link to a path on this site, without its query and
+# anchor; `//host/…` is another site's address.
+paths=$(sed -nE "s/^\.\/([^:]*):href=[\"'](\/([^\/\"'#?][^\"'#?]*)?)([?#][^\"']*)?[\"']$/\1${sep}\2/p" <<<"$hrefs" | LC_ALL=C sort -u)
+absent=""
+while IFS=$sep read -r page target; do
+  [ -n "$page" ] || continue
+  [ -n "$(page_of "$target")" ] || absent+="$page: $target"$'\n'
+done <<<"$paths"
+
 status=0
 if [ -n "$relative" ]; then
   sed 's/^/link relative to the repository, leads nowhere on the site: /' <<<"$relative" >&2
+  status=1
+fi
+if [ -n "$absent" ]; then
+  printf '%s' "$absent" | sed 's/^/link to a page the site does not have: /' >&2
   status=1
 fi
 if [ -n "$missing" ]; then

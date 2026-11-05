@@ -16,12 +16,13 @@ content.
 A workflow asks wordpress.org once a day for the current WordPress release.
 When it is newer than the one in the image, the workflow opens a pull request
 that raises the WordPress version, the chart version and the changelog
-together. A maintainer reviews and merges it, and the release build runs the
-image's and the chart's tests before it publishes anything.
+together. A maintainer reviews and merges it and then tags the release. The
+tag starts the release build, which runs the image's and the chart's tests
+before it publishes anything.
 
 There is no promised time between a WordPress release and the chart release
-that ships it. The pull request is there within a day; the merge is a person's
-decision.
+that ships it. The pull request is there within a day; merging it and tagging
+the release are a person's decisions.
 
 ## Package updates
 
