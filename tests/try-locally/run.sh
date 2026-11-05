@@ -5,7 +5,7 @@
 # the output of a block, the run compares it; where the page sends the reader
 # to a browser, the run signs in with curl and uploads a file. Before the
 # clean-up it installs a second release whose database is away at the first
-# start, and expects WordPress to wait for it.
+# start, and expects WordPress to wait for it and to install itself then.
 #
 #   tests/try-locally/run.sh                      # the latest release, as the page installs it
 #   tests/try-locally/run.sh ./chart              # the chart of this checkout
@@ -112,15 +112,14 @@ import_image() {
 
 # late_database - a first start whose database is not there yet, with a
 # second release in the same cluster. WordPress installs itself when its
-# container first starts; the chart keeps the pod in the init container
-# wait-for-database until the database port answers. The release is installed
-# without a WordPress pod, so that MariaDB can finish its own initialization
-# undisturbed; then MariaDB is taken away, WordPress is started, has to wait,
-# and has to end up installed once MariaDB is back.
+# container first starts; the image's start hook asks again until the
+# database answers. The release is installed without a WordPress pod, so
+# that MariaDB can finish its own initialization undisturbed; then MariaDB is
+# taken away, WordPress is started, has to wait, and has to end up installed
+# once MariaDB is back.
 late_database() {
-  local ns=late release=late chart="${CHART:-$PAGE_CHART}" deadline state log
+  local ns=late release=late chart="${CHART:-$PAGE_CHART}" deadline log
   local db="deployment/late-wordpress-nginx-mariadb" wp="deployment/late-wordpress-nginx"
-  local pod="app.kubernetes.io/name=wordpress-nginx,app.kubernetes.io/instance=late"
   echo "=== ${SECONDS}s, a first start with the database away"
   # shellcheck disable=SC2086 # the extra flags are words of their own
   helm install "$release" "$chart" --namespace "$ns" --create-namespace \
@@ -135,23 +134,22 @@ late_database() {
     -l "app.kubernetes.io/name=wordpress-nginx-mariadb,app.kubernetes.io/instance=late" --timeout=3m >/dev/null
   kubectl -n "$ns" scale "$wp" --replicas=1 >/dev/null
   deadline=$((SECONDS + 180))
-  until state="$(kubectl -n "$ns" get pods -l "$pod" \
-          -o jsonpath='{.items[0].status.initContainerStatuses[?(@.name=="wait-for-database")].state.running.startedAt}' 2>/dev/null)" \
-        && [ -n "$state" ]; do
-    [ "$SECONDS" -lt "$deadline" ] || fail "the WordPress pod does not wait in an init container wait-for-database"
+  until log="$(kubectl -n "$ns" logs "$wp" -c wordpress 2>/dev/null)" && grep -qF "Waiting for the database" <<<"$log"; do
+    [ "$SECONDS" -lt "$deadline" ] || fail "the WordPress container does not say that it waits for the database"
     sleep 3
   done
   # Long enough for a start that did not wait to reach the installer.
   sleep 20
-  state="$(kubectl -n "$ns" get pods -l "$pod" \
-    -o jsonpath='{.items[0].status.initContainerStatuses[?(@.name=="wait-for-database")].state.running.startedAt}')"
-  [ -n "$state" ] || fail "the WordPress pod left wait-for-database although the database is away"
-  log="$(kubectl -n "$ns" logs "$wp" -c wait-for-database)"
-  grep -qF "Waiting for the database at late-wordpress-nginx-mariadb:3306" <<<"$log" \
-    || fail "wait-for-database does not say what it waits for: $log"
-  echo "ok:   without its database, the WordPress pod waits and says so"
+  log="$(kubectl -n "$ns" logs "$wp" -c wordpress)"
+  if grep -qF "Running Wordpress installer" <<<"$log"; then
+    fail "the installer ran although the database is away"
+  fi
+  echo "ok:   without its database, WordPress waits and says so"
   kubectl -n "$ns" scale "$db" --replicas=1 >/dev/null
   kubectl -n "$ns" rollout status "$wp" --timeout=10m
+  log="$(kubectl -n "$ns" logs "$wp" -c wordpress)"
+  grep -qF "Running Wordpress installer" <<<"$log" \
+    || fail "the installer did not run once the database was back"
   kubectl -n "$ns" exec "$wp" -c wordpress -- wp core is-installed \
     || fail "WordPress is not installed after its database came back"
   echo "ok:   once the database is back, WordPress installs itself and the pod gets ready"

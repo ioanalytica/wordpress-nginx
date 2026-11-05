@@ -8,26 +8,84 @@ fi
 # WP-CLI through the `wp` wrapper, which runs it as the web user. The
 # installer creates wp-content/uploads; run as root, it leaves a directory
 # that PHP-FPM cannot write to, and no upload reaches it.
-if wp core is-installed >/dev/null 2>&1; then
-  debug-echo -i "WordPress is already set up."
-else
-  debug-echo -i "Running Wordpress installer …"
-  wp core install \
-              --url="${WORDPRESS_SCHEME:-http}://localhost" \
-              --title="${WORDPRESS_BLOG_NAME:-Weblog}" \
-              --admin_user="${WORDPRESS_USERNAME:-admin}" \
-              --admin_password="${WORDPRESS_PASSWORD:-admin}" \
-              --admin_email="${WORDPRESS_EMAIL:-admin@localhost}" \
-              --skip-email --quiet
-fi
+#
+# WordPress is installed here, once per container start, and nothing tries
+# again later: a database that is not up yet must not read as "not
+# installed". WP-CLI says which of the two it is, so the question is asked
+# again until the database answers. It is WordPress's own configuration that
+# is asked, whatever set it: the chart's values, an environment variable, a
+# wp-config.php of the user's own, a database proxy in a neighbouring
+# container.
+#
+# The wait ends after WORDPRESS_DB_WAIT_TIMEOUT seconds (300; 0 does not
+# wait). The container then starts as it did before there was a wait, and a
+# new installation is made at the next start. Under the chart's default
+# liveness probe the kubelet starts the container again before that, so a
+# database that stays away shows in the pod's restarts and in this log.
+#
+# One question must not take long: PHP gives a connection a minute by default,
+# and a Service without a server behind it may not answer at all. Five
+# seconds per try, for this question alone.
+is_installed() {
+  in-app web-do php -d default_socket_timeout=5 /usr/local/bin/wp-cli --allow-root core is-installed 2>&1
+}
+
+db_wait="${WORDPRESS_DB_WAIT_TIMEOUT:-300}"
+case "$db_wait" in ''|*[!0-9]*) db_wait=300 ;; esac
+started="$(date +%s)"
+said=-30
+installed=""
+while [ -z "$installed" ]; do
+  if out="$(is_installed)"; then
+    installed=yes
+    break
+  fi
+  case "$out" in
+    *"Error establishing a database connection"*) ;;
+    *) installed=no; break ;;
+  esac
+  waited=$(( $(date +%s) - started ))
+  if [ "$waited" -ge "$db_wait" ]; then
+    installed=unknown
+    break
+  fi
+  if [ $((waited - said)) -ge 30 ]; then
+    debug-echo -w "Waiting for the database (${waited} s of at most ${db_wait} s) …"
+    said=$waited
+  fi
+  sleep 3
+done
+
+case "$installed" in
+  yes)
+    debug-echo -i "WordPress is already set up."
+    ;;
+  no)
+    debug-echo -i "Running Wordpress installer …"
+    wp core install \
+                --url="${WORDPRESS_SCHEME:-http}://localhost" \
+                --title="${WORDPRESS_BLOG_NAME:-Weblog}" \
+                --admin_user="${WORDPRESS_USERNAME:-admin}" \
+                --admin_password="${WORDPRESS_PASSWORD:-admin}" \
+                --admin_email="${WORDPRESS_EMAIL:-admin@localhost}" \
+                --skip-email --quiet
+    ;;
+  *)
+    debug-echo -w "The database did not answer within ${db_wait} s:"
+    printf '%s\n' "$out"
+    debug-echo -w "Starting without it. A new installation is made at the next start of the container."
+    ;;
+esac
 
 # An installation made by an image that still ran the installer as root keeps
 # its upload directory with root as the owner. Hand over what root owns
 # there, and nothing else: the check costs one stat on a volume in order, and
-# files that belong to another user on purpose stay as they are.
+# files that belong to another user on purpose stay as they are. Depth first,
+# so the directory itself comes last: a run that was cut short is taken up
+# again at the next start.
 uploads="${APP_PATH:-/var/www/html}/wp-content/uploads"
 if [ -d "$uploads" ] && [ "$(stat -c '%u' "$uploads" 2>/dev/null)" = "0" ]; then
   debug-echo -i "Handing $uploads over to $APP_USER …"
-  find "$uploads" -user 0 -exec chown -h "$APP_USER:$APP_GROUP" {} + \
+  find "$uploads" -depth -user 0 -exec chown -h "$APP_USER:$APP_GROUP" {} + \
     || debug-echo -w "Could not change the owner of $uploads; uploads will fail until it belongs to $APP_USER."
 fi

@@ -595,21 +595,6 @@ fim_refuses "a digest YAML read as a number"     --set-json 'fim.baseline={"salt
 fim_refuses "a digest of the wrong length"       --set-json 'fim.baseline={"salts.php":["abc"]}'
 
 echo
-echo "=== The first start waits for the database"
-# WordPress installs itself when its container first starts, once: the pod
-# must not get there before the database port answers.
-expect "bundled MariaDB: the pod waits for it"       present 'name: wait-for-database'
-expect "bundled MariaDB: at its Service"             present 'value: "tst-wordpress-nginx-mariadb"'
-EXTDB=(--set mariadb.enabled=false --set externalDatabase.host=db.example.com --set externalDatabase.port=3307)
-expect "external database: the pod waits for it"     present 'name: wait-for-database' "${EXTDB[@]}"
-expect "external database: at its host"              present 'value: "db.example.com"' "${EXTDB[@]}"
-expect "external database: at its port"              present 'value: "3307"' "${EXTDB[@]}"
-expect "the wait has a limit"                        present 'if [ "$waited" -ge 300 ]; then'
-expect "a wp-config.php of the user's own: no wait"  absent  'wait-for-database' \
-        --set existingWordPressConfigurationSecret=own-config --set wordpressSkipInstall=true
-check  "the wait renders with security contexts on"  --set containerSecurityContext.enabled=true
-
-echo
 echo "=== The examples render, with keys the chart knows"
 # examples/ lives next to the chart in the repository and is not part of the
 # packaged chart, so a chart tested on its own has none. An example that no

@@ -142,20 +142,22 @@ externalDatabase:
 
 #### The first start waits for the database
 
-WordPress installs itself when its container first starts. An init container,
-`wait-for-database`, holds the pod until the database port answers: the
-bundled MariaDB's Service, or `externalDatabase.host` and
-`externalDatabase.port`. After five minutes without a database it ends with an
-error and is started again, so a database that stays away shows as
-`Init:Error` in the pod's state:
+WordPress installs itself when its container first starts, and that needs the
+database. If the database does not answer yet, the container asks again
+before it goes on, and its log says so:
 
-```bash
-kubectl logs <pod> -c wait-for-database
+```text
+Waiting for the database (30 s of at most 300 s) …
 ```
 
-A release with a `wp-config.php` of its own (`wordpressConfiguration`,
-`existingWordPressConfigurationSecret`) has no such container; the chart does
-not know which database that file names.
+It is WordPress's own configuration that is asked, so the wait holds for the
+bundled MariaDB, for `externalDatabase.*`, for a `wp-config.php` of your own
+and for a database proxy in a sidecar alike. The limit is
+`WORDPRESS_DB_WAIT_TIMEOUT` seconds (300; `0` does not wait), set through
+`extraEnvVars`. With the default liveness probe the kubelet starts the
+container again before the limit, so a database that stays away shows in the
+pod's restarts. Past the limit the container starts without the database, as
+it did before; a new installation is then made at its next start.
 
 <!-- #endregion database -->
 
@@ -987,11 +989,11 @@ OpenShift compatibility is handled automatically via `global.compatibility.opens
 
 No values change. Two things differ at the next start of a pod:
 
-- The pod has a second init container, `wait-for-database`, and stays in
-  `Init` until its database port answers (see
+- While the database does not answer, the WordPress container waits before it
+  goes on, up to five minutes (see
   [The first start waits for the database](#the-first-start-waits-for-the-database)).
-  A network policy of your own that limits the pod's egress already has to
-  admit the database; nothing new is needed.
+  An installed site loses nothing by that: a pod that cannot reach its
+  database is not ready either way.
 - If `wp-content/uploads` belongs to root, as an installation made by an
   earlier version left it, what root owns below it is handed to the web user.
 

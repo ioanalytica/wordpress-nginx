@@ -15,7 +15,10 @@ IMAGE="${1:?usage: smoke-test.sh <image-ref>}"
 NAME="wpnginx-smoke-$$"
 FAILURES=0
 
-cleanup() { docker rm -f "$NAME" >/dev/null 2>&1 || true; }
+cleanup() {
+    docker rm -f "$NAME" "$NAME-dbwait" >/dev/null 2>&1 || true
+    rm -f "${DBWAIT_CONFIG:-}"
+}
 trap cleanup EXIT
 
 cexec() { docker exec "$NAME" sh -c "$1"; }
@@ -414,6 +417,51 @@ else
     FAILURES=$((FAILURES + 1))
 fi
 cexec 'rm -rf /tmp/stub /tmp/msmtp-args /tmp/msmtp-msg /tmp/msg-plain /tmp/msg-folded /tmp/msg-nofrom'
+
+echo "=== The start waits for a database that does not answer, up to its limit"
+# WordPress is installed by the application hook, once per container start.
+# With a wp-config.php that names a database nobody listens at, the hook must
+# ask again instead of running the installer against nothing, say that it
+# waits, and after WORDPRESS_DB_WAIT_TIMEOUT let the container start. A
+# second container: the first one has no wp-config.php, and its start is over.
+DBWAIT_CONFIG="$(mktemp)"
+cat > "$DBWAIT_CONFIG" <<'PHP'
+<?php
+define( 'DB_NAME', 'wordpress' );
+define( 'DB_USER', 'wordpress' );
+define( 'DB_PASSWORD', 'not-a-real-password' );
+define( 'DB_HOST', '127.0.0.1:3306' );
+$table_prefix = 'wp_';
+if ( ! defined( 'ABSPATH' ) ) {
+    define( 'ABSPATH', __DIR__ . '/' );
+}
+require_once ABSPATH . 'wp-settings.php';
+PHP
+chmod 0644 "$DBWAIT_CONFIG"
+docker create --name "$NAME-dbwait" -e WORDPRESS_DB_WAIT_TIMEOUT=8 "$IMAGE" >/dev/null
+docker cp "$DBWAIT_CONFIG" "$NAME-dbwait:/var/www/html/wp-config.php" >/dev/null
+docker start "$NAME-dbwait" >/dev/null
+for i in $(seq 1 90); do
+    if docker exec "$NAME-dbwait" sh -c 'curl -s -o /dev/null http://localhost/favicon.ico' 2>/dev/null; then break; fi
+    [ "$i" = 90 ] && { echo "FAIL: nginx did not come up after the database wait"; FAILURES=$((FAILURES + 1)); }
+    sleep 1
+done
+dbwait_log="$(docker logs "$NAME-dbwait" 2>&1)"
+# assert_log <description> <"present"|"absent"> <needle>
+assert_log() {
+    if grep -qF -- "$3" <<<"$dbwait_log"; then
+        if [ "$2" = present ]; then echo "ok:   $1"
+        else echo "FAIL: $1 — the log has '$3'"; FAILURES=$((FAILURES + 1)); fi
+    else
+        if [ "$2" = absent ]; then echo "ok:   $1"
+        else echo "FAIL: $1 — the log lacks '$3'"; FAILURES=$((FAILURES + 1)); fi
+    fi
+}
+assert_log "the hook says that it waits for the database"   present "Waiting for the database (0 s of at most 8 s)"
+assert_log "the wait ends at its limit"                     present "The database did not answer within 8 s"
+assert_log "the log names what WordPress could not reach"   present "Error establishing a database connection"
+assert_log "the installer is not run against no database"   absent  "Running Wordpress installer"
+assert_log "the container starts after the wait"            present "ready to handle connections"
 
 echo
 if [ "$FAILURES" -gt 0 ]; then
