@@ -251,20 +251,23 @@ echo '<h2 id="pin">p</h2>' > "$WORK/good/guide/install.html"
 echo '<h2 id="intro">i</h2>' > "$WORK/good/guide/index.html"
 cp -R "$WORK/good/." "$WORK/bad/"
 echo '<a href="chart/values.yaml">a</a> <a href=".github/workflows/site.yml">b</a> <a href="/guide/install#gone">c</a> <a href="#nowhere">d</a> <a href="/guide/install?tab=1#lost">e</a> <a href="/no-such-page#x">f</a> <a href="/guide/absent">g</a>
-<a href="./missing#section">h</a> <a href="../guide/install#gone">i</a> <a href="../../guide/nowhere">j</a> <a href="./install#pin">ok</a> <a href="..#top">ok</a>' > "$WORK/bad/guide/other.html"
+<a href="./missing#section">h</a> <a href="../guide/install#gone">i</a> <a href="../../guide/nowhere">j</a> <a href="./install#pin">ok</a> <a href="..#top">ok</a> <a href="install#pin">ok</a> <a href="install">ok</a>
+<a href = "/spaced/missing">k</a> <a href="install#away">l</a>' > "$WORK/bad/guide/other.html"
 check "a clean site passes" "$CHECK" "$WORK/good"
 if out=$("$CHECK" "$WORK/bad" 2>&1); then fail "a site with broken links passes"; else ok "a site with broken links fails"; fi
 equal "it names each broken link with its page" "$out" \
-'link relative to the repository, leads nowhere on the site: guide/other.html: .github/workflows/site.yml
-link relative to the repository, leads nowhere on the site: guide/other.html: chart/values.yaml
-link to a page the site does not have: guide/other.html: ../../guide/nowhere
+'link to a page the site does not have: guide/other.html: ../../guide/nowhere
 link to a page the site does not have: guide/other.html: ./missing#section
+link to a page the site does not have: guide/other.html: .github/workflows/site.yml
 link to a page the site does not have: guide/other.html: /guide/absent
 link to a page the site does not have: guide/other.html: /no-such-page#x
+link to a page the site does not have: guide/other.html: /spaced/missing
+link to a page the site does not have: guide/other.html: chart/values.yaml
 anchor without a target on its page: guide/other.html: #nowhere
 anchor without a target on its page: guide/other.html: ../guide/install#gone
 anchor without a target on its page: guide/other.html: /guide/install#gone
-anchor without a target on its page: guide/other.html: /guide/install?tab=1#lost'
+anchor without a target on its page: guide/other.html: /guide/install?tab=1#lost
+anchor without a target on its page: guide/other.html: install#away'
 "$CHECK" "$WORK/empty" >/dev/null 2>&1 && code=0 || code=$?
 equal "a directory without pages is an error, not a pass" "$code" 2
 
