@@ -161,7 +161,8 @@ fi
 # favicon.ico and a static file: a request that reached PHP here would put
 # the image's index.php into opcache, see above.
 check "nothing answers on port 443"                   '! curl -sk -o /dev/null --max-time 5 https://localhost/favicon.ico'
-check "the NGINX configuration has no TLS directive"  '! nginx -T 2>/dev/null | grep -E "^[[:space:]]*(ssl_|http3|listen[^;]*(443|ssl|quic))"'
+# The dump has to succeed first: no output is no TLS directive either.
+check "the NGINX configuration has no TLS directive"  'nginx -T >/tmp/smoke-nginx-T 2>/dev/null && grep -q "^[[:space:]]*listen" /tmp/smoke-nginx-T && ! grep -E "^[[:space:]]*(ssl_|http3|listen[^;]*(443|ssl|quic))" /tmp/smoke-nginx-T'
 # The header rides on answers with a status like 200 only, so ask for a file
 # that exists.
 check "no response announces HTTP/3"                  'echo x >/var/www/html/smoke-static.txt && curl -sI http://localhost/smoke-static.txt | grep -q "^HTTP/1.1 200" && ! curl -sI http://localhost/smoke-static.txt | grep -i "^alt-svc:"'
