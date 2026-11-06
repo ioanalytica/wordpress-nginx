@@ -599,6 +599,17 @@ wordpress-idx submodule, together with the chart, and tags both with it.
 {{- end -}}
 
 {{/*
+Return true if the search sidecar has a reindex API key: the sidecar gets it
+as REINDEX_API_KEY, and WordPress' container gets it for the post-init script
+that hands it to the search plugin.
+*/}}
+{{- define "wordpress.idx.hasReindexApiKey" -}}
+{{- if and .Values.idx.enabled (or .Values.idx.reindexApiKey .Values.idx.existingReindexApiKeySecret) -}}
+{{- true -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
 Return the idx reindex API key secret name
 */}}
 {{- define "wordpress.idx.reindexApiKeySecretName" -}}

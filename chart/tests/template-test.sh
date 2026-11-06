@@ -516,6 +516,51 @@ expect "still installs without autoUpdate" present 'wp plugin install "$package"
         "${IDX[@]}" --set idx.pluginAutoUpdate=false
 check "idx alone renders the postinit ConfigMap" "${IDX[@]}" --set-json 'wordpressPreinstallPlugins=[]'
 
+echo "=== The reindex key reaches the search plugin"
+# "Rebuild index" in wp-admin sends the key the plugin has, and the sidecar
+# accepts the one it was started with. Both come from one Secret: WordPress'
+# container reads it from its environment and writes the plugin's option at
+# every start. The value itself is in the Secret only.
+IDXKEY=("${IDX[@]}" --set idx.reindexApiKey=k3y-0f-the-template-test)
+expect "no key script without a key"        absent  '06-idx-reindex-key.sh' "${IDX[@]}"
+expect "no key script without the sidecar"  absent  '06-idx-reindex-key.sh' --set idx.reindexApiKey=k3y-0f-the-template-test
+expect "no key for WordPress without a key" absent  'WORDPRESS_IDX_REINDEX_API_KEY' "${IDX[@]}"
+expect "key script mounts as a single file" present 'mountPath: /etc/hooks/application/zz-06-idx-reindex-key.sh' "${IDXKEY[@]}"
+expect "the key goes to wp on standard input" present 'printf '"'"'%s'"'"' "$key" | wp option update "$option"' "${IDXKEY[@]}"
+expect "the key's value is in the Secret only" absent 'k3y-0f-the-template-test' "${IDXKEY[@]}"
+expect "an existing Secret brings the script as well" present '06-idx-reindex-key.sh' \
+        "${IDX[@]}" --set idx.existingReindexApiKeySecret=my-idx-secret
+check "idx with a reindex key" "${IDXKEY[@]}"
+check "idx with a reindex key and nothing else" "${IDXKEY[@]}" --set-json 'wordpressPreinstallPlugins=[]'
+# Sidecar and WordPress must read the same key of the same Secret.
+for secret_args in "idx.reindexApiKey=k3y-0f-the-template-test tst-wordpress-nginx-idx" "idx.existingReindexApiKeySecret=my-idx-secret my-idx-secret"; do
+    read -r secret_set secret_name <<<"$secret_args"
+    refs=$(helm template tst "$CHART" "${IDX[@]}" --set "$secret_set" 2>&1 | python3 -c '
+import sys, yaml
+want = {"wordpress": "WORDPRESS_IDX_REINDEX_API_KEY", "idx": "REINDEX_API_KEY"}
+problems = []
+for d in yaml.safe_load_all(sys.stdin):
+    if not d or d.get("kind") != "Deployment" or d["metadata"]["name"] != "tst-wordpress-nginx":
+        continue
+    containers = {c["name"]: c for c in d["spec"]["template"]["spec"]["containers"]}
+    for container, variable in want.items():
+        env = {e["name"]: e for e in containers.get(container, {}).get("env", [])}
+        ref = env.get(variable, {}).get("valueFrom", {}).get("secretKeyRef", {})
+        if (ref.get("name"), ref.get("key")) != (sys.argv[1], "idx-reindex-api-key"):
+            problems.append("%s: %s comes from %s/%s" % (container, variable, ref.get("name"), ref.get("key")))
+    break
+else:
+    problems.append("no WordPress Deployment rendered")
+print("; ".join(problems))
+' "$secret_name" 2>&1) || refs="render failed"
+    if [ -z "$refs" ]; then
+        echo "ok:   sidecar and WordPress read the key from $secret_name"
+    else
+        echo "FAIL: sidecar and WordPress read the key from $secret_name — $refs"
+        FAILURES=$((FAILURES + 1))
+    fi
+done
+
 echo "=== Init script creates only what is missing"
 # Every "if [ ! -f|-d /wordpress/PATH ]" guard on the volume must test the
 # path its block creates. A misspelled guard (ngingx.conf until 7.1.4-3) is

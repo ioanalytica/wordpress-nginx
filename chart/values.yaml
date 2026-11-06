@@ -1335,10 +1335,15 @@ idx:
   ## @param idx.basePath Base URL path prefix for idx routes
   ##
   basePath: /idx
-  ## @param idx.reindexApiKey API key for the /api/reindex endpoint (leave empty to disable)
+  ## @param idx.reindexApiKey API key for the /api/reindex endpoint (leave empty to disable); the search plugin gets it as well
+  ## With a key - this value or idx.existingReindexApiKeySecret - WordPress'
+  ## container hands it to the search plugin at every start, as the option
+  ## idx_search_api_key in the site's database: "Rebuild index" in wp-admin
+  ## works without the key being entered under Settings > IDX Search, and a
+  ## key entered there is replaced at the next start.
   ##
   reindexApiKey: ""
-  ## @param idx.existingReindexApiKeySecret Name of existing secret containing key `idx-reindex-api-key`
+  ## @param idx.existingReindexApiKeySecret Name of existing secret containing key `idx-reindex-api-key`; the search plugin gets the key as well
   ##
   existingReindexApiKeySecret: ""
   ## @param idx.corsOrigin CORS origin for the idx API

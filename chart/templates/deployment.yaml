@@ -666,6 +666,17 @@ spec:
                   name: {{ include "wordpress.cacheSecretName" . }}
                   key: {{ include "wordpress.cacheSecretPasswordKey" . }}
             {{- end }}
+            {{- if (include "wordpress.idx.hasReindexApiKey" .) }}
+            # Read by the post-init script that hands the reindex key to the
+            # search plugin. From the same Secret as the sidecar's
+            # REINDEX_API_KEY, and in the environment for the reason given
+            # for the cache password above.
+            - name: WORDPRESS_IDX_REINDEX_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "wordpress.idx.reindexApiKeySecretName" . }}
+                  key: idx-reindex-api-key
+            {{- end }}
             - name: NGINX_HTTP_PORT_NUMBER
               value: {{ .Values.containerPorts.http | quote }}
             {{- if .Values.extraEnvVars }}
@@ -752,6 +763,12 @@ spec:
             - name: custom-postinit
               mountPath: /etc/hooks/application/zz-05-idx-plugin.sh
               subPath: 05-idx-plugin.sh
+              readOnly: true
+            {{- end }}
+            {{- if (include "wordpress.idx.hasReindexApiKey" .) }}
+            - name: custom-postinit
+              mountPath: /etc/hooks/application/zz-06-idx-reindex-key.sh
+              subPath: 06-idx-reindex-key.sh
               readOnly: true
             {{- end }}
             {{- if .Values.wordpressConfigureCache }}
@@ -906,7 +923,7 @@ spec:
               value: {{ .Values.idx.corsOrigin | quote }}
             - name: PLUGIN_AUTO_UPDATE
               value: {{ .Values.idx.pluginAutoUpdate | quote }}
-            {{- if or .Values.idx.reindexApiKey .Values.idx.existingReindexApiKeySecret }}
+            {{- if (include "wordpress.idx.hasReindexApiKey" .) }}
             - name: REINDEX_API_KEY
               valueFrom:
                 secretKeyRef:

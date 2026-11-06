@@ -859,6 +859,23 @@ updates, while the search keeps working, since that runs in the visitor's
 browser. Override the constant via `WORDPRESS_CONFIG_EXTRA` if the sidecar does
 not share the pod.
 
+`POST /api/reindex` rebuilds the index from the database and is switched off
+until the sidecar has a key:
+
+```yaml
+idx:
+  enabled: true
+  existingReindexApiKeySecret: my-idx-secret   # key: idx-reindex-api-key
+```
+
+`idx.reindexApiKey` takes the key itself, and the chart keeps it in a Secret of
+its own. Either way WordPress' container hands the same key to the search
+plugin at every start, so "Rebuild index" under Settings > IDX Search works
+without anyone entering the key there. The plugin keeps it as the option
+`idx_search_api_key` in the site's database; a key entered in wp-admin is
+replaced by the chart's at the next start. Without a key the chart leaves that
+setting alone.
+
 <!-- #endregion search-index -->
 
 ### File-Integrity Monitoring
