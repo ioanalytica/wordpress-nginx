@@ -32,6 +32,7 @@ Go through the lists below instead of relying on an error.
 | `apacheConfiguration`, `existingApacheConfigurationConfigMap` | The web server is NGINX. `nginxCustomServerBlockAddition` adds to its server block; the image's `nginx.conf` itself cannot be replaced through the values. |
 | `allowOverrideNone`, `htaccessPersistenceEnabled`, `customHTAccessCM` | NGINX reads no `.htaccess`. Directories a plugin protects that way are closed with `nginx.deniedPaths`; the chart reports the files it finds. See [Denied paths and .htaccess](/security/denied-paths). |
 | `volumePermissions` | Removed. |
+| `containerPorts.https`, `service.ports.https`, `service.httpsTargetPort`, `service.nodePorts.https` | Not read. The pod has no HTTPS port: the image serves HTTP on port 80 only, and TLS ends at the Ingress. The notes after an install name the ones a values file still sets. |
 | `usePasswordFiles` | Not supported; credentials reach the containers through environment variables sourced from Secrets. |
 | `mariadb.architecture` | The bundled MariaDB is a single server. For replication, run the database outside the chart and set `externalDatabase`. |
 | `memcached.auth.*`, `memcached.service.*` | The bundled cache is Dragonfly and always has a password: `memcached.password` or `memcached.existingSecret`. See [Cache](/features/cache). |
@@ -44,7 +45,7 @@ Go through the lists below instead of relying on an error.
 |---|---|---|
 | `mariadb.auth.database`, `externalDatabase.database` | `bitnami_wordpress` | `wordpress` |
 | `mariadb.auth.username`, `externalDatabase.user` | `bn_wordpress` | `wp_user` |
-| `containerPorts.http`, `containerPorts.https` | `8080`, `8443` | `80`, `443` |
+| `containerPorts.http` | `8080` | `80` |
 | `podSecurityContext.enabled`, `containerSecurityContext.enabled` | `true` | `false` |
 | `containerSecurityContext.runAsUser`, `.runAsGroup` | `1001` | `0` |
 | `containerSecurityContext.runAsNonRoot`, `.readOnlyRootFilesystem` | `true` | `false` |

@@ -597,6 +597,12 @@ ingress:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 ```
 
+TLS ends at the Ingress. The pod serves the site over HTTP on the port
+`http`: the image has no listener on port 443 and serves no certificate,
+and the chart renders no HTTPS port on the container, the Service or the
+NetworkPolicy. `wordpressScheme: https` sets the scheme of the URLs WordPress
+writes; the probes ask the pod over HTTP whatever it says.
+
 #### Supported `ingressClassName` values
 
 Since **7.0.0-2** the chart renders correctly under all three values
@@ -1016,6 +1022,14 @@ default security context constraints, cannot run the image.
 ## Upgrading
 
 <!-- #region upgrading -->
+
+### To 7.1.411
+
+* **The pod has no HTTPS port any more.** The image listens on port 80 only and the chart renders no port `https`: not on the container, not on the Service, not in the NetworkPolicy. TLS ends at the Ingress, as before; an installation that reaches the site through the Ingress or the Service's port `http` needs nothing.
+  * Whatever used the Service's port `https` (443), which answered with a placeholder certificate, has to use the port `http`, or the Ingress: a Service of type `LoadBalancer` or `NodePort` addressed on 443, an Ingress or a route of your own that names the Service's port `https`, a rule that forwards to 443.
+  * `containerPorts.https`, `service.ports.https`, `service.httpsTargetPort` and `service.nodePorts.https` are gone from `values.yaml`. A values file that still sets them renders as before, apart from the missing port, and the notes after `helm upgrade` name the ones that are set. Take them out.
+* **The readiness and the startup probe ask over HTTP.** Their defaults followed `wordpressScheme`, so a site with `wordpressScheme: https` was asked on the port `https`. They now ask `/healthz.php` on the port `http` with the scheme `HTTP`, whatever `wordpressScheme` is; a release that leaves the probes at their defaults needs nothing. One that sets `readinessProbe.httpGet`, `startupProbe.httpGet` or a custom probe with the port `https` or 443, or the scheme `HTTPS`, has to change it to `http` and `HTTP`: the chart refuses to render such a probe, because its pods would never become ready. `helm template` with the release's values shows it before the upgrade.
+* Responses no longer carry an `Alt-Svc` header that announces HTTP/3 on port 443. An Ingress controller that serves HTTP/3 announces it itself.
 
 ### To 7.1.410
 

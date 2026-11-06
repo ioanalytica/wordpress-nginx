@@ -52,7 +52,7 @@ what k3d needs and switches the two optional features on:
 
 | Value | Why |
 | --- | --- |
-| `service.type: ClusterIP` | the chart's default is a LoadBalancer Service on ports 80 and 443, which on k3s belong to Traefik |
+| `service.type: ClusterIP` | the chart's default is a LoadBalancer Service, and on k3s the ports it asks for belong to Traefik |
 | `ingress.*` | an Ingress of class `traefik` for the host `localhost` |
 | `idx.enabled` | the search sidecar |
 | `fim.enabled` | the file-integrity watcher |

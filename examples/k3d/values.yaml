@@ -18,9 +18,9 @@
 
 wordpressBlogName: wordpress-nginx on k3d
 
-# The chart's default is a LoadBalancer Service on ports 80 and 443. On k3s
-# those ports of the node belong to Traefik, so such a Service would wait for
-# an address for ever. Traefik reaches WordPress through the Ingress below.
+# The chart's default is a LoadBalancer Service. On k3s the ports it asks
+# for on the node belong to Traefik, so such a Service would wait for an
+# address for ever. Traefik reaches WordPress through the Ingress below.
 service:
   type: ClusterIP
 

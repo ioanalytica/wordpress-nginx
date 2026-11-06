@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+* **Hardening: the image listens on port 80 only, and a container has no private key in its filesystem.** TLS ends at the Ingress, and the pod serves the site over HTTP. The listeners on port 443 that the base image brings (TLS and HTTP/3), the placeholder key pair they needed and the TLS settings in the NGINX configuration are gone; the image build fails if a later base image brings a listener or a key back. The base image's own layer keeps its copy of the placeholder pair, which a scanner that reads layers can still report; "TLS ends at the Ingress" in the repository's `SECURITY.md` says what it is. Upgrading is recommended.
+  * **The chart renders no HTTPS port**: not on the container, not on the Service, not in the NetworkPolicy. `containerPorts.https`, `service.ports.https`, `service.httpsTargetPort` and `service.nodePorts.https` are gone from `values.yaml`, and with them the container's variables `NGINX_HTTPS_PORT_NUMBER` and `WORDPRESS_MULTISITE_EXTERNAL_HTTPS_PORT_NUMBER`, which nothing read. A values file that still sets one of the four values renders as before, apart from the missing port, and the notes after an install or upgrade name the ones that are set.
+  * **The readiness and the startup probe ask over HTTP on the port `http`**, whatever `wordpressScheme` is. Their defaults followed `wordpressScheme` and asked the port `https` for a site with `wordpressScheme: https`. A probe of the release's own that still names the port `https` or 443, or asks the HTTP port with the scheme `HTTPS`, fails the render with a message that says what to change, instead of leaving the pods of the upgrade unready.
+  * Responses no longer carry the `Alt-Svc` header that announced HTTP/3 on port 443.
+  * The log of a starting container has one new line from the base image, which says that it disables `ssl_dhparam`. It needs no attention: the image has no TLS settings left.
+  * "Upgrading" in the chart's README says what an installation that used the Service's port `https` has to change.
+
+### Project and CI
+
+* The smoke test checks that the container listens on port 80 and the base image's health port only, that the NGINX configuration has no TLS directive and that the container's filesystem has no private key under `/etc/ssl` and `/etc/nginx`.
+* The template test checks that no rendered object names an HTTPS port, that a values file with the removed values renders the same objects as one without them, what the notes say about them, and which probes the chart refuses.
+
 ## 7.1.410
 
 * **The bundled MariaDB moves to 12.3.3**, the current long-term series; the 12.2 image is no longer updated. An installation with `mariadb.enabled` starts the new series on its existing data directory at the upgrade. Back the database up first: MariaDB does not support going back to the earlier series.

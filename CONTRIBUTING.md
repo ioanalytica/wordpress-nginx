@@ -75,8 +75,9 @@ docker build -t wordpress-nginx:test ./docker
 ./docker/tests/smoke-test.sh wordpress-nginx:test
 ```
 
-The smoke test starts the image and probes it: the PHP execution allowlist,
-denied paths, the REST API hardening and the mail wrapper.
+The smoke test starts the image and probes it: the ports it listens on, the
+PHP execution allowlist, denied paths, the REST API hardening and the mail
+wrapper.
 
 ### Workflows and release scripts
 

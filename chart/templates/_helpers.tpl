@@ -697,6 +697,7 @@ Compile all warnings into a single message.
 {{- $messages := append $messages (include "wordpress.validateValues.cache" .) -}}
 {{- $messages := append $messages (include "wordpress.validateValues.phpExecutionAllowlist" .) -}}
 {{- $messages := append $messages (include "wordpress.validateValues.fim" .) -}}
+{{- $messages := append $messages (include "wordpress.validateValues.probes" .) -}}
 {{- $messages := without $messages "" -}}
 {{- $message := join "\n" $messages -}}
 {{- if $message -}}
@@ -712,6 +713,107 @@ Validate values of WordPress - Custom wp-config.php
 wordpress: wordpressConfiguration
     You are trying to use a wp-config.php file. This setup is only supported
     when skipping wizard installation (--set wordpressSkipInstall=true).
+{{- end -}}
+{{- end -}}
+
+{{/*
+Validate values of WordPress - the probes of the WordPress container.
+The image serves HTTP only, so the container has no port named "https"
+and nothing listens on 443, unless extraContainerPorts declares such a
+port or a sidecar serves the number. A probe that asks that port, by name
+or by number, or asks the HTTP port for TLS, never succeeds, and the pods
+of the upgrade would not get ready. Up to 7.1.410 the default readiness and startup probes followed
+wordpressScheme, so a values file that copied them can still say so.
+The probes are read as the Deployment renders them. One that names a host
+asks another address than the pod and keeps its port number and scheme; a
+port name is looked up in the container all the same.
+*/}}
+{{- define "wordpress.validateValues.probes" -}}
+{{- if not .Values.diagnosticMode.enabled -}}
+{{- $httpPort := toString .Values.containerPorts.http -}}
+{{- /* Names and numbers of the ports the release declares itself. */ -}}
+{{- $declared := list $httpPort -}}
+{{- range (include "wordpress.renderedList" (dict "value" .Values.extraContainerPorts "context" $) | fromYaml).items -}}
+{{- if kindIs "map" . -}}
+{{- $declared = concat $declared (list (toString .name) (toString .containerPort)) -}}
+{{- end -}}
+{{- end -}}
+{{- /* A sidecar shares the pod's address: its ports count by their number. */ -}}
+{{- range (include "wordpress.renderedList" (dict "value" .Values.sidecars "context" $) | fromYaml).items -}}
+{{- if and (kindIs "map" .) (kindIs "slice" .ports) -}}
+{{- range .ports -}}
+{{- if kindIs "map" . -}}
+{{- $declared = append $declared (toString .containerPort) -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- $probes := dict -}}
+{{- if .Values.customLivenessProbe -}}
+{{- $_ := set $probes "customLivenessProbe" (include "common.tplvalues.render" (dict "value" .Values.customLivenessProbe "context" $) | fromYaml) -}}
+{{- else if .Values.livenessProbe.enabled -}}
+{{- $_ := set $probes "livenessProbe" (include "common.tplvalues.render" (dict "value" (omit .Values.livenessProbe "enabled") "context" $) | fromYaml) -}}
+{{- end -}}
+{{- if .Values.customReadinessProbe -}}
+{{- $_ := set $probes "customReadinessProbe" (include "common.tplvalues.render" (dict "value" .Values.customReadinessProbe "context" $) | fromYaml) -}}
+{{- else if .Values.readinessProbe.enabled -}}
+{{- $_ := set $probes "readinessProbe" (include "common.tplvalues.render" (dict "value" (omit .Values.readinessProbe "enabled") "context" $) | fromYaml) -}}
+{{- end -}}
+{{- if .Values.customStartupProbe -}}
+{{- $_ := set $probes "customStartupProbe" (include "common.tplvalues.render" (dict "value" .Values.customStartupProbe "context" $) | fromYaml) -}}
+{{- else if .Values.startupProbe.enabled -}}
+{{- $_ := set $probes "startupProbe" (include "common.tplvalues.render" (dict "value" (omit .Values.startupProbe "enabled") "context" $) | fromYaml) -}}
+{{- end -}}
+{{- range $value, $probe := $probes -}}
+{{- range $handler := list "httpGet" "tcpSocket" "grpc" -}}
+{{- $target := index $probe $handler -}}
+{{- if kindIs "map" $target -}}
+{{- $port := toString $target.port -}}
+{{- /*
+A port name is looked up among the container's ports, whatever host the
+probe asks. A port number and the scheme say something about the pod only
+when the probe asks the pod, so a probe with a host of its own keeps them.
+*/ -}}
+{{- $gone := and (eq $port "https") (not (has $port $declared)) -}}
+{{- if not $target.host -}}
+{{- $gone = or $gone (and (eq $port "443") (not (has $port $declared))) -}}
+{{- end -}}
+{{- if $gone }}
+wordpress: {{ $value }}
+    The probe asks the port {{ $port | quote }}, where the container no longer
+    listens: the image serves HTTP only, TLS ends at the Ingress. Ask the
+    port "http" with the scheme HTTP, as the chart's default probes do.
+{{- else if and (not $target.host) (eq (upper (toString $target.scheme)) "HTTPS") (or (eq $port "http") (eq $port $httpPort)) }}
+wordpress: {{ $value }}
+    The probe asks the HTTP port with the scheme HTTPS: the image serves
+    HTTP only, TLS ends at the Ingress. Use the scheme HTTP, as the chart's
+    default probes do.
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+The values of the HTTPS port that a release still sets, one per line. The
+chart has no defaults for them any more, so a key that is there was set by
+the release. They have no effect; the notes after an install name them.
+*/}}
+{{- define "wordpress.removedHttpsValues" -}}
+{{- if and (kindIs "map" .Values.containerPorts) (hasKey .Values.containerPorts "https") }}
+containerPorts.https
+{{- end -}}
+{{- if kindIs "map" .Values.service -}}
+{{- if and (kindIs "map" .Values.service.ports) (hasKey .Values.service.ports "https") }}
+service.ports.https
+{{- end -}}
+{{- if hasKey .Values.service "httpsTargetPort" }}
+service.httpsTargetPort
+{{- end -}}
+{{- if and (kindIs "map" .Values.service.nodePorts) (hasKey .Values.service.nodePorts "https") }}
+service.nodePorts.https
+{{- end -}}
 {{- end -}}
 {{- end -}}
 

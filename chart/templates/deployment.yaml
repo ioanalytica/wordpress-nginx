@@ -603,8 +603,6 @@ spec:
               value: {{ .Values.multisite.host | quote }}
             - name: WORDPRESS_MULTISITE_EXTERNAL_HTTP_PORT_NUMBER
               value: {{ .Values.service.ports.http | quote }}
-            - name: WORDPRESS_MULTISITE_EXTERNAL_HTTPS_PORT_NUMBER
-              value: {{ .Values.service.ports.https | quote }}
             - name: WORDPRESS_MULTISITE_NETWORK_TYPE
               value: {{ .Values.multisite.networkType | quote }}
             - name: WORDPRESS_MULTISITE_ENABLE_NIP_IO_REDIRECTION
@@ -670,8 +668,6 @@ spec:
             {{- end }}
             - name: NGINX_HTTP_PORT_NUMBER
               value: {{ .Values.containerPorts.http | quote }}
-            - name: NGINX_HTTPS_PORT_NUMBER
-              value: {{ .Values.containerPorts.https | quote }}
             {{- if .Values.extraEnvVars }}
             {{- include "common.tplvalues.render" (dict "value" .Values.extraEnvVars "context" $) | nindent 12 }}
             {{- end }}
@@ -687,8 +683,6 @@ spec:
           ports:
             - name: http
               containerPort: {{ .Values.containerPorts.http }}
-            - name: https
-              containerPort: {{ .Values.containerPorts.https }}
             {{- if .Values.extraContainerPorts }}
             {{- include "common.tplvalues.render" (dict "value" .Values.extraContainerPorts "context" $) | nindent 12 }}
             {{- end }}
