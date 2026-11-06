@@ -945,14 +945,6 @@
             "string"
           ],
           "default": 80
-        },
-        "https": {
-          "description": "WordPress HTTPS container port",
-          "type": [
-            "integer",
-            "string"
-          ],
-          "default": 443
         }
       }
     },
@@ -1204,7 +1196,7 @@
           "default": true
         },
         "httpGet": {
-          "description": "What the readinessProbe asks: /healthz.php on the port and scheme of wordpressScheme",
+          "description": "What the readinessProbe asks: /healthz.php over HTTP on the port `http`, whatever `wordpressScheme` is",
           "type": [
             "object",
             "array",
@@ -1214,8 +1206,8 @@
           "maxLength": 0,
           "default": {
             "path": "/healthz.php",
-            "port": "{{ .Values.wordpressScheme }}",
-            "scheme": "{{ .Values.wordpressScheme | upper }}",
+            "port": "http",
+            "scheme": "HTTP",
             "httpHeaders": []
           }
         },
@@ -1275,7 +1267,7 @@
           "default": false
         },
         "httpGet": {
-          "description": "What the startupProbe asks: /healthz.php on the port and scheme of wordpressScheme",
+          "description": "What the startupProbe asks: /healthz.php over HTTP on the port `http`, whatever `wordpressScheme` is",
           "type": [
             "object",
             "array",
@@ -1285,8 +1277,8 @@
           "maxLength": 0,
           "default": {
             "path": "/healthz.php",
-            "port": "{{ .Values.wordpressScheme }}",
-            "scheme": "{{ .Values.wordpressScheme | upper }}",
+            "port": "http",
+            "scheme": "HTTP",
             "httpHeaders": []
           }
         },
@@ -1395,24 +1387,8 @@
                 "string"
               ],
               "default": 80
-            },
-            "https": {
-              "description": "WordPress service HTTPS port",
-              "type": [
-                "integer",
-                "string"
-              ],
-              "default": 443
             }
           }
-        },
-        "httpsTargetPort": {
-          "description": "Target port for HTTPS",
-          "type": [
-            "string",
-            "number"
-          ],
-          "default": "https"
         },
         "nodePorts": {
           "title": "Node ports",
@@ -1420,14 +1396,6 @@
           "properties": {
             "http": {
               "description": "Node port for HTTP",
-              "type": [
-                "string",
-                "number"
-              ],
-              "default": ""
-            },
-            "https": {
-              "description": "Node port for HTTPS",
               "type": [
                 "string",
                 "number"

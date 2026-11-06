@@ -5,7 +5,9 @@
 # Verifies that PHP files are only executed from allowlisted entry points, that
 # denied REST routes are refused through both of their spellings, that the
 # report and off modes behave as documented for both features, and that the
-# extra pattern directories take effect. Run against a locally built image:
+# extra pattern directories take effect. It also checks that the container
+# listens for HTTP on port 80 only and carries no private key. Run against a
+# locally built image:
 #
 #   ./smoke-test.sh ghcr.io/ioanalytica/wordpress-nginx:test
 
@@ -132,6 +134,38 @@ for i in $(seq 1 60); do
     [ "$i" = 60 ] && { echo "FAIL: nginx did not come up"; exit 1; }
     sleep 1
 done
+
+echo "=== HTTP on port 80 only, no key material"
+# TLS ends at the Ingress, so the image has no listener on 443 and carries no
+# private key. The base image brings both; the Dockerfile removes them.
+# check <description> <command run in the container>: the command succeeds.
+check() {
+    if cexec "$2" >/dev/null 2>&1; then
+        echo "ok:   $1"
+    else
+        echo "FAIL: $1"
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+# Every listening socket as "protocol/port", TCP and UDP (HTTP/3 is UDP).
+# Port 2020 is the health server the base image's start hook sets up; a
+# third port is a listener nobody decided on.
+listeners="$(cexec "netstat -tuln | awk '\$1 ~ /^(tcp|udp)/ { n = split(\$4, a, \":\"); print \$1 \"/\" a[n] }' | sort -u | tr '\n' ' '")"
+if [ "$listeners" = "tcp/2020 tcp/80 " ]; then
+    echo "ok:   the container listens on port 80 and the health port only ($listeners)"
+else
+    echo "FAIL: the container listens on '$listeners', expected 'tcp/2020 tcp/80 '"
+    FAILURES=$((FAILURES + 1))
+fi
+# favicon.ico and a static file: a request that reached PHP here would put
+# the image's index.php into opcache, see above.
+check "nothing answers on port 443"                   '! curl -sk -o /dev/null --max-time 5 https://localhost/favicon.ico'
+check "the NGINX configuration has no TLS directive"  '! nginx -T 2>/dev/null | grep -E "^[[:space:]]*(ssl_|http3|listen[^;]*(443|ssl|quic))"'
+# The header rides on answers with a status like 200 only, so ask for a file
+# that exists.
+check "no response announces HTTP/3"                  'echo x >/var/www/html/smoke-static.txt && curl -sI http://localhost/smoke-static.txt | grep -q "^HTTP/1.1 200" && ! curl -sI http://localhost/smoke-static.txt | grep -i "^alt-svc:"'
+check "/etc/ssl/site is gone"                         '[ ! -e /etc/ssl/site ]'
+check "no private key under /etc/ssl and /etc/nginx"  '! grep -rlE -e "-----BEGIN [A-Z ]*PRIVATE KEY-----" /etc/ssl /etc/nginx'
 
 echo "=== Creating test fixtures"
 cexec '

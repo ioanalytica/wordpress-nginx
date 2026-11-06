@@ -106,6 +106,34 @@ RUN sed -i 's|^exec msmtp $options "$@"$|[ -n "$SMTP_FROM" ] \&\& exec /usr/loca
  && grep -qF -- 'rewrite-mail-from msmtp' /usr/local/utils/sendmail \
  && bash -n /usr/local/utils/sendmail /usr/local/utils/rewrite-mail-from
 
+# The image serves the site over HTTP on port 80 and nothing else: TLS ends
+# at the Ingress. The base image's default site also listens on 443, for TLS
+# (sites-enabled/00-default.conf) and for HTTP/3 (custom.d/00-ext-http3.conf,
+# which announces it in an Alt-Svc header as well), with a key pair it
+# creates under /etc/ssl/site when it is built. Nothing uses those listeners,
+# so they go, and with them the key material: an image should not carry a
+# private key. The TLS settings of the http block went the same way; they
+# are left out of this image's nginx.conf.
+# The base image's start hook finds no dhparam.pem then and says in the log
+# that it disables ssl_dhparam, a directive this image no longer has.
+# The greps guard the removal: if the base image moves a listener to another
+# file, renames one of the files or adds a certificate elsewhere in the NGINX
+# configuration, the build fails here instead of shipping an image that
+# listens on 443 again or does not start for want of the key pair. The
+# second one matches a listen directive on anything but port 80, in any file
+# and commented out or not; the start hook comments the IPv6 ones in and out.
+RUN sed -i -E \
+        -e '/^[[:space:]]*listen[[:space:]]+(\[::\]:)?443[[:space:]]/d' \
+        -e '/^[[:space:]]*ssl_certificate(_key)?[[:space:]]/d' \
+        -e '/^[[:space:]]*# SSL$/d' \
+        /etc/nginx/sites-enabled/00-default.conf \
+ && rm /etc/nginx/custom.d/00-ext-http3.conf \
+ && rm -r /etc/ssl/site \
+ && grep -qE '^[[:space:]]*listen[[:space:]]+80[[:space:]]' /etc/nginx/sites-enabled/00-default.conf \
+ && ! grep -rnE '^[[:space:]]*#?[[:space:]]*listen[[:space:]]+(\[::\]:)?([^8[[:space:]]|8[^0]|80[^[:space:];])' /etc/nginx \
+ && ! grep -rnE 'ssl_|[[:space:]]quic([[:space:];]|$)|http3|Alt-Svc|/etc/ssl/site' /etc/nginx \
+ && ! grep -rlE -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' /etc/ssl /etc/nginx
+
 ################################################################################
 ONBUILD RUN hook onbuild
 

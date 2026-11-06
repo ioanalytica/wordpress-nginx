@@ -770,12 +770,12 @@ policy_admits() {
         FAILURES=$((FAILURES + 1))
     fi
 }
-policy_admits "extra container ports are admitted, with their protocol" "80/- 443/- 9090/- 5353/UDP" "${EXTRA_PORT[@]}"
+policy_admits "extra container ports are admitted, with their protocol" "80/- 9090/- 5353/UDP" "${EXTRA_PORT[@]}"
 # The Deployment renders the value through the template engine, so text is a
 # form of it; the policy has to read the same entries.
-policy_admits "extra container ports given as template text"            "80/- 443/- 9091/-" \
+policy_admits "extra container ports given as template text"            "80/- 9091/-" \
         --set-string $'extraContainerPorts=- name: status\n  containerPort: {{ add 9000 91 }}'
-policy_admits "no extra container ports"                                "80/- 443/-"
+policy_admits "no extra container ports"                                "80/-"
 check  "extra container ports"                   "${EXTRA_PORT[@]}"
 check  "extra container ports as template text"  --set-string $'extraContainerPorts=- name: status\n  containerPort: {{ add 9000 91 }}'
 
@@ -904,6 +904,141 @@ notes_say "they name the Ingress to look at"               present "kubectl get 
 notes_say "they assume no particular cluster"              absent  "minikube" "${WITH_INGRESS[@]}"
 notes_say "they ask for no change to /etc/hosts"           absent  "/etc/hosts" "${WITH_INGRESS[@]}"
 notes_say "without an Ingress they follow the Service"     present "kubectl get svc --namespace default" 
+
+echo "=== No HTTPS port: the image serves HTTP only"
+# The image listens on port 80 and carries no certificate, TLS ends at the
+# Ingress. So no object may name an HTTPS port: a container port, a Service
+# port, a port of the NetworkPolicy, a probe, or a variable that hands one
+# to the container.
+# no_https_port <desc> <helm args...>
+no_https_port() {
+    local desc="$1" out found; shift
+    out="$(helm template tst "$CHART" "$@" 2>&1)" || {
+        echo "FAIL: $desc — helm template failed"; FAILURES=$((FAILURES + 1)); return
+    }
+    found="$(python3 -c '
+import sys, yaml
+
+PORT_KEYS = ("port", "containerPort", "targetPort", "nodePort", "hostPort")
+
+def walk(node, kind, path):
+    if isinstance(node, dict):
+        if str(node.get("name")) == "https" and any(k in node for k in PORT_KEYS):
+            print("%s: a port named https at %s" % (kind, path))
+        if "HTTPS_PORT" in str(node.get("name", "")) and ("value" in node or "valueFrom" in node):
+            print("%s: the variable %s" % (kind, node["name"]))
+        for key, value in node.items():
+            if key in PORT_KEYS and str(value) in ("443", "https"):
+                print("%s: %s %s at %s" % (kind, key, value, path))
+            walk(value, kind, "%s.%s" % (path, key))
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            walk(value, kind, "%s[%d]" % (path, i))
+
+for doc in yaml.safe_load_all(sys.stdin):
+    if isinstance(doc, dict):
+        walk(doc, doc.get("kind", "?"), "")
+' <<<"$out")" || { echo "FAIL: $desc — the manifests could not be read"; FAILURES=$((FAILURES + 1)); return; }
+    if [ -z "$found" ]; then
+        echo "ok:   $desc"
+    else
+        echo "FAIL: $desc — an object names an HTTPS port"
+        printf '%s\n' "$found" | sed 's/^/      /'
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+no_https_port "defaults"
+no_https_port "wordpressScheme https"            --set wordpressScheme=https
+no_https_port "wordpressScheme https, startup probe" --set wordpressScheme=https --set startupProbe.enabled=true
+no_https_port "Service of type NodePort"         --set service.type=NodePort
+no_https_port "Service of type ClusterIP"        --set service.type=ClusterIP
+no_https_port "NetworkPolicy with selected sources" --set networkPolicy.allowExternal=false
+no_https_port "multisite.enable"                 --set multisite.enable=true
+no_https_port "Ingress with TLS"                 --set ingress.enabled=true --set ingress.hostname=blog.example.com --set ingress.tls=true
+no_https_port "search sidecar and exporter"      --set idx.enabled=true --set metrics.enabled=true
+expect "the Service has its HTTP port"           present "targetPort: http" --show-only templates/svc.yaml
+# The probes ask over HTTP whatever the scheme of the site's URLs is. Up to
+# 7.1.410 they followed wordpressScheme and asked the port "https".
+expect "wordpressScheme https: the readiness probe asks over HTTP" present "scheme: HTTP" \
+        --show-only templates/deployment.yaml --set wordpressScheme=https
+expect "wordpressScheme https: no probe asks for TLS"              absent  "scheme: HTTPS" \
+        --show-only templates/deployment.yaml --set wordpressScheme=https --set startupProbe.enabled=true
+
+# containerPorts.https, service.ports.https, service.httpsTargetPort and
+# service.nodePorts.https are gone from values.yaml. A values file that
+# still sets them renders, and renders the same objects as one without
+# them. The passwords are set, or two renders differ in what Helm generates.
+OLD_HTTPS_VALUES="$(mktemp)"
+cat >"$OLD_HTTPS_VALUES" <<'VALUES'
+containerPorts:
+  http: 80
+  https: 443
+service:
+  type: NodePort
+  ports:
+    http: 80
+    https: 443
+  httpsTargetPort: https
+  nodePorts:
+    http: "30080"
+    https: "30443"
+VALUES
+SAME_SECRETS=(--set wordpressPassword=pw --set mariadb.auth.password=pw --set mariadb.auth.rootPassword=pw)
+WITHOUT_HTTPS_VALUES=(--set service.type=NodePort --set-string service.nodePorts.http=30080)
+check         "a values file that still sets the HTTPS values renders" -f "$OLD_HTTPS_VALUES"
+no_https_port "a values file that still sets the HTTPS values"         -f "$OLD_HTTPS_VALUES"
+if with_old="$(helm template tst "$CHART" "${SAME_SECRETS[@]}" -f "$OLD_HTTPS_VALUES" 2>&1)" \
+   && without_old="$(helm template tst "$CHART" "${SAME_SECRETS[@]}" "${WITHOUT_HTTPS_VALUES[@]}" 2>&1)" \
+   && [ "$with_old" = "$without_old" ]; then
+    echo "ok:   the HTTPS values change nothing in what is rendered"
+else
+    echo "FAIL: the render with the HTTPS values differs from the one without them"
+    diff <(printf '%s\n' "${without_old:-}") <(printf '%s\n' "${with_old:-}") | head -10 | sed 's/^/      /'
+    FAILURES=$((FAILURES + 1))
+fi
+# The chart has no defaults for them any more, so a key that is there was
+# set by the release, and the notes name it.
+notes_say "the notes name an HTTPS value that is still set"  present "service.httpsTargetPort" -f "$OLD_HTTPS_VALUES"
+notes_say "and say that it has no effect"                    present "no longer have an effect" -f "$OLD_HTTPS_VALUES"
+notes_say "each one that is set is named"                    present "containerPorts.https" --set containerPorts.https=8443
+notes_say "one that is not set is not named"                 absent  "service.ports.https" --set containerPorts.https=8443
+notes_say "without them the notes are silent about it"       absent  "no longer have an effect"
+rm -f "$OLD_HTTPS_VALUES"
+
+# A probe that still asks the port "https", or asks the HTTP port for TLS,
+# would never succeed, and the pods of the upgrade would not get ready. The
+# render fails instead and says what to change.
+# probe_refuses <desc> <helm args...>
+probe_refuses() {
+    local desc="$1" out; shift
+    if out="$(helm template tst "$CHART" "$@" 2>&1)"; then
+        echo "FAIL: $desc rendered - must fail the render"
+        FAILURES=$((FAILURES + 1))
+    elif ! grep -qF 'TLS ends at the Ingress' <<<"$out"; then
+        echo "FAIL: $desc fails the render, but not with the probe's message"
+        printf '%s\n' "$out" | tail -4 | sed 's/^/      /'
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   $desc fails the render"
+    fi
+}
+probe_refuses "a readiness probe on the port https"      --set readinessProbe.httpGet.port=https
+probe_refuses "the earlier default probe with wordpressScheme https" --set wordpressScheme=https \
+        --set-string 'readinessProbe.httpGet.port=\{\{ .Values.wordpressScheme \}\}' \
+        --set-string 'readinessProbe.httpGet.scheme=\{\{ .Values.wordpressScheme | upper \}\}'
+probe_refuses "a startup probe on the port https"        --set startupProbe.enabled=true --set startupProbe.httpGet.port=https
+probe_refuses "a liveness probe on the port https"       --set livenessProbe.tcpSocket.port=https
+probe_refuses "a custom probe on the port https"         --set-json 'customReadinessProbe={"httpGet":{"path":"/","port":"https","scheme":"HTTPS"}}'
+probe_refuses "a custom probe given as template text"    --set-string $'customLivenessProbe=tcpSocket:\n  port: \{\{ print "https" \}\}'
+probe_refuses "TLS asked of the HTTP port"               --set readinessProbe.httpGet.scheme=HTTPS
+probe_refuses "TLS asked of the HTTP port by its number" --set readinessProbe.httpGet.scheme=https --set readinessProbe.httpGet.port=80
+check  "the earlier default probe with wordpressScheme http" \
+        --set-string 'readinessProbe.httpGet.port=\{\{ .Values.wordpressScheme \}\}' \
+        --set-string 'readinessProbe.httpGet.scheme=\{\{ .Values.wordpressScheme | upper \}\}'
+check  "a probe on a port named https that the release declares" --set readinessProbe.httpGet.port=https \
+        --set readinessProbe.httpGet.scheme=HTTPS --set-json 'extraContainerPorts=[{"name":"https","containerPort":8443}]'
+check  "a disabled probe is not looked at"       --set readinessProbe.enabled=false --set readinessProbe.httpGet.port=https
+check  "diagnostic mode renders no probes"       --set diagnosticMode.enabled=true --set readinessProbe.httpGet.port=https
 
 echo "=== File-integrity watcher renders what it claims"
 # fim_check <desc> <deployment|sidecar> <helm args...>: the structural checks

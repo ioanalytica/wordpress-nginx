@@ -88,5 +88,17 @@ You can access NGINX Prometheus metrics following the steps below:
 {{- end }}
 {{- end }}
 
+{{- $removed := include "wordpress.removedHttpsValues" . | trim }}
+{{- if $removed }}
+
+NOTICE: these values are set, and they no longer have an effect:
+
+{{ $removed | indent 2 }}
+
+The image serves HTTP only and the chart renders no HTTPS port: TLS ends at
+the Ingress. Take them out of your values; "Upgrading" in the chart's README
+says what changed.
+{{- end }}
+
 {{- include "wordpress.validateValues" . }}
 {{- include "common.warnings.resources" (dict "sections" (list "metrics" "") "context" $) }}

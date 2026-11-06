@@ -536,12 +536,11 @@ resourcesPreset: "micro"
 ##
 resources: {}
 ## Container ports
+## The image serves HTTP only: TLS ends at the Ingress.
 ## @param containerPorts.http WordPress HTTP container port
-## @param containerPorts.https WordPress HTTPS container port
 ##
 containerPorts:
   http: 80
-  https: 443
 ## @param extraContainerPorts Optionally specify extra list of additional ports for WordPress container(s)
 ## e.g:
 ## extraContainerPorts:
@@ -620,6 +619,9 @@ livenessProbe:
   timeoutSeconds: 10
   failureThreshold: 6
   successThreshold: 1
+## The readiness and the startup probe ask over HTTP on the port `http`,
+## whatever `wordpressScheme` is: the image serves HTTP only, TLS ends at the
+## Ingress. A probe that names the port `https` fails the render.
 ## @param readinessProbe.enabled Enable readinessProbe on WordPress containers
 ## @skip readinessProbe.httpGet
 ## @param readinessProbe.initialDelaySeconds Initial delay seconds for readinessProbe
@@ -632,8 +634,8 @@ readinessProbe:
   enabled: true
   httpGet:
     path: /healthz.php
-    port: '{{ .Values.wordpressScheme }}'
-    scheme: '{{ .Values.wordpressScheme | upper }}'
+    port: http
+    scheme: HTTP
     ## If using an HTTPS-terminating load-balancer, the probes may need to behave
     ## like the balancer to prevent HTTP 302 responses. According to the Kubernetes
     ## docs, 302 should be considered "successful", but this issue on GitHub
@@ -661,8 +663,8 @@ startupProbe:
   enabled: false
   httpGet:
     path: /healthz.php
-    port: '{{ .Values.wordpressScheme }}'
-    scheme: '{{ .Values.wordpressScheme | upper }}'
+    port: http
+    scheme: HTTP
     ## If using an HTTPS-terminating load-balancer, the probes may need to behave
     ## like the balancer to prevent HTTP 302 responses. According to the Kubernetes
     ## docs, 302 should be considered "successful", but this issue on GitHub
@@ -700,22 +702,15 @@ service:
   ##
   type: LoadBalancer
   ## @param service.ports.http WordPress service HTTP port
-  ## @param service.ports.https WordPress service HTTPS port
   ##
   ports:
     http: 80
-    https: 443
-  ## @param service.httpsTargetPort Target port for HTTPS
-  ##
-  httpsTargetPort: https
   ## Node ports to expose
   ## @param service.nodePorts.http Node port for HTTP
-  ## @param service.nodePorts.https Node port for HTTPS
   ## NOTE: choose port between <30000-32767>
   ##
   nodePorts:
     http: ""
-    https: ""
   ## @param service.sessionAffinity Control where client requests go, to the same pod or round-robin
   ## Values: ClientIP or None
   ## ref: https://kubernetes.io/docs/concepts/services-networking/service/
