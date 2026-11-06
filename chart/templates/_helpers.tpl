@@ -724,8 +724,9 @@ port or a sidecar serves the number. A probe that asks that port, by name
 or by number, or asks the HTTP port for TLS, never succeeds, and the pods
 of the upgrade would not get ready. Up to 7.1.410 the default readiness and startup probes followed
 wordpressScheme, so a values file that copied them can still say so.
-The probes are read as the Deployment renders them; one that names a host
-asks another address than the pod and is left alone.
+The probes are read as the Deployment renders them. One that names a host
+asks another address than the pod and keeps its port number and scheme; a
+port name is looked up in the container all the same.
 */}}
 {{- define "wordpress.validateValues.probes" -}}
 {{- if not .Values.diagnosticMode.enabled -}}
@@ -766,15 +767,23 @@ asks another address than the pod and is left alone.
 {{- range $value, $probe := $probes -}}
 {{- range $handler := list "httpGet" "tcpSocket" "grpc" -}}
 {{- $target := index $probe $handler -}}
-{{- /* A probe with a host of its own asks another address, not the pod. */ -}}
-{{- if and (kindIs "map" $target) (not $target.host) -}}
+{{- if kindIs "map" $target -}}
 {{- $port := toString $target.port -}}
-{{- if and (has $port (list "https" "443")) (not (has $port $declared)) }}
+{{- /*
+A port name is looked up among the container's ports, whatever host the
+probe asks. A port number and the scheme say something about the pod only
+when the probe asks the pod, so a probe with a host of its own keeps them.
+*/ -}}
+{{- $gone := and (eq $port "https") (not (has $port $declared)) -}}
+{{- if not $target.host -}}
+{{- $gone = or $gone (and (eq $port "443") (not (has $port $declared))) -}}
+{{- end -}}
+{{- if $gone }}
 wordpress: {{ $value }}
     The probe asks the port {{ $port | quote }}, where the container no longer
     listens: the image serves HTTP only, TLS ends at the Ingress. Ask the
     port "http" with the scheme HTTP, as the chart's default probes do.
-{{- else if and (eq (upper (toString $target.scheme)) "HTTPS") (or (eq $port "http") (eq $port $httpPort)) }}
+{{- else if and (not $target.host) (eq (upper (toString $target.scheme)) "HTTPS") (or (eq $port "http") (eq $port $httpPort)) }}
 wordpress: {{ $value }}
     The probe asks the HTTP port with the scheme HTTPS: the image serves
     HTTP only, TLS ends at the Ingress. Use the scheme HTTP, as the chart's

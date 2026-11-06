@@ -954,7 +954,12 @@ no_https_port "Service of type NodePort"         --set service.type=NodePort
 no_https_port "Service of type ClusterIP"        --set service.type=ClusterIP
 no_https_port "NetworkPolicy with selected sources" --set networkPolicy.allowExternal=false
 no_https_port "multisite.enable"                 --set multisite.enable=true
-no_https_port "Ingress with TLS"                 --set ingress.enabled=true --set ingress.hostname=blog.example.com --set ingress.tls=true
+# TLS at the Ingress stays: its entry is rendered, and the backend is the
+# Service's HTTP port.
+TLS_INGRESS=(--set ingress.enabled=true --set ingress.hostname=blog.example.com --set ingress.tls=true --set ingress.selfSigned=true)
+no_https_port "Ingress with TLS"                 "${TLS_INGRESS[@]}"
+expect "the Ingress keeps its TLS entry"         present "secretName: blog.example.com-tls" --show-only templates/ingress.yaml "${TLS_INGRESS[@]}"
+expect "and sends to the Service's HTTP port"    present "name: http" --show-only templates/ingress.yaml "${TLS_INGRESS[@]}"
 no_https_port "search sidecar and exporter"      --set idx.enabled=true --set metrics.enabled=true
 expect "the Service has its HTTP port"           present "targetPort: http" --show-only templates/svc.yaml
 # The probes ask over HTTP whatever the scheme of the site's URLs is. Up to
@@ -1048,6 +1053,8 @@ check  "a probe on port 443 that a sidecar serves" \
 probe_refuses "a probe on the port name https of a sidecar" \
         --set-json 'sidecars=[{"name":"tls","image":"example.com/tls-proxy:1","ports":[{"name":"https","containerPort":8443}]}]' \
         --set readinessProbe.httpGet.port=https
+probe_refuses "a probe that asks another host on the port name https" \
+        --set-json 'customReadinessProbe={"httpGet":{"host":"health.example.com","path":"/ready","port":"https","scheme":"HTTPS"}}'
 check  "a probe that asks another host on port 443" \
         --set-json 'customReadinessProbe={"httpGet":{"host":"health.example.com","path":"/ready","port":443,"scheme":"HTTPS"}}'
 check  "a disabled probe is not looked at"       --set readinessProbe.enabled=false --set readinessProbe.httpGet.port=https
