@@ -47,17 +47,17 @@ Not covered here:
 ## TLS ends at the Ingress
 
 TLS for a site belongs to the Ingress: the chart serves the site over HTTP
-inside the cluster. The image's NGINX listens on port 80 only, the image
-holds no private key and no certificate of its own, and the chart renders
-no HTTPS port, neither on the container nor on the Service nor in the
-NetworkPolicy. A release build fails if the base image brings a listener on
-port 443 or key material back.
+inside the cluster. The image's NGINX listens on port 80 only, a container
+has no private key and no certificate in its filesystem, and the chart
+renders no HTTPS port, neither on the container nor on the Service nor in
+the NetworkPolicy. A release build fails if the base image brings a listener
+on port 443 or key material back.
 
-That holds for every layer of the image. The base image creates a
-placeholder key pair for `localhost` when it is built; this image is built
-from the base image's files without that pair, not on top of its layers, so
-the pair is in no layer. The test of every release reads the layers of the
-built image and fails on a private key.
+The base image creates a placeholder key pair for `localhost` when it is
+built. This image removes the pair from its filesystem and nothing uses it,
+but the base image's layer keeps its copy, as layers do: a scanner that
+reads an image layer by layer still reports a private key there. The file
+is the same in every copy of that base image and no secret.
 
 The chart's default `service.type` is `LoadBalancer`. Where the cluster
 gives such a Service an address, the site is reachable on it over plain

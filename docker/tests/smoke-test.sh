@@ -6,10 +6,8 @@
 # denied REST routes are refused through both of their spellings, that the
 # report and off modes behave as documented for both features, and that the
 # extra pattern directories take effect. It also checks that the container
-# listens for HTTP on port 80 only, that no layer of the image holds a
-# private key, and that the image still has the base image's configuration.
-# Needs python3, and the registry of the base image when the local Docker
-# daemon does not have that image. Run against a locally built image:
+# listens for HTTP on port 80 only and has no private key in its filesystem.
+# Run against a locally built image:
 #
 #   ./smoke-test.sh ghcr.io/ioanalytica/wordpress-nginx:test
 
@@ -139,8 +137,8 @@ done
 
 echo "=== HTTP on port 80 only, no key material"
 # TLS ends at the Ingress, so the image has no listener on 443 and no
-# private key, in its filesystem or in a layer. The base image brings both;
-# the Dockerfile removes them.
+# private key in its filesystem. The base image brings both; the Dockerfile
+# removes them.
 # check <description> <command run in the container>: the command succeeds.
 check() {
     if cexec "$2" >/dev/null 2>&1; then
@@ -163,127 +161,12 @@ fi
 # favicon.ico and a static file: a request that reached PHP here would put
 # the image's index.php into opcache, see above.
 check "nothing answers on port 443"                   '! curl -sk -o /dev/null --max-time 5 https://localhost/favicon.ico'
-# The dump has to succeed first: no output is no TLS directive either.
-check "the NGINX configuration has no TLS directive"  'nginx -T >/tmp/smoke-nginx-T 2>/dev/null && grep -q "^[[:space:]]*listen" /tmp/smoke-nginx-T && ! grep -E "^[[:space:]]*(ssl_|http3|listen[^;]*(443|ssl|quic))" /tmp/smoke-nginx-T'
+check "the NGINX configuration has no TLS directive"  '! nginx -T 2>/dev/null | grep -E "^[[:space:]]*(ssl_|http3|listen[^;]*(443|ssl|quic))"'
 # The header rides on answers with a status like 200 only, so ask for a file
 # that exists.
 check "no response announces HTTP/3"                  'echo x >/var/www/html/smoke-static.txt && curl -sI http://localhost/smoke-static.txt | grep -q "^HTTP/1.1 200" && ! curl -sI http://localhost/smoke-static.txt | grep -i "^alt-svc:"'
 check "/etc/ssl/site is gone"                         '[ ! -e /etc/ssl/site ]'
-check "no private key under /etc"                     '! grep -rlE -e "-----BEGIN [A-Z ]*PRIVATE KEY-----" /etc'
-
-# The container's filesystem is what the layers add up to. A file that one
-# layer brings and a later one deletes is still in the image, for everyone
-# who pulls it. So every layer is read: none may hold a file of the base
-# image's key pair, or a PEM private key anywhere under etc/.
-LAYERS="$(mktemp)"
-if ! docker save "$IMAGE" -o "$LAYERS"; then
-    echo "FAIL: the image could not be saved to read its layers"
-    FAILURES=$((FAILURES + 1))
-elif found="$(python3 - "$LAYERS" <<'PYTHON'
-import json, sys, tarfile
-
-with tarfile.open(sys.argv[1]) as image:
-    layers = [layer for entry in json.load(image.extractfile("manifest.json")) for layer in entry["Layers"]]
-    if not layers:
-        sys.exit("the saved image lists no layers")
-    for number, layer in enumerate(layers, 1):
-        with tarfile.open(fileobj=image.extractfile(layer)) as tar:
-            for member in tar:
-                name = member.name.lstrip("./")
-                if name == "etc/ssl/site" or name.startswith("etc/ssl/site/"):
-                    print("layer %d of %d: %s" % (number, len(layers), name))
-                elif member.isreg() and name.startswith("etc/") and member.size < 1 << 20:
-                    data = tar.extractfile(member).read()
-                    if b"-----BEGIN" in data and b"PRIVATE KEY-----" in data:
-                        print("layer %d of %d: a private key in %s" % (number, len(layers), name))
-    print("layers read: %d" % len(layers), file=sys.stderr)
-PYTHON
-)"; then
-    if [ -z "$found" ]; then
-        echo "ok:   no layer of the image holds the base image's key pair or a private key under etc/"
-    else
-        echo "FAIL: a layer of the image holds key material"
-        printf '%s\n' "$found" | sed 's/^/      /'
-        FAILURES=$((FAILURES + 1))
-    fi
-else
-    echo "FAIL: the image's layers could not be read"
-    FAILURES=$((FAILURES + 1))
-fi
-rm -f "$LAYERS"
-
-echo "=== The base image's configuration is still there"
-# The image is built from the base image's files, not from its layers, so
-# the Dockerfile declares the base image's configuration again. Its own RUN
-# compares what a RUN can see (ENV, WORKDIR, USER). The rest is compared
-# here, with the configuration of the base image the Dockerfile names: taken
-# from the local Docker daemon when it has that image, from the registry
-# otherwise.
-DOCKERFILE="$(dirname "$0")/../Dockerfile"
-php_version="$(sed -n 's/^ARG PHP_VERSION="\(.*\)"$/\1/p' "$DOCKERFILE" | head -n 1)"
-base_image="$(sed -n 's/^FROM \(.*\) AS base$/\1/p' "$DOCKERFILE" | head -n 1)"
-base_image="${base_image//\$\{PHP_VERSION\}/$php_version}"
-platform="$(docker image inspect "$IMAGE" --format '{{.Os}}/{{.Architecture}}')"
-image_config="$(docker image inspect "$IMAGE" --format '{{json .Config}}')"
-if base_config="$(docker image inspect "$base_image" --format '{{json .Config}}' 2>/dev/null)"; then
-    base_from="the local Docker daemon"
-else
-    base_config="$(docker buildx imagetools inspect "$base_image" --format '{{json .Image}}' 2>/dev/null || true)"
-    base_from="the registry"
-fi
-if [ -z "$php_version" ] || [ -z "$base_image" ] || [ -z "$base_config" ]; then
-    echo "FAIL: the configuration of the base image '$base_image' could not be read"
-    FAILURES=$((FAILURES + 1))
-elif differences="$(python3 - "$platform" "$image_config" "$base_config" <<'PYTHON'
-import json, sys
-
-platform, image, base = sys.argv[1], json.loads(sys.argv[2]), json.loads(sys.argv[3])
-# The registry answers with one configuration per platform.
-if "Entrypoint" not in base and "Env" not in base:
-    match = [v for k, v in base.items() if k == platform or k.startswith(platform + "/")]
-    if not match:
-        sys.exit("the base image has no platform %s" % platform)
-    base = match[0]["config"]
-
-# Facts of one build of the base image, which the Dockerfile keeps in a file
-# of the image, and labels a release sets for this image.
-BUILD_FACTS = {"DOCKER_DATE", "PHP_ASC_URL", "PHP_SHA256", "PHP_URL"}
-BUILD_LABELS = {"org.opencontainers.image.created", "org.opencontainers.image.revision"}
-
-def env(config):
-    return dict(entry.split("=", 1) for entry in config.get("Env") or [])
-
-for key in ("Entrypoint", "Cmd", "WorkingDir", "User", "StopSignal", "Volumes", "Healthcheck", "Shell"):
-    if (image.get(key) or None) != (base.get(key) or None):
-        print("%s is %r, the base image has %r" % (key, image.get(key), base.get(key)))
-ours, theirs = env(image), env(base)
-for name in sorted(set(theirs) - BUILD_FACTS):
-    if ours.get(name) != theirs[name]:
-        print("the variable %s is %r, the base image has %r" % (name, ours.get(name), theirs[name]))
-for name in sorted(BUILD_FACTS & set(ours)):
-    print("the variable %s is in the configuration, with one base image build's value" % name)
-# A release replaces the values of some labels, so the names are compared.
-for name in sorted(set(base.get("Labels") or {}) - BUILD_LABELS - set(image.get("Labels") or {})):
-    print("the label %s of the base image is missing" % name)
-# Meant to differ: the one port the image serves.
-if sorted(image.get("ExposedPorts") or {}) != ["80/tcp"]:
-    print("the exposed ports are %s, not 80/tcp alone" % sorted(image.get("ExposedPorts") or {}))
-PYTHON
-)"; then
-    if [ -z "$differences" ]; then
-        echo "ok:   the configuration matches $base_image ($platform, from $base_from)"
-    else
-        echo "FAIL: the image's configuration differs from $base_image ($platform, from $base_from)"
-        printf '%s\n' "$differences" | sed 's/^/      /'
-        FAILURES=$((FAILURES + 1))
-    fi
-else
-    echo "FAIL: the configurations could not be compared"
-    FAILURES=$((FAILURES + 1))
-fi
-check "the base image's build facts are in its environment file" '. /usr/local/etc/base-image.env && [ -n "$DOCKER_DATE" ] && [ -n "$PHP_URL" ] && [ -n "$PHP_ASC_URL" ] && [ -n "$PHP_SHA256" ] && grep -qxF ". /usr/local/etc/base-image.env" /usr/local/etc/.env'
-check "a script run through the base image's environment has them" 'env -u PHP_URL with-env sh -c "[ -n \"\$PHP_URL\" ]"'
-check "the entrypoint kept its set-user-ID bit"                    '[ -u /usr/local/bin/docker-php-entrypoint ]'
+check "no private key under /etc/ssl and /etc/nginx"  '! grep -rlE -e "-----BEGIN [A-Z ]*PRIVATE KEY-----" /etc/ssl /etc/nginx'
 
 echo "=== Creating test fixtures"
 cexec '

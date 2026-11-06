@@ -77,8 +77,7 @@ docker build -t wordpress-nginx:test ./docker
 
 The smoke test starts the image and probes it: the ports it listens on, the
 PHP execution allowlist, denied paths, the REST API hardening and the mail
-wrapper. It also reads the image's layers, none of which may hold a private
-key, and compares the image's configuration with the base image's.
+wrapper.
 
 ### Workflows and release scripts
 
@@ -252,14 +251,6 @@ The PHP series of the image is not Renovate's: the tag of the base image in
 `docker/Dockerfile` names it, and the maintainers move it by hand, because the
 plugins of a site depend on the PHP series. PHP patch releases need no change
 there; every release build pulls the base image afresh.
-
-The image takes the base image's files, not its layers, so that the
-placeholder key pair of the base image is in no layer of it. The stage
-`flat-base` of `docker/Dockerfile` therefore declares the base image's
-configuration again. When a base image changes its environment, its working
-directory or its user, the build fails and prints the difference; the smoke
-test compares the rest (entrypoint, command, stop signal, volumes, labels).
-Either way the fix is to change the lines of `flat-base` to match.
 
 A tag is never moved and a version is never published a second time: a
 deployment that pins a version would not see the change. The release workflow
