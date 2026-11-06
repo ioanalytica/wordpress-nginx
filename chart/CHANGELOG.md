@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 7.1.411
 
 * **Hardening: the image listens on port 80 only, and a container has no private key in its filesystem.** TLS ends at the Ingress, and the pod serves the site over HTTP. The listeners on port 443 that the base image brings (TLS and HTTP/3), the placeholder key pair they needed and the TLS settings in the NGINX configuration are gone; the image build fails if a later base image brings a listener or a key back. The base image's own layer keeps its copy of the placeholder pair, which a scanner that reads layers can still report; "TLS ends at the Ingress" in the repository's `SECURITY.md` says what it is. Upgrading is recommended.
   * **The chart renders no HTTPS port**: not on the container, not on the Service, not in the NetworkPolicy. `containerPorts.https`, `service.ports.https`, `service.httpsTargetPort` and `service.nodePorts.https` are gone from `values.yaml`, and with them the container's variables `NGINX_HTTPS_PORT_NUMBER` and `WORDPRESS_MULTISITE_EXTERNAL_HTTPS_PORT_NUMBER`, which nothing read. A values file that still sets one of the four values renders as before, apart from the missing port, and the notes after an install or upgrade name the ones that are set.
