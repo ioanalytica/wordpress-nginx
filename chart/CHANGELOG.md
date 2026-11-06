@@ -10,6 +10,7 @@
   * "Upgrading" in the chart's README says what an installation that used the Service's port `https` has to change.
 * **The search plugin gets the reindex key from the chart.** With `idx.enabled` and a key, from `idx.reindexApiKey` or `idx.existingReindexApiKeySecret`, WordPress' container hands the key to the plugin at every start, so "Rebuild index" in wp-admin works without the key being entered under Settings > IDX Search. Until now the chart gave the key to the sidecar only, and the button answered that no key was configured until an administrator had entered the same one by hand.
   * The plugin keeps the key as the option `idx_search_api_key` in the site's database, as it does with one entered in wp-admin. A key entered there is replaced by the chart's at the next start.
+  * A new `idx.reindexApiKey` replaces the pod, so that the plugin and the sidecar change over together; until now the sidecar kept the old key until the pod was replaced for another reason. After a change to a Secret named in `idx.existingReindexApiKeySecret`, replace the pod yourself.
   * An installation without a reindex key is not affected: the chart leaves the plugin's setting alone.
 
 ### Project and CI
@@ -17,6 +18,7 @@
 * The smoke test checks that the container listens on port 80 and the base image's health port only, that the NGINX configuration has no TLS directive and that the container's filesystem has no private key under `/etc/ssl` and `/etc/nginx`.
 * The template test checks that no rendered object names an HTTPS port, that a values file with the removed values renders the same objects as one without them, what the notes say about them, and which probes the chart refuses.
 * The template test checks that the key reaches WordPress' container from the Secret and is in no ConfigMap.
+* The run of the "Try it locally" page signs in and uses "Rebuild index" in wp-admin, against a chart that hands the key over.
 
 ## 7.1.410
 

@@ -383,6 +383,25 @@ code="$("$CURL" -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST "$SITE/
 code="$("$CURL" -sS --max-time 30 -o /dev/null -w '%{http_code}' -X POST -H "X-Api-Key: not-the-key" "$SITE/idx/api/reindex")"
 [ "$code" = 401 ] || fail "a reindex with a wrong key is answered with $code, not 401"
 echo "ok:   the reindex endpoint refuses a missing and a wrong key"
+# "Rebuild index" in wp-admin, as the settings page's script sends it: the
+# plugin posts to the sidecar with the key the chart handed it when the
+# container started. The page does not show this; the reader would press the
+# button under Settings > IDX Search. A release from before the chart handed
+# the key over has no such script, and the button asks for the key there.
+if [ -n "$(kubectl -n "$PAGE_NAMESPACE" get configmap "$PAGE_RELEASE-wordpress-nginx-postinit" \
+    -o jsonpath='{.data.06-idx-reindex-key\.sh}')" ]; then
+  html="$(curl -fsS --max-time 30 -b "$jar" "$SITE/wp-admin/options-general.php?page=idx-search")"
+  nonce="$(sed -n 's/.*var idxAdmin = {[^}]*"nonce":"\([a-f0-9]*\)".*/\1/p' <<<"$html" | sed -n 1p)"
+  [ -n "$nonce" ] || fail "the search plugin's settings page holds no nonce for the rebuild"
+  answer="$(curl -sS --max-time 150 -b "$jar" --data-urlencode "action=idx_reindex" \
+    --data-urlencode "_ajax_nonce=$nonce" "$SITE/wp-admin/admin-ajax.php")"
+  expect "wp-admin's \"Rebuild index\" works with the key from the chart" \
+    '^\{"success":true,"data":\{"status":"ok","entries":3\}\}$' "$answer"
+elif [ -n "$CHART" ]; then
+  fail "the chart in $CHART hands no reindex key to the search plugin"
+else
+  echo "skip: the installed release does not hand the reindex key to the search plugin yet"
+fi
 
 # 5. File-integrity monitoring
 out="$(page_out "## 5. " 1)"

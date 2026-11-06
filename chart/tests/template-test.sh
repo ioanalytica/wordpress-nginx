@@ -530,6 +530,19 @@ expect "the key goes to wp on standard input" present 'printf '"'"'%s'"'"' "$key
 expect "the key's value is in the Secret only" absent 'k3y-0f-the-template-test' "${IDXKEY[@]}"
 expect "an existing Secret brings the script as well" present '06-idx-reindex-key.sh' \
         "${IDX[@]}" --set idx.existingReindexApiKeySecret=my-idx-secret
+# Both containers read the key once, at their start: a new key in the chart's
+# own Secret has to replace the pod, or the two would run with different keys.
+expect "a key of the chart's own rolls the pod" present 'checksum/idx-secret:' "${IDXKEY[@]}"
+expect "no such checksum without a key"         absent  'checksum/idx-secret:' "${IDX[@]}"
+expect "nor for a Secret that is not the chart's" absent 'checksum/idx-secret:' \
+        "${IDX[@]}" --set idx.existingReindexApiKeySecret=my-idx-secret
+sums="$(for k in one two; do helm template tst "$CHART" "${IDX[@]}" --set "idx.reindexApiKey=$k" 2>&1 | grep -F 'checksum/idx-secret:'; done | sort -u | wc -l | tr -d ' ')"
+if [ "$sums" = 2 ]; then
+    echo "ok:   another key gives another checksum"
+else
+    echo "FAIL: another key gives another checksum — $sums distinct checksum line(s) for two keys"
+    FAILURES=$((FAILURES + 1))
+fi
 check "idx with a reindex key" "${IDXKEY[@]}"
 check "idx with a reindex key and nothing else" "${IDXKEY[@]}" --set-json 'wordpressPreinstallPlugins=[]'
 # Sidecar and WordPress must read the same key of the same Secret.

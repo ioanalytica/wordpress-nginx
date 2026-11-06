@@ -876,6 +876,12 @@ without anyone entering the key there. The plugin keeps it as the option
 replaced by the chart's at the next start. Without a key the chart leaves that
 setting alone.
 
+Both containers read the key when they start. A new `idx.reindexApiKey`
+replaces the pod, so the plugin and the sidecar change over together. After a
+change to a Secret of your own, replace the pod yourself
+(`kubectl rollout restart`): until then the sidecar answers with the old key,
+and a restart of WordPress' container alone would hand the plugin the new one.
+
 <!-- #endregion search-index -->
 
 ### File-Integrity Monitoring
