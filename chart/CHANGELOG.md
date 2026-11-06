@@ -13,6 +13,7 @@
   * The plugin keeps the key as the option `idx_search_api_key` in the site's database, as it does with one entered in wp-admin. A key entered there is replaced by the chart's at the next start.
   * A new `idx.reindexApiKey` replaces the pod, so that the plugin and the sidecar change over together; until now the sidecar kept the old key until the pod was replaced for another reason. After a change to a Secret named in `idx.existingReindexApiKeySecret`, replace the pod yourself.
   * A tool that renders the chart without access to the cluster (`helm template`, Argo CD) would generate a new key with every render: set the key or name a Secret there.
+* A script in `customPostInitScripts` under the name of a script the chart renders itself with the same values (`00-preinstall-plugins.sh`, `05-idx-plugin.sh`, `06-idx-reindex-key.sh`, `10-configure-w3-total-cache.sh`) fails the render with a message that names it. Kubernetes refused such a Deployment before, with an error about a mount path.
 
 ### Project and CI
 

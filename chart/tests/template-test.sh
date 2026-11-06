@@ -516,6 +516,33 @@ expect "still installs without autoUpdate" present 'wp plugin install "$package"
         "${IDX[@]}" --set idx.pluginAutoUpdate=false
 check "idx alone renders the postinit ConfigMap" "${IDX[@]}" --set-json 'wordpressPreinstallPlugins=[]'
 
+echo "=== A custom post-init script cannot take the name of one of the chart's"
+# The chart mounts each script as a single file. A custom script under the
+# name of one the chart renders with the same values would give two mounts at
+# one path, which Kubernetes refuses: the render has to say so, by name. The
+# name is free where the chart does not render its own script.
+postinit_refuses() {
+    local desc="$1" name="$2" out; shift 2
+    if out="$(helm template tst "$CHART" --set "customPostInitScripts.${name//./\\.}=echo hi" "$@" 2>&1)"; then
+        echo "FAIL: $desc rendered - must fail the render"
+        FAILURES=$((FAILURES + 1))
+    elif ! grep -qF "\"$name\" is the name of a script the chart renders itself" <<<"$out"; then
+        echo "FAIL: $desc fails the render, but not with the name's message"
+        printf '%s\n' "$out" | tail -4 | sed 's/^/      /'
+        FAILURES=$((FAILURES + 1))
+    else
+        echo "ok:   $desc fails the render"
+    fi
+}
+postinit_refuses "a custom script named like the reindex key's" 06-idx-reindex-key.sh "${IDX[@]}"
+postinit_refuses "a custom script named like the idx plugin's"  05-idx-plugin.sh "${IDX[@]}"
+postinit_refuses "a custom script named like the preinstall script" 00-preinstall-plugins.sh
+postinit_refuses "a custom script named like the cache script"  10-configure-w3-total-cache.sh \
+        --set wordpressConfigureCache=true --set memcached.enabled=true
+check "the reindex key script's name is free without the sidecar" \
+        --set 'customPostInitScripts.06-idx-reindex-key\.sh=echo hi'
+check "a custom script next to the chart's own" "${IDX[@]}" --set 'customPostInitScripts.my-task\.sh=echo hi'
+
 echo "=== The reindex key reaches the search plugin"
 # "Rebuild index" in wp-admin sends the key the plugin has, and the sidecar
 # accepts the one it was started with. Both come from one Secret: WordPress'

@@ -24,9 +24,27 @@ init-wordpress since everything is mounted with a zz- prefix):
   <customPostInitScripts keys>    letters sort after the digit prefixes
 */}}
 
+{{- /*
+A custom script under the name of a script the chart renders with these
+values would be mounted at the same path a second time, and Kubernetes
+refuses such a Deployment. The render says so first, and says which name.
+*/}}
+{{- $own := list }}
+{{- if .Values.wordpressPreinstallPlugins }}
+{{- $own = append $own "00-preinstall-plugins.sh" }}
+{{- end }}
+{{- if .Values.idx.enabled }}
+{{- $own = concat $own (list "05-idx-plugin.sh" "06-idx-reindex-key.sh") }}
+{{- end }}
+{{- if .Values.wordpressConfigureCache }}
+{{- $own = append $own "10-configure-w3-total-cache.sh" }}
+{{- end }}
 {{- range $name, $_ := .Values.customPostInitScripts }}
 {{- if not (hasSuffix ".sh" $name) }}
 {{- fail (printf "customPostInitScripts: %q - the application hook executes .sh scripts only" $name) }}
+{{- end }}
+{{- if has $name $own }}
+{{- fail (printf "customPostInitScripts: %q is the name of a script the chart renders itself with these values - give yours another name" $name) }}
 {{- end }}
 {{- end }}
 {{- if (include "wordpress.createPostinitConfigmap" .) }}

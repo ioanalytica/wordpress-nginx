@@ -881,13 +881,15 @@ A generated key stays as it is, and so does the last `idx.reindexApiKey` when
 the value is taken out again. Both containers read the key when they start:
 a new `idx.reindexApiKey` replaces the pod, so the plugin and the sidecar
 change over together. After a change to a Secret of your own, replace the pod
-yourself (`kubectl rollout restart`): until then the sidecar answers with the
-old key, and a restart of WordPress' container alone would hand the plugin the
-new one. The plugin's copy is in the database, which every pod of the release
-shares: while a rollout with a new key is under way, and after one that did
-not complete, "Rebuild index" is refused on a pod whose sidecar still runs
-with the old key. The search itself and requests that bring the key along are
-not affected.
+yourself (`kubectl rollout restart deployment/<fullname>`): until then the
+sidecar answers with the old key, and a restart of WordPress' container alone
+would hand the plugin the new one. The plugin's copy is in the database, which
+every pod of the release shares: while a rollout with a new key is under way,
+and after one that did not complete, "Rebuild index" is refused on a pod whose
+sidecar still runs with the old key. A request that brings the key along is
+answered by the sidecar of whichever pod receives it, so during such a rollout
+it is refused where that sidecar has the other key. The search itself is not
+affected.
 
 A tool that renders the chart without access to the cluster (`helm template`,
 Argo CD) cannot see the Secret and would generate a new key with every
