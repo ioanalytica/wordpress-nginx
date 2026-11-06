@@ -881,6 +881,11 @@ replaces the pod, so the plugin and the sidecar change over together. After a
 change to a Secret of your own, replace the pod yourself
 (`kubectl rollout restart`): until then the sidecar answers with the old key,
 and a restart of WordPress' container alone would hand the plugin the new one.
+The plugin's copy is in the database, which every pod of the release shares:
+while a rollout with a new key is under way, and after one that did not
+complete, "Rebuild index" is refused on a pod whose sidecar still runs with
+the old key. The search itself and requests that bring the key along are not
+affected.
 
 <!-- #endregion search-index -->
 
