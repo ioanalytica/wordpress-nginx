@@ -724,7 +724,8 @@ port. A probe that asks that port, by name or by number, or asks the HTTP
 port for TLS, never succeeds, and the pods of the upgrade would not get
 ready. Up to 7.1.410 the default readiness and startup probes followed
 wordpressScheme, so a values file that copied them can still say so.
-The probes are read as the Deployment renders them.
+The probes are read as the Deployment renders them; one that names a host
+asks another address than the pod and is left alone.
 */}}
 {{- define "wordpress.validateValues.probes" -}}
 {{- if not .Values.diagnosticMode.enabled -}}
@@ -755,7 +756,8 @@ The probes are read as the Deployment renders them.
 {{- range $value, $probe := $probes -}}
 {{- range $handler := list "httpGet" "tcpSocket" "grpc" -}}
 {{- $target := index $probe $handler -}}
-{{- if kindIs "map" $target -}}
+{{- /* A probe with a host of its own asks another address, not the pod. */ -}}
+{{- if and (kindIs "map" $target) (not $target.host) -}}
 {{- $port := toString $target.port -}}
 {{- if and (has $port (list "https" "443")) (not (has $port $declared)) }}
 wordpress: {{ $value }}

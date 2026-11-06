@@ -1042,6 +1042,8 @@ check  "a probe on a port named https that the release declares" --set readiness
         --set readinessProbe.httpGet.scheme=HTTPS --set-json 'extraContainerPorts=[{"name":"https","containerPort":8443}]'
 check  "a probe on port 443 that the release declares" --set readinessProbe.httpGet.port=443 \
         --set readinessProbe.httpGet.scheme=HTTPS --set-json 'extraContainerPorts=[{"name":"tls","containerPort":443}]'
+check  "a probe that asks another host on port 443" \
+        --set-json 'customReadinessProbe={"httpGet":{"host":"health.example.com","path":"/ready","port":443,"scheme":"HTTPS"}}'
 check  "a disabled probe is not looked at"       --set readinessProbe.enabled=false --set readinessProbe.httpGet.port=https
 check  "diagnostic mode renders no probes"       --set diagnosticMode.enabled=true --set readinessProbe.httpGet.port=https
 
