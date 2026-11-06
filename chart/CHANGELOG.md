@@ -13,6 +13,12 @@
   * The plugin keeps the key as the option `idx_search_api_key` in the site's database, as it does with one entered in wp-admin. A key entered there is replaced by the chart's at the next start.
   * A new `idx.reindexApiKey` replaces the pod, so that the plugin and the sidecar change over together; until now the sidecar kept the old key until the pod was replaced for another reason. After a change to a Secret named in `idx.existingReindexApiKeySecret`, replace the pod yourself.
   * A tool that renders the chart without access to the cluster (`helm template`, Argo CD) would generate a new key with every render: set the key or name a Secret there.
+* **The search sidecar is wordpress-idx 1.3.9** (1.3.8 before). Its image keeps the chart version as its tag.
+  * **The first start rebuilds the index once.** The index file has a new name and form, `wp-index.bin`, so the sidecar builds its index anew from the database at its first start with this version and needs the database for that start. It then removes the file of the earlier version. Nothing has to be done by hand.
+  * **The index of a large site is built and served with a fraction of the memory.** On a site of 15,600 posts and pages the build needed 4.7 GiB and failed with Node's default heap, and the sidecar held 1.1 GiB at rest. With this version the build and a rebuild of that site peak at 0.46 GiB under the chart's default limit for the sidecar (768 MiB), and the sidecar rests at 0.24 GiB. No `NODE_OPTIONS` is needed.
+  * **The sidecar answers while it builds the index.** The build runs in a process of its own, so the search and the health checks keep answering. A build that took longer than the liveness probe allows had the container restarted in the middle of it.
+  * A build that fails leaves the index in place.
+  * What the search returns has not changed. Posts published in the same second, and comments written in the same second, now come in a fixed order, by their ID.
 * A script in `customPostInitScripts` under the name of a script the chart renders itself with the same values (`00-preinstall-plugins.sh`, `05-idx-plugin.sh`, `06-idx-reindex-key.sh`, `10-configure-w3-total-cache.sh`) fails the render with a message that names it. Kubernetes refused such a Deployment before, with an error about a mount path.
 
 ### Project and CI
