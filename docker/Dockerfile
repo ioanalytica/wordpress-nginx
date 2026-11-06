@@ -111,9 +111,12 @@ RUN sed -i 's|^exec msmtp $options "$@"$|[ -n "$SMTP_FROM" ] \&\& exec /usr/loca
 # (sites-enabled/00-default.conf) and for HTTP/3 (custom.d/00-ext-http3.conf,
 # which announces it in an Alt-Svc header as well), with a key pair it
 # creates under /etc/ssl/site when it is built. Nothing uses those listeners,
-# so they go, and with them the key material: an image should not carry a
-# private key. The TLS settings of the http block went the same way; they
-# are left out of this image's nginx.conf.
+# so they go, and with them the key material: a container has no private
+# key to serve or to read. That holds for the image's filesystem. The layer
+# of the base image keeps its copy of the files, as layers do; a scanner
+# that reads an image layer by layer still finds them there. The TLS
+# settings of the http block went the same way; they are left out of this
+# image's nginx.conf.
 # The base image's start hook finds no dhparam.pem then and says in the log
 # that it disables ssl_dhparam, a directive this image no longer has.
 # The greps guard the removal: if the base image moves a listener to another

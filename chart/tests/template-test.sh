@@ -906,7 +906,7 @@ notes_say "they ask for no change to /etc/hosts"           absent  "/etc/hosts" 
 notes_say "without an Ingress they follow the Service"     present "kubectl get svc --namespace default" 
 
 echo "=== No HTTPS port: the image serves HTTP only"
-# The image listens on port 80 and carries no certificate, TLS ends at the
+# The image listens on port 80 and serves no certificate, TLS ends at the
 # Ingress. So no object may name an HTTPS port: a container port, a Service
 # port, a port of the NetworkPolicy, a probe, or a variable that hands one
 # to the container.
@@ -1005,9 +1005,9 @@ notes_say "one that is not set is not named"                 absent  "service.po
 notes_say "without them the notes are silent about it"       absent  "no longer have an effect"
 rm -f "$OLD_HTTPS_VALUES"
 
-# A probe that still asks the port "https", or asks the HTTP port for TLS,
-# would never succeed, and the pods of the upgrade would not get ready. The
-# render fails instead and says what to change.
+# A probe that still asks the port "https" or 443, or asks the HTTP port for
+# TLS, would never succeed, and the pods of the upgrade would not get ready.
+# The render fails instead and says what to change.
 # probe_refuses <desc> <helm args...>
 probe_refuses() {
     local desc="$1" out; shift
@@ -1030,6 +1030,9 @@ probe_refuses "a startup probe on the port https"        --set startupProbe.enab
 probe_refuses "a liveness probe on the port https"       --set livenessProbe.tcpSocket.port=https
 probe_refuses "a custom probe on the port https"         --set-json 'customReadinessProbe={"httpGet":{"path":"/","port":"https","scheme":"HTTPS"}}'
 probe_refuses "a custom probe given as template text"    --set-string $'customLivenessProbe=tcpSocket:\n  port: \{\{ print "https" \}\}'
+probe_refuses "a startup probe on port 443"              --set startupProbe.enabled=true --set startupProbe.httpGet.port=443 \
+        --set startupProbe.httpGet.scheme=HTTPS
+probe_refuses "a liveness probe on port 443, as text"    --set-string livenessProbe.tcpSocket.port=443
 probe_refuses "TLS asked of the HTTP port"               --set readinessProbe.httpGet.scheme=HTTPS
 probe_refuses "TLS asked of the HTTP port by its number" --set readinessProbe.httpGet.scheme=https --set readinessProbe.httpGet.port=80
 check  "the earlier default probe with wordpressScheme http" \
@@ -1037,6 +1040,8 @@ check  "the earlier default probe with wordpressScheme http" \
         --set-string 'readinessProbe.httpGet.scheme=\{\{ .Values.wordpressScheme | upper \}\}'
 check  "a probe on a port named https that the release declares" --set readinessProbe.httpGet.port=https \
         --set readinessProbe.httpGet.scheme=HTTPS --set-json 'extraContainerPorts=[{"name":"https","containerPort":8443}]'
+check  "a probe on port 443 that the release declares" --set readinessProbe.httpGet.port=443 \
+        --set readinessProbe.httpGet.scheme=HTTPS --set-json 'extraContainerPorts=[{"name":"tls","containerPort":443}]'
 check  "a disabled probe is not looked at"       --set readinessProbe.enabled=false --set readinessProbe.httpGet.port=https
 check  "diagnostic mode renders no probes"       --set diagnosticMode.enabled=true --set readinessProbe.httpGet.port=https
 

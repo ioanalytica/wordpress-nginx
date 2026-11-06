@@ -719,21 +719,23 @@ wordpress: wordpressConfiguration
 {{/*
 Validate values of WordPress - the probes of the WordPress container.
 The image serves HTTP only, so the container has no port named "https"
-unless extraContainerPorts declares one. A probe that asks that port, or
-asks the HTTP port for TLS, never succeeds, and the pods of the upgrade
-would not get ready. Up to 7.1.410 the default readiness and startup probes
-followed wordpressScheme, so a values file that copied them can still say so.
+and nothing listens on 443, unless extraContainerPorts declares such a
+port. A probe that asks that port, by name or by number, or asks the HTTP
+port for TLS, never succeeds, and the pods of the upgrade would not get
+ready. Up to 7.1.410 the default readiness and startup probes followed
+wordpressScheme, so a values file that copied them can still say so.
 The probes are read as the Deployment renders them.
 */}}
 {{- define "wordpress.validateValues.probes" -}}
 {{- if not .Values.diagnosticMode.enabled -}}
-{{- $declared := list -}}
+{{- $httpPort := toString .Values.containerPorts.http -}}
+{{- /* Names and numbers of the ports the release declares itself. */ -}}
+{{- $declared := list $httpPort -}}
 {{- range (include "wordpress.renderedList" (dict "value" .Values.extraContainerPorts "context" $) | fromYaml).items -}}
 {{- if kindIs "map" . -}}
-{{- $declared = append $declared (toString .name) -}}
+{{- $declared = concat $declared (list (toString .name) (toString .containerPort)) -}}
 {{- end -}}
 {{- end -}}
-{{- $httpPort := toString .Values.containerPorts.http -}}
 {{- $probes := dict -}}
 {{- if .Values.customLivenessProbe -}}
 {{- $_ := set $probes "customLivenessProbe" (include "common.tplvalues.render" (dict "value" .Values.customLivenessProbe "context" $) | fromYaml) -}}
@@ -755,11 +757,11 @@ The probes are read as the Deployment renders them.
 {{- $target := index $probe $handler -}}
 {{- if kindIs "map" $target -}}
 {{- $port := toString $target.port -}}
-{{- if and (eq $port "https") (not (has "https" $declared)) }}
+{{- if and (has $port (list "https" "443")) (not (has $port $declared)) }}
 wordpress: {{ $value }}
-    The probe asks the port "https", which the container no longer has: the
-    image serves HTTP only, TLS ends at the Ingress. Ask the port "http"
-    with the scheme HTTP, as the chart's default probes do.
+    The probe asks the port {{ $port | quote }}, where the container no longer
+    listens: the image serves HTTP only, TLS ends at the Ingress. Ask the
+    port "http" with the scheme HTTP, as the chart's default probes do.
 {{- else if and (eq (upper (toString $target.scheme)) "HTTPS") (or (eq $port "http") (eq $port $httpPort)) }}
 wordpress: {{ $value }}
     The probe asks the HTTP port with the scheme HTTPS: the image serves

@@ -6,8 +6,8 @@
 # denied REST routes are refused through both of their spellings, that the
 # report and off modes behave as documented for both features, and that the
 # extra pattern directories take effect. It also checks that the container
-# listens for HTTP on port 80 only and carries no private key. Run against a
-# locally built image:
+# listens for HTTP on port 80 only and has no private key in its filesystem.
+# Run against a locally built image:
 #
 #   ./smoke-test.sh ghcr.io/ioanalytica/wordpress-nginx:test
 
@@ -136,8 +136,9 @@ for i in $(seq 1 60); do
 done
 
 echo "=== HTTP on port 80 only, no key material"
-# TLS ends at the Ingress, so the image has no listener on 443 and carries no
-# private key. The base image brings both; the Dockerfile removes them.
+# TLS ends at the Ingress, so the image has no listener on 443 and no
+# private key in its filesystem. The base image brings both; the Dockerfile
+# removes them.
 # check <description> <command run in the container>: the command succeeds.
 check() {
     if cexec "$2" >/dev/null 2>&1; then

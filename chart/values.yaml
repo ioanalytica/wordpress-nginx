@@ -621,7 +621,7 @@ livenessProbe:
   successThreshold: 1
 ## The readiness and the startup probe ask over HTTP on the port `http`,
 ## whatever `wordpressScheme` is: the image serves HTTP only, TLS ends at the
-## Ingress. A probe that names the port `https` fails the render.
+## Ingress. A probe that names the port `https` or 443 fails the render.
 ## @param readinessProbe.enabled Enable readinessProbe on WordPress containers
 ## @skip readinessProbe.httpGet
 ## @param readinessProbe.initialDelaySeconds Initial delay seconds for readinessProbe
