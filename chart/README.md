@@ -859,6 +859,42 @@ updates, while the search keeps working, since that runs in the visitor's
 browser. Override the constant via `WORDPRESS_CONFIG_EXTRA` if the sidecar does
 not share the pod.
 
+`POST /api/reindex` rebuilds the index from the database and asks for a key.
+The sidecar always has one. Without a setting the chart generates it at the
+installation and keeps it, across upgrades, in the Secret `<fullname>-idx`
+under `idx-reindex-api-key`. To choose the key, set `idx.reindexApiKey`, or
+name a Secret of your own that holds it under that name:
+
+```yaml
+idx:
+  enabled: true
+  existingReindexApiKeySecret: my-idx-secret   # key: idx-reindex-api-key
+```
+
+WordPress' container hands the same key to the search plugin at every start,
+so "Rebuild index" under Settings > IDX Search works right after the
+installation, without anyone entering the key there. The plugin keeps it as
+the option `idx_search_api_key` in the site's database; a key entered in
+wp-admin is replaced by the chart's at the next start.
+
+A generated key stays as it is, and so does the last `idx.reindexApiKey` when
+the value is taken out again. Both containers read the key when they start:
+a new `idx.reindexApiKey` replaces the pod, so the plugin and the sidecar
+change over together. After a change to a Secret of your own, replace the pod
+yourself (`kubectl rollout restart deployment/<fullname>`): until then the
+sidecar answers with the old key, and a restart of WordPress' container alone
+would hand the plugin the new one. The plugin's copy is in the database, which
+every pod of the release shares: while a rollout with a new key is under way,
+and after one that did not complete, "Rebuild index" is refused on a pod whose
+sidecar still runs with the old key. A request that brings the key along is
+answered by the sidecar of whichever pod receives it, so during such a rollout
+it is refused where that sidecar has the other key. The search itself is not
+affected.
+
+A tool that renders the chart without access to the cluster (`helm template`,
+Argo CD) cannot see the Secret and would generate a new key with every
+render. Set the key or name a Secret there.
+
 <!-- #endregion search-index -->
 
 ### File-Integrity Monitoring

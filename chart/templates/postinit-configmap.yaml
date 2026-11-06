@@ -18,13 +18,33 @@ init-wordpress since everything is mounted with a zz- prefix):
   00-preinstall-plugins.sh        first, so a preinstalled cache plugin
   05-idx-plugin.sh                (idx.enabled) brings the search plugin
                                   to the sidecar's build
+  06-idx-reindex-key.sh           (idx.enabled) hands the reindex key to the
+                                  search plugin
   10-configure-w3-total-cache.sh  is already active when this runs
   <customPostInitScripts keys>    letters sort after the digit prefixes
 */}}
 
+{{- /*
+A custom script under the name of a script the chart renders with these
+values would be mounted at the same path a second time, and Kubernetes
+refuses such a Deployment. The render says so first, and says which name.
+*/}}
+{{- $own := list }}
+{{- if .Values.wordpressPreinstallPlugins }}
+{{- $own = append $own "00-preinstall-plugins.sh" }}
+{{- end }}
+{{- if .Values.idx.enabled }}
+{{- $own = concat $own (list "05-idx-plugin.sh" "06-idx-reindex-key.sh") }}
+{{- end }}
+{{- if .Values.wordpressConfigureCache }}
+{{- $own = append $own "10-configure-w3-total-cache.sh" }}
+{{- end }}
 {{- range $name, $_ := .Values.customPostInitScripts }}
 {{- if not (hasSuffix ".sh" $name) }}
 {{- fail (printf "customPostInitScripts: %q - the application hook executes .sh scripts only" $name) }}
+{{- end }}
+{{- if has $name $own }}
+{{- fail (printf "customPostInitScripts: %q is the name of a script the chart renders itself with these values - give yours another name" $name) }}
 {{- end }}
 {{- end }}
 {{- if (include "wordpress.createPostinitConfigmap" .) }}
@@ -145,6 +165,42 @@ data:
       wp plugin install "$package" --force \
         && echo "[idx-plugin] updated $slug $installed -> $offered" \
         || echo "[idx-plugin] could not update $slug to $offered - continuing"
+    fi
+  {{- end }}
+  {{- if .Values.idx.enabled }}
+  06-idx-reindex-key.sh: |-
+    #!/bin/bash
+
+    # The reindex key, for the search plugin. "Rebuild index" in wp-admin
+    # sends the key the plugin finds in its option idx_search_api_key, and the
+    # sidecar accepts the one it was started with: idx.reindexApiKey, the
+    # key of idx.existingReindexApiKeySecret, or the one the chart generated.
+    # Both come from the same Secret, so this script writes the option on
+    # every start and nobody has to enter the key in the plugin's settings;
+    # a key entered there is replaced.
+    # The value comes from the environment and goes to wp on standard input:
+    # it is neither in this ConfigMap nor on a command line. A failure is
+    # logged and skipped - the key must not keep the site from starting.
+    option="idx_search_api_key"
+    key="${WORDPRESS_IDX_REINDEX_API_KEY:-}"
+
+    if [ -z "$key" ]; then
+      echo "[idx-reindex-key] the key is empty - leaving the plugin's setting as it is"
+      exit 0
+    fi
+    if ! wp core is-installed 2>/dev/null; then
+      echo "[idx-reindex-key] WordPress is not installed yet - skipping"
+      exit 0
+    fi
+
+    if [ "$(wp option get "$option" 2>/dev/null)" = "$key" ]; then
+      echo "[idx-reindex-key] the plugin has the reindex key"
+      exit 0
+    fi
+    if printf '%s' "$key" | wp option update "$option" >/dev/null 2>&1; then
+      echo "[idx-reindex-key] handed the reindex key to the plugin"
+    else
+      echo "[idx-reindex-key] could not store the reindex key - continuing"
     fi
   {{- end }}
   {{- if .Values.wordpressConfigureCache }}
