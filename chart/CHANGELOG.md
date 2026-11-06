@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 7.1.411
 
 * **Hardening: the image listens on port 80 only, and a container has no private key in its filesystem.** TLS ends at the Ingress, and the pod serves the site over HTTP. The listeners on port 443 that the base image brings (TLS and HTTP/3), the placeholder key pair they needed and the TLS settings in the NGINX configuration are gone; the image build fails if a later base image brings a listener or a key back. The base image's own layer keeps its copy of the placeholder pair, which a scanner that reads layers can still report; "TLS ends at the Ingress" in the repository's `SECURITY.md` says what it is. Upgrading is recommended.
   * **The chart renders no HTTPS port**: not on the container, not on the Service, not in the NetworkPolicy. `containerPorts.https`, `service.ports.https`, `service.httpsTargetPort` and `service.nodePorts.https` are gone from `values.yaml`, and with them the container's variables `NGINX_HTTPS_PORT_NUMBER` and `WORDPRESS_MULTISITE_EXTERNAL_HTTPS_PORT_NUMBER`, which nothing read. A values file that still sets one of the four values renders as before, apart from the missing port, and the notes after an install or upgrade name the ones that are set.
@@ -13,6 +13,13 @@
   * The plugin keeps the key as the option `idx_search_api_key` in the site's database, as it does with one entered in wp-admin. A key entered there is replaced by the chart's at the next start.
   * A new `idx.reindexApiKey` replaces the pod, so that the plugin and the sidecar change over together; until now the sidecar kept the old key until the pod was replaced for another reason. After a change to a Secret named in `idx.existingReindexApiKeySecret`, replace the pod yourself.
   * A tool that renders the chart without access to the cluster (`helm template`, Argo CD) would generate a new key with every render: set the key or name a Secret there.
+* **The search sidecar is wordpress-idx 1.3.9** (1.3.8 before). Its image keeps the chart version as its tag.
+  * **The first start rebuilds the index once.** The index file has a new name and form, `wp-index.bin`, so the sidecar builds its index anew from the database at its first start with this version and needs the database for that start. The pod is not ready before the index is there. It then removes the file of the earlier version. Nothing has to be done by hand.
+  * **The build needs room on the volume.** The index is on the WordPress volume, under `idx/`. While a build runs it needs room there for three to four times the index file, and at the upgrade the file of the earlier version is still there until the new index is written. On a site of 15,600 posts and pages that is a new index file of 143 MB next to an earlier one of 415 MB.
+  * **The index of a large site is built and served with a fraction of the memory.** On a site of 15,600 posts and pages the build needed 4.7 GiB and failed with Node's default heap, and the sidecar held 1.1 GiB at rest. With this version the build and a rebuild of that site peak at 0.46 GiB under the chart's default limit for the sidecar (768 MiB), and the sidecar rests at 0.24 GiB. No `NODE_OPTIONS` is needed.
+  * **The sidecar answers while it builds the index.** The build runs in a process of its own, so the liveness check keeps answering, and during a rebuild the search answers from the index that is there. A build that took longer than the liveness probe allows had the container restarted in the middle of it. At a first build there is no index to answer from yet, and the sidecar is not ready until it is written.
+  * A build that fails leaves the index in place.
+  * What the search returns has not changed. Posts published in the same second, and comments written in the same second, now come in a fixed order, by their ID.
 * A script in `customPostInitScripts` under the name of a script the chart renders itself with the same values (`00-preinstall-plugins.sh`, `05-idx-plugin.sh`, `06-idx-reindex-key.sh`, `10-configure-w3-total-cache.sh`) fails the render with a message that names it. Kubernetes refused such a Deployment before, with an error about a mount path.
 
 ### Project and CI
