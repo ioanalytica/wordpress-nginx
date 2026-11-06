@@ -720,9 +720,9 @@ wordpress: wordpressConfiguration
 Validate values of WordPress - the probes of the WordPress container.
 The image serves HTTP only, so the container has no port named "https"
 and nothing listens on 443, unless extraContainerPorts declares such a
-port. A probe that asks that port, by name or by number, or asks the HTTP
-port for TLS, never succeeds, and the pods of the upgrade would not get
-ready. Up to 7.1.410 the default readiness and startup probes followed
+port or a sidecar serves the number. A probe that asks that port, by name
+or by number, or asks the HTTP port for TLS, never succeeds, and the pods
+of the upgrade would not get ready. Up to 7.1.410 the default readiness and startup probes followed
 wordpressScheme, so a values file that copied them can still say so.
 The probes are read as the Deployment renders them; one that names a host
 asks another address than the pod and is left alone.
@@ -735,6 +735,16 @@ asks another address than the pod and is left alone.
 {{- range (include "wordpress.renderedList" (dict "value" .Values.extraContainerPorts "context" $) | fromYaml).items -}}
 {{- if kindIs "map" . -}}
 {{- $declared = concat $declared (list (toString .name) (toString .containerPort)) -}}
+{{- end -}}
+{{- end -}}
+{{- /* A sidecar shares the pod's address: its ports count by their number. */ -}}
+{{- range (include "wordpress.renderedList" (dict "value" .Values.sidecars "context" $) | fromYaml).items -}}
+{{- if and (kindIs "map" .) (kindIs "slice" .ports) -}}
+{{- range .ports -}}
+{{- if kindIs "map" . -}}
+{{- $declared = append $declared (toString .containerPort) -}}
+{{- end -}}
+{{- end -}}
 {{- end -}}
 {{- end -}}
 {{- $probes := dict -}}
