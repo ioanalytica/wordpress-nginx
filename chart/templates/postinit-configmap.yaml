@@ -18,8 +18,8 @@ init-wordpress since everything is mounted with a zz- prefix):
   00-preinstall-plugins.sh        first, so a preinstalled cache plugin
   05-idx-plugin.sh                (idx.enabled) brings the search plugin
                                   to the sidecar's build
-  06-idx-reindex-key.sh           (idx.enabled and a reindex key) hands the
-                                  key to the search plugin
+  06-idx-reindex-key.sh           (idx.enabled) hands the reindex key to the
+                                  search plugin
   10-configure-w3-total-cache.sh  is already active when this runs
   <customPostInitScripts keys>    letters sort after the digit prefixes
 */}}
@@ -149,16 +149,17 @@ data:
         || echo "[idx-plugin] could not update $slug to $offered - continuing"
     fi
   {{- end }}
-  {{- if (include "wordpress.idx.hasReindexApiKey" .) }}
+  {{- if .Values.idx.enabled }}
   06-idx-reindex-key.sh: |-
     #!/bin/bash
 
     # The reindex key, for the search plugin. "Rebuild index" in wp-admin
     # sends the key the plugin finds in its option idx_search_api_key, and the
-    # sidecar accepts the one it was started with (idx.reindexApiKey or
-    # idx.existingReindexApiKeySecret). Both come from the same Secret, so
-    # this script writes the option on every start and nobody has to enter
-    # the key in the plugin's settings; a key entered there is replaced.
+    # sidecar accepts the one it was started with: idx.reindexApiKey, the
+    # key of idx.existingReindexApiKeySecret, or the one the chart generated.
+    # Both come from the same Secret, so this script writes the option on
+    # every start and nobody has to enter the key in the plugin's settings;
+    # a key entered there is replaced.
     # The value comes from the environment and goes to wp on standard input:
     # it is neither in this ConfigMap nor on a command line. A failure is
     # logged and skipped - the key must not keep the site from starting.

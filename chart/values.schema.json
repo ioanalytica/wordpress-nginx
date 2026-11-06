@@ -2544,7 +2544,7 @@
           "default": "/idx"
         },
         "reindexApiKey": {
-          "description": "API key for the /api/reindex endpoint (leave empty to disable); the search plugin gets it as well",
+          "description": "API key for the /api/reindex endpoint; the chart generates one when this and idx.existingReindexApiKeySecret are empty",
           "type": [
             "string",
             "number"
@@ -2552,7 +2552,7 @@
           "default": ""
         },
         "existingReindexApiKeySecret": {
-          "description": "Name of existing secret containing key `idx-reindex-api-key`; the search plugin gets the key as well",
+          "description": "Name of existing secret containing key `idx-reindex-api-key`, used for the sidecar and the search plugin in place of idx.reindexApiKey",
           "type": [
             "string",
             "number"

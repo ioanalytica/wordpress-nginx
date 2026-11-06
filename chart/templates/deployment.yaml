@@ -68,12 +68,13 @@ spec:
         {{- /*
         Both containers read the reindex key from the environment, once, at
         their start: WordPress' container writes it into the search plugin's
-        option, the sidecar compares requests with it. A new key in the
-        chart's own Secret must therefore replace the pod, or a restart of
-        one container alone would leave the two with different keys. A Secret
-        named in idx.existingReindexApiKeySecret is not the chart's to watch.
+        option, the sidecar compares requests with it. A new idx.reindexApiKey
+        must therefore replace the pod, or a restart of one container alone
+        would leave the two with different keys. A key the chart generated
+        never changes, and a Secret named in idx.existingReindexApiKeySecret
+        is not the chart's to watch.
         */}}
-        {{- if and (include "wordpress.idx.hasReindexApiKey" .) (not .Values.idx.existingReindexApiKeySecret) }}
+        {{- if and .Values.idx.enabled .Values.idx.reindexApiKey (not .Values.idx.existingReindexApiKeySecret) }}
         checksum/idx-secret: {{ include (print $.Template.BasePath "/idx-secret.yaml") . | sha256sum }}
         {{- end }}
       {{- end }}
@@ -677,7 +678,7 @@ spec:
                   name: {{ include "wordpress.cacheSecretName" . }}
                   key: {{ include "wordpress.cacheSecretPasswordKey" . }}
             {{- end }}
-            {{- if (include "wordpress.idx.hasReindexApiKey" .) }}
+            {{- if .Values.idx.enabled }}
             # Read by the post-init script that hands the reindex key to the
             # search plugin. From the same Secret as the sidecar's
             # REINDEX_API_KEY, and in the environment for the reason given
@@ -775,8 +776,6 @@ spec:
               mountPath: /etc/hooks/application/zz-05-idx-plugin.sh
               subPath: 05-idx-plugin.sh
               readOnly: true
-            {{- end }}
-            {{- if (include "wordpress.idx.hasReindexApiKey" .) }}
             - name: custom-postinit
               mountPath: /etc/hooks/application/zz-06-idx-reindex-key.sh
               subPath: 06-idx-reindex-key.sh
@@ -934,13 +933,11 @@ spec:
               value: {{ .Values.idx.corsOrigin | quote }}
             - name: PLUGIN_AUTO_UPDATE
               value: {{ .Values.idx.pluginAutoUpdate | quote }}
-            {{- if (include "wordpress.idx.hasReindexApiKey" .) }}
             - name: REINDEX_API_KEY
               valueFrom:
                 secretKeyRef:
                   name: {{ include "wordpress.idx.reindexApiKeySecretName" . }}
                   key: idx-reindex-api-key
-            {{- end }}
           ports:
             - name: idx
               containerPort: {{ .Values.idx.port }}

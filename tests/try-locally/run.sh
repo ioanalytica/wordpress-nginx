@@ -390,8 +390,11 @@ echo "ok:   the reindex endpoint refuses a missing and a wrong key"
 # the key over has no such script, and the button asks for the key there;
 # the run may be given any published version, so that is no failure. That
 # the chart of the checkout renders the script is the template test's to say.
-if [ -n "$(kubectl -n "$PAGE_NAMESPACE" get configmap "$PAGE_RELEASE-wordpress-nginx-postinit" \
-    -o jsonpath='{.data.06-idx-reindex-key\.sh}')" ]; then
+# Asked on a line of its own: a request that fails ends the run, where it
+# would otherwise pass for a release without the script.
+handover="$(kubectl -n "$PAGE_NAMESPACE" get configmap "$PAGE_RELEASE-wordpress-nginx-postinit" \
+  -o jsonpath='{.data.06-idx-reindex-key\.sh}')"
+if [ -n "$handover" ]; then
   html="$(curl -fsS --max-time 30 -b "$jar" "$SITE/wp-admin/options-general.php?page=idx-search")"
   nonce="$(sed -n 's/.*var idxAdmin = {[^}]*"nonce":"\([a-f0-9]*\)".*/\1/p' <<<"$html" | sed -n 1p)"
   [ -n "$nonce" ] || fail "the search plugin's settings page holds no nonce for the rebuild"

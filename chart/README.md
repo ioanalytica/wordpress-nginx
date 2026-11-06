@@ -859,8 +859,11 @@ updates, while the search keeps working, since that runs in the visitor's
 browser. Override the constant via `WORDPRESS_CONFIG_EXTRA` if the sidecar does
 not share the pod.
 
-`POST /api/reindex` rebuilds the index from the database and is switched off
-until the sidecar has a key:
+`POST /api/reindex` rebuilds the index from the database and asks for a key.
+The sidecar always has one. Without a setting the chart generates it at the
+installation and keeps it, across upgrades, in the Secret `<fullname>-idx`
+under `idx-reindex-api-key`. To choose the key, set `idx.reindexApiKey`, or
+name a Secret of your own that holds it under that name:
 
 ```yaml
 idx:
@@ -868,24 +871,27 @@ idx:
   existingReindexApiKeySecret: my-idx-secret   # key: idx-reindex-api-key
 ```
 
-`idx.reindexApiKey` takes the key itself, and the chart keeps it in a Secret of
-its own. Either way WordPress' container hands the same key to the search
-plugin at every start, so "Rebuild index" under Settings > IDX Search works
-without anyone entering the key there. The plugin keeps it as the option
-`idx_search_api_key` in the site's database; a key entered in wp-admin is
-replaced by the chart's at the next start. Without a key the chart leaves that
-setting alone.
+WordPress' container hands the same key to the search plugin at every start,
+so "Rebuild index" under Settings > IDX Search works right after the
+installation, without anyone entering the key there. The plugin keeps it as
+the option `idx_search_api_key` in the site's database; a key entered in
+wp-admin is replaced by the chart's at the next start.
 
-Both containers read the key when they start. A new `idx.reindexApiKey`
-replaces the pod, so the plugin and the sidecar change over together. After a
-change to a Secret of your own, replace the pod yourself
-(`kubectl rollout restart`): until then the sidecar answers with the old key,
-and a restart of WordPress' container alone would hand the plugin the new one.
-The plugin's copy is in the database, which every pod of the release shares:
-while a rollout with a new key is under way, and after one that did not
-complete, "Rebuild index" is refused on a pod whose sidecar still runs with
-the old key. The search itself and requests that bring the key along are not
-affected.
+A generated key stays as it is, and so does the last `idx.reindexApiKey` when
+the value is taken out again. Both containers read the key when they start:
+a new `idx.reindexApiKey` replaces the pod, so the plugin and the sidecar
+change over together. After a change to a Secret of your own, replace the pod
+yourself (`kubectl rollout restart`): until then the sidecar answers with the
+old key, and a restart of WordPress' container alone would hand the plugin the
+new one. The plugin's copy is in the database, which every pod of the release
+shares: while a rollout with a new key is under way, and after one that did
+not complete, "Rebuild index" is refused on a pod whose sidecar still runs
+with the old key. The search itself and requests that bring the key along are
+not affected.
+
+A tool that renders the chart without access to the cluster (`helm template`,
+Argo CD) cannot see the Secret and would generate a new key with every
+render. Set the key or name a Secret there.
 
 <!-- #endregion search-index -->
 

@@ -520,21 +520,24 @@ echo "=== The reindex key reaches the search plugin"
 # "Rebuild index" in wp-admin sends the key the plugin has, and the sidecar
 # accepts the one it was started with. Both come from one Secret: WordPress'
 # container reads it from its environment and writes the plugin's option at
-# every start. The value itself is in the Secret only.
+# every start. With the sidecar there is always a key: the one from the
+# values, the one of a Secret named there, or one the chart generates. The
+# value itself is in the Secret only.
 IDXKEY=("${IDX[@]}" --set idx.reindexApiKey=k3y-0f-the-template-test)
-expect "no key script without a key"        absent  '06-idx-reindex-key.sh' "${IDX[@]}"
 expect "no key script without the sidecar"  absent  '06-idx-reindex-key.sh' --set idx.reindexApiKey=k3y-0f-the-template-test
-expect "no key for WordPress without a key" absent  'WORDPRESS_IDX_REINDEX_API_KEY' "${IDX[@]}"
-expect "key script mounts as a single file" present 'mountPath: /etc/hooks/application/zz-06-idx-reindex-key.sh' "${IDXKEY[@]}"
-expect "the key goes to wp on standard input" present 'printf '"'"'%s'"'"' "$key" | wp option update "$option"' "${IDXKEY[@]}"
+expect "no key without the sidecar"         absent  'idx-reindex-api-key' --set idx.reindexApiKey=k3y-0f-the-template-test
+expect "key script mounts as a single file" present 'mountPath: /etc/hooks/application/zz-06-idx-reindex-key.sh' "${IDX[@]}"
+expect "the key goes to wp on standard input" present 'printf '"'"'%s'"'"' "$key" | wp option update "$option"' "${IDX[@]}"
 expect "the key's value is in the Secret only" absent 'k3y-0f-the-template-test' "${IDXKEY[@]}"
-expect "an existing Secret brings the script as well" present '06-idx-reindex-key.sh' \
-        "${IDX[@]}" --set idx.existingReindexApiKeySecret=my-idx-secret
-# Both containers read the key once, at their start: a new key in the chart's
-# own Secret has to replace the pod, or the two would run with different keys.
-expect "a key of the chart's own rolls the pod" present 'checksum/idx-secret:' "${IDXKEY[@]}"
-expect "no such checksum without a key"         absent  'checksum/idx-secret:' "${IDX[@]}"
-expect "nor for a Secret that is not the chart's" absent 'checksum/idx-secret:' \
+check "idx with a reindex key" "${IDXKEY[@]}"
+check "idx with a generated key and nothing else" "${IDX[@]}" --set-json 'wordpressPreinstallPlugins=[]'
+# Both containers read the key once, at their start: a new key in the values
+# has to replace the pod, or the two would run with different keys. A
+# generated key never changes, and without access to a cluster it differs
+# from render to render: it must not be part of the pod template.
+expect "a key from the values rolls the pod"      present 'checksum/idx-secret:' "${IDXKEY[@]}"
+expect "a generated key does not"                 absent  'checksum/idx-secret:' "${IDX[@]}"
+expect "nor does a Secret that is not the chart's" absent 'checksum/idx-secret:' \
         "${IDX[@]}" --set idx.existingReindexApiKeySecret=my-idx-secret
 sums="$(for k in one two; do helm template tst "$CHART" "${IDX[@]}" --set "idx.reindexApiKey=$k" 2>&1 | grep -F 'checksum/idx-secret:'; done | sort -u | wc -l | tr -d ' ')"
 if [ "$sums" = 2 ]; then
@@ -543,36 +546,60 @@ else
     echo "FAIL: another key gives another checksum — $sums distinct checksum line(s) for two keys"
     FAILURES=$((FAILURES + 1))
 fi
-check "idx with a reindex key" "${IDXKEY[@]}"
-check "idx with a reindex key and nothing else" "${IDXKEY[@]}" --set-json 'wordpressPreinstallPlugins=[]'
-# Sidecar and WordPress must read the same key of the same Secret.
-for secret_args in "idx.reindexApiKey=k3y-0f-the-template-test tst-wordpress-nginx-idx" "idx.existingReindexApiKeySecret=my-idx-secret my-idx-secret"; do
-    read -r secret_set secret_name <<<"$secret_args"
-    refs=$(helm template tst "$CHART" "${IDX[@]}" --set "$secret_set" 2>&1 | python3 -c '
-import sys, yaml
+# Sidecar and WordPress must read the same key of the same Secret, and the
+# chart's own Secret must hold what the case says: a generated key, the key
+# from the values, or nothing where the Secret is not the chart's.
+#   <helm --set argument, "-" for none> <Secret both read> <what the chart's Secret holds>
+while read -r secret_set secret_name secret_holds; do
+    secret_args=("${IDX[@]}")
+    [ "$secret_set" = "-" ] || secret_args+=(--set "$secret_set")
+    refs=$(helm template tst "$CHART" "${secret_args[@]}" 2>&1 | python3 -c '
+import base64, re, sys, yaml
+name, holds = sys.argv[1], sys.argv[2]
 want = {"wordpress": "WORDPRESS_IDX_REINDEX_API_KEY", "idx": "REINDEX_API_KEY"}
-problems = []
+problems, seen, stored = [], False, None
 for d in yaml.safe_load_all(sys.stdin):
-    if not d or d.get("kind") != "Deployment" or d["metadata"]["name"] != "tst-wordpress-nginx":
+    if not d:
         continue
+    if d.get("kind") == "Secret" and "idx-reindex-api-key" in (d.get("data") or {}):
+        if d["metadata"]["name"] != "tst-wordpress-nginx-idx":
+            problems.append("the key is in the Secret %s" % d["metadata"]["name"])
+        stored = base64.b64decode(d["data"]["idx-reindex-api-key"]).decode()
+    if d.get("kind") != "Deployment" or d["metadata"]["name"] != "tst-wordpress-nginx":
+        continue
+    seen = True
     containers = {c["name"]: c for c in d["spec"]["template"]["spec"]["containers"]}
     for container, variable in want.items():
         env = {e["name"]: e for e in containers.get(container, {}).get("env", [])}
         ref = env.get(variable, {}).get("valueFrom", {}).get("secretKeyRef", {})
-        if (ref.get("name"), ref.get("key")) != (sys.argv[1], "idx-reindex-api-key"):
+        if (ref.get("name"), ref.get("key")) != (name, "idx-reindex-api-key"):
             problems.append("%s: %s comes from %s/%s" % (container, variable, ref.get("name"), ref.get("key")))
-    break
-else:
+if not seen:
     problems.append("no WordPress Deployment rendered")
+if holds == "none":
+    if stored is not None:
+        problems.append("the chart renders a Secret with a key of its own")
+elif stored is None:
+    problems.append("the chart renders no Secret with the key")
+elif holds == "generated":
+    if not re.fullmatch("[A-Za-z0-9]{32}", stored):
+        problems.append("the generated key is not 32 letters and digits")
+elif stored != holds:
+    problems.append("the Secret does not hold the key from the values")
 print("; ".join(problems))
-' "$secret_name" 2>&1) || refs="render failed"
+' "$secret_name" "$secret_holds" 2>&1) || refs="render failed"
     if [ -z "$refs" ]; then
-        echo "ok:   sidecar and WordPress read the key from $secret_name"
+        echo "ok:   sidecar and WordPress read the key from $secret_name ($secret_holds)"
     else
-        echo "FAIL: sidecar and WordPress read the key from $secret_name — $refs"
+        echo "FAIL: sidecar and WordPress read the key from $secret_name ($secret_holds) — $refs"
         FAILURES=$((FAILURES + 1))
     fi
-done
+done <<'CASES'
+- tst-wordpress-nginx-idx generated
+idx.reindexApiKey=k3y-0f-the-template-test tst-wordpress-nginx-idx k3y-0f-the-template-test
+idx.reindexApiKey=12345678 tst-wordpress-nginx-idx 12345678
+idx.existingReindexApiKeySecret=my-idx-secret my-idx-secret none
+CASES
 
 echo "=== Init script creates only what is missing"
 # Every "if [ ! -f|-d /wordpress/PATH ]" guard on the volume must test the
@@ -1264,9 +1291,9 @@ if [ -f "$K3D" ]; then
     expect "k3d: the Ingress routes /idx to the sidecar" present 'path: /idx' -f "$K3D"
     expect "k3d: the watcher runs in a pod of its own"  present 'name: tst-wordpress-nginx-fim' -f "$K3D"
     expect "k3d: the watcher accepts Hello Dolly"       present '"hello.php"' -f "$K3D"
-    expect "k3d: the reindex key comes from the command line" present 'idx-reindex-api-key:' -f "$K3D" \
+    expect "k3d: the reindex key comes from the command line" present 'idx-reindex-api-key: "dGVzdA=="' -f "$K3D" \
             --set idx.reindexApiKey=test
-    expect "k3d: without it there is no key"            absent  'idx-reindex-api-key' -f "$K3D"
+    expect "k3d: without it the chart generates one"    present 'idx-reindex-api-key:' -f "$K3D"
 fi
 
 echo
