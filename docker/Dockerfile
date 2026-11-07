@@ -150,11 +150,14 @@ RUN sed -i -E \
 # microseconds, so the setting had nothing to gain here.
 # The greps guard the change: the build fails if the directive is not where
 # the sed expects it, if a later base image switches it on elsewhere, or if
-# it caches upstream connections in a file this image does not replace.
+# it caches upstream connections in a file this image does not replace. The
+# two negative checks read every file with its comments stripped and match
+# the directive wherever it stands on a line, also after another directive
+# or an opening brace.
 RUN sed -i -E 's/^([[:space:]]*fastcgi_keep_conn[[:space:]]+)on;/\1off;/' /etc/nginx/custom.d/01-common.conf \
  && grep -qE '^[[:space:]]*fastcgi_keep_conn[[:space:]]+off;' /etc/nginx/custom.d/01-common.conf \
- && ! grep -rnE '^[[:space:]]*fastcgi_keep_conn[[:space:]]+on' /etc/nginx \
- && ! grep -rnE '^[[:space:]]*keepalive[[:space:]]+[0-9]' /etc/nginx
+ && ! find /etc/nginx -type f -exec sed -E 's/#.*//' {} + | grep -E '(^|[[:space:];{])fastcgi_keep_conn[[:space:]]+on([[:space:];]|$)' \
+ && ! find /etc/nginx -type f -exec sed -E 's/#.*//' {} + | grep -E '(^|[[:space:];{])keepalive[[:space:]]+[0-9]'
 
 ################################################################################
 ONBUILD RUN hook onbuild
