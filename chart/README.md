@@ -1061,7 +1061,7 @@ default security context constraints, cannot run the image.
 
 ### To 7.1.412
 
-* **Nothing to change.** The release frees the PHP-FPM pool between requests again: on 7.1.4-6 to 7.1.411 every PHP request bound its worker to NGINX for a minute after the response, so a few requests per minute left a site slow, its readiness probe timing out and NGINX answering 502. Upgrade every installation on those versions. Until then, a script in `customPostInitScripts` helps a site, since the image runs it before NGINX starts: `sed -i 's/fastcgi_keep_conn   on;/fastcgi_keep_conn   off;/' /etc/nginx/custom.d/01-common.conf`.
+* **Nothing to change.** The release frees the PHP-FPM pool between requests again: on 7.1.4-6 to 7.1.411 every PHP request bound its worker to NGINX for a minute after the response, so a few requests per minute left a site slow, its readiness probe timing out and NGINX answering 502. Upgrade every installation on those versions. An installation that pins the image by `image.digest` keeps the image of that digest whatever the chart version says: set the digest of the 7.1.412 image, or clear the value so that the chart's tag applies. Until then, a script in `customPostInitScripts` helps a site, since the image runs it before NGINX starts: `sed -i 's/fastcgi_keep_conn   on;/fastcgi_keep_conn   off;/' /etc/nginx/custom.d/01-common.conf`.
 
 ### To 7.1.411
 
