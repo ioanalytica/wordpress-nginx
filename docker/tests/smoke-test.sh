@@ -356,6 +356,17 @@ cexec 'echo "# rest hardening inert" > /etc/nginx/custom.d/00-rest-hardening.con
 reload_nginx
 assert "REST users passes in off mode" 200 /wp-json/wp/v2/users INDEX-EXECUTED
 
+echo "=== NGINX closes its connection to PHP-FPM after every request"
+# With fastcgi_keep_conn on, which the base image sets, a PHP-FPM worker
+# stays bound to the connection for a minute after the response, and five
+# requests exhaust the pool. The Dockerfile switches it off. The PHP request
+# goes to index.php, which the fixtures above replaced; the sockets of the
+# earlier requests are closed by now.
+check "the NGINX configuration has fastcgi_keep_conn off" 'nginx -T 2>/dev/null | grep -qE "^[[:space:]]*fastcgi_keep_conn[[:space:]]+off;" && ! nginx -T 2>/dev/null | grep -E "^[[:space:]]*(fastcgi_keep_conn[[:space:]]+on|keepalive[[:space:]]+[0-9])"'
+# /proc/net/unix lists the listening socket once and every open connection
+# to it once more; two seconds after a PHP request only the listener is left.
+check "no connection to PHP-FPM stays open after a request" 'curl -s -o /dev/null http://localhost/index.php && sleep 2 && [ "$(grep -c /run/php-fpm.sock /proc/net/unix)" = 1 ]'
+
 echo "=== SMTP sendmail wrapper composes msmtp options from the env"
 # The chart's SMTP values become environment variables; the wrapper turns them
 # into an msmtp command line. Hermetic: a stub msmtp earlier in PATH captures
