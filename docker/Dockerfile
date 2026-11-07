@@ -137,6 +137,31 @@ RUN sed -i -E \
  && ! grep -rnE 'ssl_|[[:space:]]quic([[:space:];]|$)|http3|Alt-Svc|/etc/ssl/site' /etc/nginx \
  && ! grep -rlE -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' /etc/ssl /etc/nginx
 
+# NGINX closes its connection to PHP-FPM after every request. The base image
+# sets fastcgi_keep_conn on in its PHP location (custom.d/01-common.conf,
+# since shinsenter/php 6.1.0) and pairs it with a keepalive cache in the
+# upstream block of its own nginx.conf, which this image replaces. Neither
+# fits a pool of five on-demand workers behind a Unix socket: a PHP-FPM
+# worker that serves a kept connection waits on it for the next request
+# without any timeout, and NGINX holds the connection for a minute after the
+# response (or, with the cache, every NGINX worker process holds its own
+# idle connections), so a handful of requests leaves the pool fully bound
+# and every further request waiting. Opening a Unix socket costs
+# microseconds, so the setting had nothing to gain here.
+# The greps guard the change: the build fails if the directive is not where
+# the sed expects it, if a later base image switches it on elsewhere, or if
+# it caches upstream connections in a file this image does not replace. The
+# two negative checks read every file with its comments stripped and match
+# the directive wherever it stands on a line, also after another directive
+# or an opening brace. The stripped copy goes to a file first, so that a
+# failing sed fails the build instead of leaving grep nothing to object to.
+RUN sed -i -E 's/^([[:space:]]*fastcgi_keep_conn[[:space:]]+)on;/\1off;/' /etc/nginx/custom.d/01-common.conf \
+ && grep -qE '^[[:space:]]*fastcgi_keep_conn[[:space:]]+off;' /etc/nginx/custom.d/01-common.conf \
+ && find /etc/nginx -type f -exec sed -E 's/#.*//' {} + > /tmp/nginx-without-comments \
+ && ! grep -E '(^|[[:space:];{])fastcgi_keep_conn[[:space:]]+on([[:space:];]|$)' /tmp/nginx-without-comments \
+ && ! grep -E '(^|[[:space:];{])keepalive[[:space:]]+[0-9]' /tmp/nginx-without-comments \
+ && rm /tmp/nginx-without-comments
+
 ################################################################################
 ONBUILD RUN hook onbuild
 

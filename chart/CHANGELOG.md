@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+* **The PHP-FPM pool is free again between requests.** Since 7.1.4-6 the sites answered slowly or not at all once a few requests per minute came in, with `[pool www] server reached max_children setting (5)` in the log, readiness probes that timed out and 502 responses: every PHP request left its worker bound to NGINX for a minute after the response, so five requests exhausted the pool of five on-demand workers. The base image had switched `fastcgi_keep_conn on` in its PHP location (shinsenter/php 6.1.0, which 7.1.4-6 was the first build on) and pairs it with an upstream keepalive cache in its own `nginx.conf`, which this image replaces. A PHP-FPM worker that serves a kept connection waits on it for the next request without any timeout; NGINX, with no cache, held the connection until its read timeout, and with the base image's cache every NGINX worker process would hold its own idle connections instead. The image sets the directive to `off`, as it was up to 7.1.4-5: a connection over the Unix socket costs microseconds, and a worker is free as soon as its response is out. The build fails if a later base image switches the directive on elsewhere or adds an upstream keepalive cache. No chart change; upgrading is recommended for every installation on 7.1.4-6 to 7.1.411.
+  * The sites on 7.1.4-6 to 7.1.411 can be helped before the upgrade with a script in `customPostInitScripts`, which the image runs before NGINX starts: `sed -i 's/fastcgi_keep_conn   on;/fastcgi_keep_conn   off;/' /etc/nginx/custom.d/01-common.conf`.
+  * `PHP_PM_MAX_CHILDREN` stays at 5. A bigger pool only moves the limit: with the directive on, each worker serves one request per minute, so ten workers carry ten requests per minute, which is a stopgap for a site and not a fix.
+
+### Project and CI
+
+* The smoke test checks that the NGINX configuration has `fastcgi_keep_conn off` and no upstream keepalive cache, and that no connection to PHP-FPM stays open after a request.
+
 ## 7.1.411
 
 * **Hardening: the image listens on port 80 only, and a container has no private key in its filesystem.** TLS ends at the Ingress, and the pod serves the site over HTTP. The listeners on port 443 that the base image brings (TLS and HTTP/3), the placeholder key pair they needed and the TLS settings in the NGINX configuration are gone; the image build fails if a later base image brings a listener or a key back. The base image's own layer keeps its copy of the placeholder pair, which a scanner that reads layers can still report; "TLS ends at the Ingress" in the repository's `SECURITY.md` says what it is. Upgrading is recommended.
