@@ -1059,6 +1059,10 @@ default security context constraints, cannot run the image.
 
 <!-- #region upgrading -->
 
+### To 7.1.412
+
+* **Nothing to change.** The release frees the PHP-FPM pool between requests again: on 7.1.4-6 to 7.1.411 every PHP request bound its worker to NGINX for a minute after the response, so a few requests per minute left a site slow, its readiness probe timing out and NGINX answering 502. Upgrade every installation on those versions. An installation that pins the image by `image.digest` keeps the image of that digest whatever the chart version says: set the digest of the 7.1.412 image, or clear the value so that the chart's tag applies. Until then, a script in `customPostInitScripts` helps a site, since the image runs it before NGINX starts: `sed -i 's/fastcgi_keep_conn   on;/fastcgi_keep_conn   off;/' /etc/nginx/custom.d/01-common.conf`.
+
 ### To 7.1.411
 
 * **The pod has no HTTPS port any more.** The image listens on port 80 only and the chart renders no port `https`: not on the container, not on the Service, not in the NetworkPolicy. TLS ends at the Ingress, as before; an installation that reaches the site through the Ingress or the Service's port `http` needs nothing.
