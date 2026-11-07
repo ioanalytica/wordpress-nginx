@@ -153,11 +153,14 @@ RUN sed -i -E \
 # it caches upstream connections in a file this image does not replace. The
 # two negative checks read every file with its comments stripped and match
 # the directive wherever it stands on a line, also after another directive
-# or an opening brace.
+# or an opening brace. The stripped copy goes to a file first, so that a
+# failing sed fails the build instead of leaving grep nothing to object to.
 RUN sed -i -E 's/^([[:space:]]*fastcgi_keep_conn[[:space:]]+)on;/\1off;/' /etc/nginx/custom.d/01-common.conf \
  && grep -qE '^[[:space:]]*fastcgi_keep_conn[[:space:]]+off;' /etc/nginx/custom.d/01-common.conf \
- && ! find /etc/nginx -type f -exec sed -E 's/#.*//' {} + | grep -E '(^|[[:space:];{])fastcgi_keep_conn[[:space:]]+on([[:space:];]|$)' \
- && ! find /etc/nginx -type f -exec sed -E 's/#.*//' {} + | grep -E '(^|[[:space:];{])keepalive[[:space:]]+[0-9]'
+ && find /etc/nginx -type f -exec sed -E 's/#.*//' {} + > /tmp/nginx-without-comments \
+ && ! grep -E '(^|[[:space:];{])fastcgi_keep_conn[[:space:]]+on([[:space:];]|$)' /tmp/nginx-without-comments \
+ && ! grep -E '(^|[[:space:];{])keepalive[[:space:]]+[0-9]' /tmp/nginx-without-comments \
+ && rm /tmp/nginx-without-comments
 
 ################################################################################
 ONBUILD RUN hook onbuild
