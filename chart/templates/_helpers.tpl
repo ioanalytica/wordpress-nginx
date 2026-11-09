@@ -317,18 +317,27 @@ items:
 {{- end -}}
 
 {{/*
-True when extraEnvVars has an entry named WORDPRESS_CONFIG_EXTRA. The
-entries are read as the Deployment renders them, so text for the template
-engine and a templated name count as well.
+True when extraEnvVars has an entry of the given name. The entries are read
+as the Deployment renders them, so text for the template engine and a
+templated name count as well. Call it with
+  (include "wordpress.extraEnvVarsSet" (dict "name" "X" "context" $))
 */}}
-{{- define "wordpress.extraEnvVarsSetConfigExtra" -}}
-{{- range (include "wordpress.renderedList" (dict "value" .Values.extraEnvVars "context" $) | fromYaml).items -}}
+{{- define "wordpress.extraEnvVarsSet" -}}
+{{- $name := .name -}}
+{{- range (include "wordpress.renderedList" (dict "value" .context.Values.extraEnvVars "context" .context) | fromYaml).items -}}
 {{- if kindIs "map" . -}}
-{{- if eq (toString .name) "WORDPRESS_CONFIG_EXTRA" -}}
+{{- if eq (toString .name) $name -}}
 {{- true -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+True when extraEnvVars has an entry named WORDPRESS_CONFIG_EXTRA.
+*/}}
+{{- define "wordpress.extraEnvVarsSetConfigExtra" -}}
+{{- include "wordpress.extraEnvVarsSet" (dict "name" "WORDPRESS_CONFIG_EXTRA" "context" $) -}}
 {{- end -}}
 
 {{/*

@@ -346,6 +346,12 @@ customPostInitScripts: {}
 ## extraEnvVarsSecret: credentials that reach the container that way need
 ## smtpProtocol "tls" or "ssl" set next to them, or they are sent over an
 ## unencrypted connection.
+## NOTE: an entry named SMTP_TLS in extraEnvVars takes precedence; the chart
+## then renders none of its own, whatever smtpProtocol and the credentials
+## say. A variable of that name from extraEnvVarsCM or extraEnvVarsSecret
+## does not: the chart cannot see into those, and a container's own variable
+## wins over one from such a source. Set the connection security in one
+## place, and with smtpProtocol where that is possible.
 ## @param smtpHost SMTP relay host
 ## @param smtpPort SMTP relay port (empty: msmtp's default, which is 25, or 465 with smtpProtocol "ssl")
 ## @param smtpUser SMTP username. Authentication switches on as soon as a user or password is set

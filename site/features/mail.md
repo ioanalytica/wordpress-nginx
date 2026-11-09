@@ -49,6 +49,13 @@ only. Credentials that reach the container another way, as `SMTP_USER` or
 `SMTP_PASSWORD` in `extraEnvVars`, `extraEnvVarsCM` or `extraEnvVarsSecret`,
 switch nothing on: set `smtpProtocol: tls` or `ssl` next to them.
 
+An entry named `SMTP_TLS` in `extraEnvVars` takes precedence: the chart then
+renders none of its own, whatever `smtpProtocol` and the credentials say. A
+variable of that name from `extraEnvVarsCM` or `extraEnvVarsSecret` does not,
+because the chart cannot see into those and the container's own variable wins
+over them. Set the connection security in one place, with `smtpProtocol`
+where that is possible.
+
 ## Sender address
 
 With `smtpFromEmail` set, the address becomes the envelope sender and replaces
