@@ -402,8 +402,9 @@ if [ -n "$handover" ]; then
     --data-urlencode "_ajax_nonce=$nonce" "$SITE/wp-admin/admin-ajax.php")"
   # From wordpress-idx 1.3.10 on the plugin starts the rebuild and the page
   # asks for its end (idx_reindex_status) until it is done; the plugin of an
-  # earlier release answers when the rebuild is done.
-  if grep -qE '^\{"success":true,"data":\{"state":"running"\}\}$' <<<"$answer"; then
+  # earlier release answers when the rebuild is done. From 1.3.11 on the
+  # answers name the rebuild by its startedAt.
+  if grep -qE '^\{"success":true,"data":\{"state":"running"(,"startedAt":"[^"]*")?\}\}$' <<<"$answer"; then
     deadline=$((SECONDS + 150))
     while :; do
       answer="$(curl -sS --max-time 30 -b "$jar" --data-urlencode "action=idx_reindex_status" \
@@ -414,7 +415,7 @@ if [ -n "$handover" ]; then
     done
   fi
   expect "wp-admin's \"Rebuild index\" works with the key from the chart" \
-    '^\{"success":true,"data":\{("status":"ok"|"state":"done"),"entries":3(,"message":null)?\}\}$' "$answer"
+    '^\{"success":true,"data":\{("status":"ok"|"state":"done")(,"startedAt":"[^"]*")?,"entries":3(,"message":null)?\}\}$' "$answer"
 else
   echo "skip: the installed release does not hand the reindex key to the search plugin yet"
 fi
