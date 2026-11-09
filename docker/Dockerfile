@@ -51,6 +51,10 @@ ENV PHP_MEMORY_LIMIT="256M"
 ENV PHP_POST_MAX_SIZE="48M"
 ENV PHP_UPLOAD_MAX_FILESIZE="32M"
 
+# PHP accepts only session ids it has issued itself. The base image has set
+# this by default and has dropped the default again, so the image states it.
+ENV PHP_SESSION_USE_STRICT_MODE="1"
+
 ################################################################################
 # installs wp-cli
 ARG WPCLI_URL=https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar
@@ -83,8 +87,9 @@ RUN sed -i -e 's|:="mailpit"|:=""|' -e 's|:="1025"|:=""|' /usr/local/etc/.env \
 # the wrapper has no variable for - so teach it SMTP_STARTTLS in the same
 # style as its other options. It goes in right before the final exec line:
 # that line has outlived rewrites of the option blocks above it (the
-# SMTP_TLS one-liner became an if/elif block), and every option is set by
-# then, so --tls-starttls lands after the wrapper's own --tls.
+# SMTP_TLS one-liner became an if/elif block and a one-liner again), and
+# every option is set by then, so --tls-starttls lands after the wrapper's
+# own --tls.
 # The grep guards the insertion: if the base image rewrites the wrapper and
 # the sed anchor no longer matches, the build fails here instead of silently
 # shipping an image where smtpProtocol=ssl configures nothing.

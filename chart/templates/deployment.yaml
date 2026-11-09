@@ -639,21 +639,36 @@ spec:
                   name: {{ include "wordpress.smtpSecretName" . }}
                   key: smtp-password
             {{- end }}
+            {{- /*
+            The wrapper reads SMTP_TLS. An entry of that name in extraEnvVars
+            keeps the say, as with WORDPRESS_CONFIG_EXTRA above: a
+            server-side apply refuses a container with two variables of one
+            name, and a release that sets the variable itself must render
+            what it rendered before.
+            */}}
+            {{- $smtpTlsOwn := include "wordpress.extraEnvVarsSet" (dict "name" "SMTP_TLS" "context" $) }}
             {{- if .Values.smtpProtocol }}
             {{- if not (has .Values.smtpProtocol (list "tls" "ssl" "none")) }}
             {{- fail (printf "smtpProtocol: %q - must be \"tls\" (STARTTLS, usually port 587), \"ssl\" (implicit TLS, port 465), \"none\" (unencrypted, even with credentials) or empty (unencrypted without credentials, STARTTLS with them)" .Values.smtpProtocol) }}
             {{- end }}
-            # Unset, the image's wrapper switches TLS on as soon as a user or
-            # password is set; "none" is the explicit opt-out for relays that
-            # authenticate but offer no TLS.
+            {{- if not $smtpTlsOwn }}
+            # "none" is the explicit opt-out for relays that authenticate but
+            # offer no TLS.
             - name: SMTP_TLS
               value: {{ ternary "off" "on" (eq .Values.smtpProtocol "none") | quote }}
+            {{- end }}
             {{- if eq .Values.smtpProtocol "ssl" }}
             # msmtp defaults to upgrading via STARTTLS; implicit TLS (smtps)
             # expects the handshake from the first byte instead.
             - name: SMTP_STARTTLS
               value: "off"
             {{- end }}
+            {{- else if and (or .Values.smtpUser .Values.smtpPassword .Values.smtpExistingSecret) (not $smtpTlsOwn) }}
+            # No protocol, but credentials: they must not travel in clear
+            # text, so the chart switches STARTTLS on itself. The image's
+            # wrapper passes SMTP_TLS on and has no default of its own.
+            - name: SMTP_TLS
+              value: "on"
             {{- end }}
             {{- if .Values.smtpFromEmail }}
             # Envelope sender, and the From header is rewritten to match on

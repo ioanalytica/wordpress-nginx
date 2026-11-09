@@ -40,9 +40,21 @@ Without `smtpHost` every send fails, with a line in the container log:
 | `none` | unencrypted, even with credentials |
 | `""` (default) | unencrypted without credentials; STARTTLS as soon as `smtpUser` or a password is set |
 
-Credentials are therefore not sent over an unencrypted connection unless
-`none` says so. Set `none` only for an internal relay that authenticates but
-offers no TLS. Any other value fails the render.
+Credentials set through these values are therefore not sent over an
+unencrypted connection unless `none` says so. Set `none` only for an internal
+relay that authenticates but offers no TLS. Any other value fails the render.
+
+The empty default looks at `smtpUser`, `smtpPassword` and `smtpExistingSecret`
+only. Credentials that reach the container another way, as `SMTP_USER` or
+`SMTP_PASSWORD` in `extraEnvVars`, `extraEnvVarsCM` or `extraEnvVarsSecret`,
+switch nothing on: set `smtpProtocol: tls` or `ssl` next to them.
+
+An entry named `SMTP_TLS` in `extraEnvVars` takes precedence: the chart then
+renders none of its own, whatever `smtpProtocol` and the credentials say. A
+variable of that name from `extraEnvVarsCM` or `extraEnvVarsSecret` does not,
+because the chart cannot see into those and the container's own variable wins
+over them. Set the connection security in one place, with `smtpProtocol`
+where that is possible.
 
 ## Sender address
 
