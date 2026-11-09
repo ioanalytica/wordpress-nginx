@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Project and CI
+
+* The start check of the weekly Dragonfly tracker accepts the listener of Dragonfly v2.1, which binds `::` without `--bind` and logs `:::11211`. The check waited for `0.0.0.0:11211` only, and the run failed on an image that had come up.
+
 ## 7.1.413
 
 * **The chart switches STARTTLS on for SMTP credentials itself.** With `smtpProtocol: ""` and `smtpUser`, `smtpPassword` or `smtpExistingSecret` set, the Deployment now carries `SMTP_TLS=on`. Since 7.1.4-6 that came from the sendmail wrapper of the base image, which has taken the default back (shinsenter/php, "restore 6.0 defaults"): on the current base the wrapper passes `SMTP_TLS` on and decides nothing itself. Nothing changes for a site: `""` stays unencrypted without credentials and STARTTLS with them, and `tls`, `ssl` and `none` render what they did. The released versions up to 7.1.412 are built on a base that still had the default.

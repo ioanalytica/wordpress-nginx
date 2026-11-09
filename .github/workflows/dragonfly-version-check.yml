@@ -109,8 +109,10 @@ jobs:
           done
           docker run -d --name dfcheck --ulimit memlock=-1 "$image" \
             --requirepass=ci-check --memcached_port=11211 >/dev/null
+          # Up to v2.0 Dragonfly listens on 0.0.0.0. From v2.1 on it binds ::
+          # without --bind, one listener for IPv4 and IPv6, and logs :::11211.
           for _ in $(seq 1 30); do
-            if docker logs dfcheck 2>&1 | grep -q "listening on 0.0.0.0:11211"; then ok=1; break; fi
+            if docker logs dfcheck 2>&1 | grep -qE 'listening on (0\.0\.0\.0|::|\[::\]):11211$'; then ok=1; break; fi
             sleep 1
           done
           docker logs dfcheck 2>&1 | tail -20
