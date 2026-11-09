@@ -340,6 +340,12 @@ customPostInitScripts: {}
 ## these values via environment variables. Nothing is written to the database.
 ## Without smtpHost, every send fails loudly in the container log
 ## ("[mail error] SMTP_HOST is not defined").
+## NOTE: an empty smtpProtocol switches STARTTLS on for smtpUser,
+## smtpPassword and smtpExistingSecret only. The chart does not look for
+## SMTP_USER or SMTP_PASSWORD in extraEnvVars, extraEnvVarsCM or
+## extraEnvVarsSecret: credentials that reach the container that way need
+## smtpProtocol "tls" or "ssl" set next to them, or they are sent over an
+## unencrypted connection.
 ## @param smtpHost SMTP relay host
 ## @param smtpPort SMTP relay port (empty: msmtp's default, which is 25, or 465 with smtpProtocol "ssl")
 ## @param smtpUser SMTP username. Authentication switches on as soon as a user or password is set
