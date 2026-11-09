@@ -400,8 +400,21 @@ if [ -n "$handover" ]; then
   [ -n "$nonce" ] || fail "the search plugin's settings page holds no nonce for the rebuild"
   answer="$(curl -sS --max-time 150 -b "$jar" --data-urlencode "action=idx_reindex" \
     --data-urlencode "_ajax_nonce=$nonce" "$SITE/wp-admin/admin-ajax.php")"
+  # From wordpress-idx 1.3.10 on the plugin starts the rebuild and the page
+  # asks for its end (idx_reindex_status) until it is done; the plugin of an
+  # earlier release answers when the rebuild is done.
+  if grep -qE '^\{"success":true,"data":\{"state":"running"\}\}$' <<<"$answer"; then
+    deadline=$((SECONDS + 150))
+    while :; do
+      answer="$(curl -sS --max-time 30 -b "$jar" --data-urlencode "action=idx_reindex_status" \
+        --data-urlencode "_ajax_nonce=$nonce" "$SITE/wp-admin/admin-ajax.php")"
+      grep -qE '"state":"running"' <<<"$answer" || break
+      [ "$SECONDS" -lt "$deadline" ] || fail "the rebuild that wp-admin started did not end within 150 s"
+      sleep 1
+    done
+  fi
   expect "wp-admin's \"Rebuild index\" works with the key from the chart" \
-    '^\{"success":true,"data":\{"status":"ok","entries":3\}\}$' "$answer"
+    '^\{"success":true,"data":\{("status":"ok"|"state":"done"),"entries":3(,"message":null)?\}\}$' "$answer"
 else
   echo "skip: the installed release does not hand the reindex key to the search plugin yet"
 fi

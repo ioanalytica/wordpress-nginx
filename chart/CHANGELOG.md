@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 7.1.413
 
 * **The chart switches STARTTLS on for SMTP credentials itself.** With `smtpProtocol: ""` and `smtpUser`, `smtpPassword` or `smtpExistingSecret` set, the Deployment now carries `SMTP_TLS=on`. Since 7.1.4-6 that came from the sendmail wrapper of the base image, which has taken the default back (shinsenter/php, "restore 6.0 defaults"): on the current base the wrapper passes `SMTP_TLS` on and decides nothing itself. Nothing changes for a site: `""` stays unencrypted without credentials and STARTTLS with them, and `tls`, `ssl` and `none` render what they did. The released versions up to 7.1.412 are built on a base that still had the default.
   * The chart looks at its own SMTP values only. Where `SMTP_USER` or `SMTP_PASSWORD` reach the container through `extraEnvVars`, `extraEnvVarsCM` or `extraEnvVarsSecret`, set `smtpProtocol: tls` or `ssl` next to them from this version on; the wrapper no longer switches TLS on for them.
@@ -8,8 +8,14 @@
   * A release with credentials in the SMTP values that hands `SMTP_TLS=off` to the container through `extraEnvVarsCM` or `extraEnvVarsSecret` sets `smtpProtocol: none` before the upgrade. The chart cannot see into those sources, and its own `SMTP_TLS=on` wins over a variable from them.
   * Whoever runs the image without the chart sets `SMTP_TLS=on` next to `SMTP_USER` and `SMTP_PASSWORD` from this version on.
 * Image hardening: PHP keeps accepting only session ids it has issued itself (`session.use_strict_mode`). The base image no longer sets it, so the image sets `PHP_SESSION_USE_STRICT_MODE=1`.
+* **The search sidecar is wordpress-idx 1.3.10** (1.3.9 before). Its image keeps the chart version as its tag. The index file keeps its form: the sidecar loads a non-empty index of 1.3.9 at its first start and builds nothing, unless `idx.forceUpdate` is set.
+  * **The replicas of a release serve the same index.** With `replicaCount` above 1 every pod runs a sidecar of its own, and they share the index file on the volume. "Rebuild index" rebuilt it in one pod, and the sidecars of the other pods went on serving the index they had loaded until they restarted, so a search found other entries depending on the pod that answered it. Every sidecar now looks at the index file every 30 seconds and loads it when another one has rebuilt it.
+  * **"Rebuild index" reports the end of a long rebuild.** The plugin waited for the end of the rebuild in one call and gave up after 120 seconds, a proxy often after 60: on a large site the settings page reported an error for a rebuild that went on and succeeded. The plugin now starts the rebuild and asks the sidecar every three seconds how it ends, also when the rebuild runs in another pod. `POST /api/reindex` answers as before; with the header `Prefer: respond-async` it answers at once, and `GET /api/reindex` reports the state of the last rebuild.
+  * **The files of a killed index build are removed.** A build whose process was ended, by the kernel for memory or with its container, left two unfinished files under `idx/` on the volume, and every retry added two more. The sidecar now removes them.
 
 ### Project and CI
+
+* The k3d run follows "Rebuild index" in wp-admin as the plugin of wordpress-idx 1.3.10 does: it starts the rebuild and asks for its end until it is done. Against a release with an earlier plugin it still takes the answer that comes when the rebuild is done.
 
 * The template test checks `SMTP_TLS` for an empty `smtpProtocol`: `on` with a user, a password or an existing Secret, absent without credentials. The smoke test no longer expects a TLS default from the wrapper; it checks that `SMTP_TLS` reaches msmtp next to credentials, and that a PHP request runs with `session.use_strict_mode` on.
 * The weekly Dragonfly tracker reads a release named with two components, as upstream named v2.1, as `vX.Y.0`: upstream tags the same commit that way, and the image exists only under that tag. The tracker failed on such a release, with a log line that said there was nothing to do. A tag of any other form still fails the run, now with an error that says the tracker needs a look. The bump pull request links the release notes under the release's own name.
