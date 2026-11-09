@@ -896,7 +896,11 @@ Argo CD) cannot see the Secret and would generate a new key with every
 render. Set the key or name a Secret there.
 
 "Rebuild index" starts the rebuild and shows how it ends, also when it takes
-minutes on a large site: the plugin asks the sidecar every three seconds. With
+minutes on a large site: the plugin asks the sidecar every three seconds. That
+is the plugin of wordpress-idx 1.3.10 and later; with `idx.pluginAutoUpdate:
+false` the chart leaves an installed plugin as it is, and an earlier one still
+waits for the end in one call and reports an error when that takes too long.
+Update it under Plugins in wp-admin. With
 `replicaCount` above 1 (a ReadWriteMany volume), every pod runs a sidecar of
 its own, and they share what is under `idx/` on the volume: the index file and
 the state of the last rebuild. A rebuild runs in the pod that gets the call,
@@ -1070,10 +1074,10 @@ default security context constraints, cannot run the image.
 ### To 7.1.413
 
 * **SMTP credentials outside the chart's SMTP values need `smtpProtocol`.** The chart now switches STARTTLS on itself (`SMTP_TLS=on`) when `smtpProtocol` is empty and `smtpUser`, `smtpPassword` or `smtpExistingSecret` is set; the image no longer does it for any credentials it is handed. A release that sets only the chart's SMTP values needs nothing.
-  * A release that hands `SMTP_USER` or `SMTP_PASSWORD` to the container through `extraEnvVars`, `extraEnvVarsCM` or `extraEnvVarsSecret` sets `smtpProtocol: tls` (or `ssl`) before the upgrade, or its mail goes out unencrypted.
+  * A release that hands `SMTP_USER` or `SMTP_PASSWORD` to the container through `extraEnvVars`, `extraEnvVarsCM` or `extraEnvVarsSecret` sets `smtpProtocol: tls` (or `ssl`) before the upgrade, or its mail goes out unencrypted. An entry `SMTP_TLS=off` in `extraEnvVars` takes precedence over `smtpProtocol`: remove it or set it to `on`.
   * A release with credentials in the chart's SMTP values that hands `SMTP_TLS=off` to the container through `extraEnvVarsCM` or `extraEnvVarsSecret` sets `smtpProtocol: none` before the upgrade: the chart's own `SMTP_TLS=on` wins over a variable from those sources.
   * Whoever runs the image without the chart sets `SMTP_TLS=on` next to `SMTP_USER` and `SMTP_PASSWORD`.
-* **The search sidecar moves to wordpress-idx 1.3.10. Nothing has to be done.** It loads the index that is there and builds nothing at its first start.
+* **The search sidecar moves to wordpress-idx 1.3.10. Nothing has to be done.** It loads the index of 1.3.9 that is there and builds nothing at its first start, unless `idx.forceUpdate` is set or the index is missing, empty or cannot be read. An upgrade from 7.1.410 or earlier builds the index once, with what "To 7.1.411" says about the room on the volume and the time until the pod is ready.
 
 ### To 7.1.412
 
