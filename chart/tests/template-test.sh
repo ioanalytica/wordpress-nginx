@@ -702,24 +702,38 @@ expect "protocol tls keeps STARTTLS default"  absent  'name: SMTP_STARTTLS' --se
 expect "protocol ssl disables STARTTLS"       present 'name: SMTP_STARTTLS' --set smtpHost=m --set smtpProtocol=ssl
 expect "protocol ssl still switches TLS on"   present 'name: SMTP_TLS'      --set smtpHost=m --set smtpProtocol=ssl
 expect "the dead SMTP_PROTOCOL env is gone"   absent  'SMTP_PROTOCOL'       --set smtpHost=m --set smtpProtocol=tls
-expect "empty protocol leaves TLS to the image" absent 'name: SMTP_TLS'    --set smtpHost=m --set smtpUser=u
 expect "protocol none keeps STARTTLS unset"   absent  'name: SMTP_STARTTLS' --set smtpHost=m --set smtpProtocol=none
-# The value matters, not just the name: "none" must switch TLS off, since
-# the image's wrapper turns it on by itself once credentials are set.
+# The empty protocol is the chart's own business: unencrypted without
+# credentials, STARTTLS as soon as a user or a password is set. The image's
+# wrapper only passes SMTP_TLS on, so a pod without the variable sends in
+# the clear whatever else is set.
+expect "empty protocol, no credentials: no TLS" absent 'name: SMTP_TLS'    --set smtpHost=m
+expect "empty protocol with credentials keeps STARTTLS default" absent 'name: SMTP_STARTTLS' \
+        --set smtpHost=m --set smtpUser=u --set smtpPassword=pw
+# The value matters, not just the name: "none" must switch TLS off, and
+# every way of setting credentials must switch it on.
 smtp_tls_value() {
-    helm template tst "$CHART" --set smtpHost=m --set smtpUser=u "$@" 2>/dev/null \
+    helm template tst "$CHART" --set smtpHost=m "$@" 2>/dev/null \
         | grep -A1 -- '- name: SMTP_TLS$' | sed -n 's/^ *value: "\(.*\)"$/\1/p'
 }
-for case in "tls on" "ssl on" "none off"; do
-    set -- $case
-    got="$(smtp_tls_value --set smtpProtocol="$1")"
-    if [ "$got" = "$2" ]; then
-        echo "ok:   protocol $1 renders SMTP_TLS=$2"
+# expect_smtp_tls <description> <expected value> <helm args...>
+expect_smtp_tls() {
+    local desc="$1" want="$2" got
+    shift 2
+    got="$(smtp_tls_value "$@")"
+    if [ "$got" = "$want" ]; then
+        echo "ok:   $desc renders SMTP_TLS=$want"
     else
-        echo "FAIL: protocol $1 should render SMTP_TLS=$2, got '${got}'"
+        echo "FAIL: $desc should render SMTP_TLS=$want, got '${got}'"
         FAILURES=$((FAILURES + 1))
     fi
-done
+}
+expect_smtp_tls "protocol tls"                    on  --set smtpUser=u --set smtpProtocol=tls
+expect_smtp_tls "protocol ssl"                    on  --set smtpUser=u --set smtpProtocol=ssl
+expect_smtp_tls "protocol none with credentials"  off --set smtpUser=u --set smtpPassword=pw --set smtpProtocol=none
+expect_smtp_tls "empty protocol with a user"      on  --set smtpUser=u
+expect_smtp_tls "empty protocol with a password"  on  --set smtpPassword=pw
+expect_smtp_tls "empty protocol with an existing secret" on --set smtpExistingSecret=my-smtp
 expect "from email sets the envelope sender"  present 'name: SMTP_FROM'     --set smtpFromEmail=news@example.com
 expect "from name renders with an email"      present 'name: SMTP_FROM_NAME' \
         --set smtpFromEmail=news@example.com --set smtpFromName=Blog

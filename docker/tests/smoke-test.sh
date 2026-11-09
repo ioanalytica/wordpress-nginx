@@ -174,7 +174,7 @@ cexec '
 mkdir -p /var/www/html/wp-content/uploads /var/www/html/wp-content/plugins/testplugin /var/www/html/wp-admin
 echo "<?php echo \"UPLOADS-EXECUTED\";"   > /var/www/html/wp-content/uploads/shell.php
 echo "<?php echo \"PLUGIN-EXECUTED\";"    > /var/www/html/wp-content/plugins/testplugin/direct.php
-echo "<?php echo \"INDEX-EXECUTED\";"     > /var/www/html/index.php
+echo "<?php echo \"INDEX-EXECUTED strict_mode=\" . ini_get(\"session.use_strict_mode\");" > /var/www/html/index.php
 echo "<?php echo \"AJAX-EXECUTED\";"      > /var/www/html/wp-admin/admin-ajax.php
 echo "<?php echo \"LOGIN-EXECUTED\";"     > /var/www/html/wp-login.php
 echo "<?php echo \"EXEC\" . \"UTED-HEALTHZ\";" > /var/www/html/healthz.php
@@ -187,6 +187,9 @@ assert "plugin direct PHP is blocked"     403 /wp-content/plugins/testplugin/dir
 assert "wp-config.php is blocked"         403 /wp-config.php
 assert "xmlrpc.php is blocked"            403 /xmlrpc.php
 assert "index.php executes"               200 /index.php INDEX-EXECUTED
+# Asked of PHP-FPM, not of the CLI: the value a request runs with. The base
+# image no longer sets it, the Dockerfile does.
+assert "PHP takes only session ids it issued" 200 /index.php strict_mode=1
 assert "front page executes"              200 / INDEX-EXECUTED
 assert "admin-ajax.php executes"          200 /wp-admin/admin-ajax.php AJAX-EXECUTED
 assert "wp-login.php executes"            200 /wp-login.php LOGIN-EXECUTED
@@ -403,11 +406,14 @@ assert_args "TLS on requests STARTTLS"              present "--tls=on"          
 assert_args "TLS on leaves the STARTTLS default"    absent  "--tls-starttls"     'SMTP_HOST=relay SMTP_TLS=on'
 assert_args "implicit TLS disables STARTTLS"        present "--tls-starttls=off" 'SMTP_HOST=relay SMTP_TLS=on SMTP_STARTTLS=off'
 assert_args "user switches auth on"                 present "--auth=on"          'SMTP_HOST=relay SMTP_USER=u'
-# The chart documents smtpProtocol="" against these: no TLS without
-# credentials, TLS by default with them, and SMTP_TLS=off (smtpProtocol
-# "none") as the only way to authenticate unencrypted.
+# The wrapper has no TLS default of its own to rely on: whether credentials
+# alone switch TLS on has changed between builds of the base image. The
+# chart therefore sets SMTP_TLS whenever credentials are set (on, or off for
+# smtpProtocol "none"), and the template test pins that. What the image owes
+# the chart is that the variable reaches msmtp next to the credentials, and
+# that nothing asks for TLS when neither is set.
 assert_args "no credentials, no TLS by default"     absent  "--tls="             'SMTP_HOST=relay'
-assert_args "credentials switch TLS on by default"  present "--tls=on"           'SMTP_HOST=relay SMTP_USER=u'
+assert_args "TLS on reaches msmtp with credentials" present "--tls=on"           'SMTP_HOST=relay SMTP_USER=u SMTP_TLS=on'
 assert_args "TLS off survives credentials"          present "--tls=off"          'SMTP_HOST=relay SMTP_USER=u SMTP_TLS=off'
 assert_args "from email sets the envelope sender"   present "--from=news@example.com" 'SMTP_HOST=relay SMTP_FROM=news@example.com'
 assert_args "no from falls back to the message"     present "--read-envelope-from" 'SMTP_HOST=relay'

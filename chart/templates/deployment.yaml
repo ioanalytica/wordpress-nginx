@@ -643,9 +643,8 @@ spec:
             {{- if not (has .Values.smtpProtocol (list "tls" "ssl" "none")) }}
             {{- fail (printf "smtpProtocol: %q - must be \"tls\" (STARTTLS, usually port 587), \"ssl\" (implicit TLS, port 465), \"none\" (unencrypted, even with credentials) or empty (unencrypted without credentials, STARTTLS with them)" .Values.smtpProtocol) }}
             {{- end }}
-            # Unset, the image's wrapper switches TLS on as soon as a user or
-            # password is set; "none" is the explicit opt-out for relays that
-            # authenticate but offer no TLS.
+            # "none" is the explicit opt-out for relays that authenticate but
+            # offer no TLS.
             - name: SMTP_TLS
               value: {{ ternary "off" "on" (eq .Values.smtpProtocol "none") | quote }}
             {{- if eq .Values.smtpProtocol "ssl" }}
@@ -654,6 +653,12 @@ spec:
             - name: SMTP_STARTTLS
               value: "off"
             {{- end }}
+            {{- else if or .Values.smtpUser .Values.smtpPassword .Values.smtpExistingSecret }}
+            # No protocol, but credentials: they must not travel in clear
+            # text, so the chart switches STARTTLS on itself. The image's
+            # wrapper passes SMTP_TLS on and has no default of its own.
+            - name: SMTP_TLS
+              value: "on"
             {{- end }}
             {{- if .Values.smtpFromEmail }}
             # Envelope sender, and the From header is rewritten to match on

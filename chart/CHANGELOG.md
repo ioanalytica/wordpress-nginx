@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+* **The chart switches STARTTLS on for SMTP credentials itself.** With `smtpProtocol: ""` and `smtpUser`, `smtpPassword` or `smtpExistingSecret` set, the Deployment now carries `SMTP_TLS=on`. Since 7.1.4-6 that came from the sendmail wrapper of the base image, which has taken the default back (shinsenter/php, "restore 6.0 defaults"): on the current base the wrapper passes `SMTP_TLS` on and decides nothing itself. Nothing changes for a site: `""` stays unencrypted without credentials and STARTTLS with them, and `tls`, `ssl` and `none` render what they did. The released versions up to 7.1.412 are built on a base that still had the default.
+  * Whoever runs the image without the chart sets `SMTP_TLS=on` next to `SMTP_USER` and `SMTP_PASSWORD` from this version on.
+* Image hardening: PHP keeps accepting only session ids it has issued itself (`session.use_strict_mode`). The base image no longer sets it, so the image sets `PHP_SESSION_USE_STRICT_MODE=1`.
+
+### Project and CI
+
+* The template test checks `SMTP_TLS` for an empty `smtpProtocol`: `on` with a user, a password or an existing Secret, absent without credentials. The smoke test no longer expects a TLS default from the wrapper; it checks that `SMTP_TLS` reaches msmtp next to credentials, and that a PHP request runs with `session.use_strict_mode` on.
+
 ## 7.1.412
 
 * **The PHP-FPM pool is free again between requests.** Since 7.1.4-6 the sites answered slowly or not at all once a few requests per minute came in, with `[pool www] server reached max_children setting (5)` in the log, readiness probes that timed out and 502 responses: every PHP request left its worker bound to NGINX for a minute after the response, so five requests exhausted the pool of five on-demand workers. The base image had switched `fastcgi_keep_conn on` in its PHP location (shinsenter/php 6.1.0, which 7.1.4-6 was the first build on) and pairs it with an upstream keepalive cache in its own `nginx.conf`, which this image replaces. A PHP-FPM worker that serves a kept connection waits on it for the next request without any timeout; NGINX, with no cache, held the connection until its read timeout, and with the base image's cache every NGINX worker process would hold its own idle connections instead. The image sets the directive to `off`, as it was up to 7.1.4-5: a connection over the Unix socket costs microseconds, and a worker is free as soon as its response is out. The build fails if a later base image switches the directive on elsewhere or adds an upstream keepalive cache. No chart change; upgrading is recommended for every installation on 7.1.4-6 to 7.1.411.
