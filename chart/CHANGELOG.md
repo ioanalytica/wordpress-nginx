@@ -12,6 +12,7 @@
 ### Project and CI
 
 * The template test checks `SMTP_TLS` for an empty `smtpProtocol`: `on` with a user, a password or an existing Secret, absent without credentials. The smoke test no longer expects a TLS default from the wrapper; it checks that `SMTP_TLS` reaches msmtp next to credentials, and that a PHP request runs with `session.use_strict_mode` on.
+* The weekly Dragonfly tracker reads a release named with two components, as upstream named v2.1, as `vX.Y.0`: upstream tags the same commit that way, and the image exists only under that tag. The tracker failed on such a release, with a log line that said there was nothing to do. A tag of any other form still fails the run, now with an error that says the tracker needs a look. The bump pull request links the release notes under the release's own name.
 
 ## 7.1.412
 

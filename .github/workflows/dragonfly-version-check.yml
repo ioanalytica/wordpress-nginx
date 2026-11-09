@@ -24,8 +24,8 @@ jobs:
         id: upstream
         run: |
           set -euo pipefail
-          latest=$(curl -fsSL https://api.github.com/repos/dragonflydb/dragonfly/releases/latest | jq -r '.tag_name')
-          if [ -z "$latest" ] || [ "$latest" = "null" ]; then
+          tag=$(curl -fsSL https://api.github.com/repos/dragonflydb/dragonfly/releases/latest | jq -r '.tag_name')
+          if [ -z "$tag" ] || [ "$tag" = "null" ]; then
             echo "Could not determine latest Dragonfly release" >&2
             exit 1
           fi
@@ -33,10 +33,23 @@ jobs:
           # also matches v1.41.0-rc1, because the trailing * swallows the suffix.
           # Matched as a whole, not with grep, which would accept a value of
           # several lines whose first line is a version tag.
-          if ! [[ "$latest" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Latest release '$latest' is not a plain version tag; nothing to do"
+          # Upstream names some releases with two components (v2.1) and tags the
+          # same commit vX.Y.0 as well. The image exists only under the full
+          # form, so that is the version the chart pins.
+          if [[ "$tag" =~ ^v[0-9]+\.[0-9]+$ ]]; then
+            latest="${tag}.0"
+          elif [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            latest="$tag"
+          else
+            # releases/latest skips pre-releases, so another form means upstream
+            # changed its tag scheme: fail, so the run says so instead of
+            # skipping every release from now on.
+            echo "::error::Latest release tag '$tag' is neither vX.Y nor vX.Y.Z; the tracker needs a look"
             exit 1
           fi
+          # tag: the release's own name, for the release notes link.
+          # latest: the image tag the chart pins.
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
 
       - name: Read current version
@@ -144,4 +157,4 @@ jobs:
 
             Verified before opening this PR: the new image still accepts `--requirepass` and `--memcached_port`, and comes up listening on the memcached port with the flags the chart passes.
 
-            Release notes: https://github.com/dragonflydb/dragonfly/releases/tag/${{ steps.upstream.outputs.latest }}
+            Release notes: https://github.com/dragonflydb/dragonfly/releases/tag/${{ steps.upstream.outputs.tag }}
