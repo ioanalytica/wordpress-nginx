@@ -897,7 +897,7 @@ render. Set the key or name a Secret there.
 
 "Rebuild index" starts the rebuild and shows how it ends, also when it takes
 minutes on a large site: the plugin asks the sidecar every three seconds. That
-is the plugin of wordpress-idx 1.3.11 and later; with `idx.pluginAutoUpdate:
+is the plugin of wordpress-idx 1.3.10 and later; with `idx.pluginAutoUpdate:
 false` the chart leaves an installed plugin as it is, and an earlier one still
 waits for the end in one call and reports an error when that takes too long.
 Update it under Plugins in wp-admin. With

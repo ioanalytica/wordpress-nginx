@@ -15,7 +15,7 @@
 
 ### Project and CI
 
-* The k3d run follows "Rebuild index" in wp-admin as the plugin of wordpress-idx 1.3.11 does: it starts the rebuild and asks for its end until it is done. Against a release with an earlier plugin it still takes the answer that comes when the rebuild is done.
+* The k3d run follows "Rebuild index" in wp-admin as the plugin of wordpress-idx 1.3.10 and later does: it starts the rebuild and asks for its end until it is done. Against a release with an earlier plugin it still takes the answer that comes when the rebuild is done.
 
 * The template test checks `SMTP_TLS` for an empty `smtpProtocol`: `on` with a user, a password or an existing Secret, absent without credentials. The smoke test no longer expects a TLS default from the wrapper; it checks that `SMTP_TLS` reaches msmtp next to credentials, and that a PHP request runs with `session.use_strict_mode` on.
 * The weekly Dragonfly tracker reads a release named with two components, as upstream named v2.1, as `vX.Y.0`: upstream tags the same commit that way, and the image exists only under that tag. The tracker failed on such a release, with a log line that said there was nothing to do. A tag of any other form still fails the run, now with an error that says the tracker needs a look. The bump pull request links the release notes under the release's own name.
