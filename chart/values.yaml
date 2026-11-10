@@ -1755,7 +1755,7 @@ memcached:
   ## in front of ghcr.io). Do not shorten this to `dragonflydb/dragonfly`: that
   ## resolves to Docker Hub, where the project does not publish.
   ##
-  image: "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2"
+  image: "docker.dragonflydb.io/dragonflydb/dragonfly:v2.1.0"
   ## @param memcached.password Dragonfly password
   ##
   password: ""
