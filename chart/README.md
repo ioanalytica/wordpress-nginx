@@ -1077,7 +1077,7 @@ default security context constraints, cannot run the image.
   * A release that hands `SMTP_USER` or `SMTP_PASSWORD` to the container through `extraEnvVars`, `extraEnvVarsCM` or `extraEnvVarsSecret` sets `smtpProtocol: tls` (or `ssl`) before the upgrade, or its mail goes out unencrypted. An entry `SMTP_TLS=off` in `extraEnvVars` takes precedence over `smtpProtocol`: remove it or set it to `on`.
   * A release with credentials in the chart's SMTP values that hands `SMTP_TLS=off` to the container through `extraEnvVarsCM` or `extraEnvVarsSecret` sets `smtpProtocol: none` before the upgrade: the chart's own `SMTP_TLS=on` wins over a variable from those sources.
   * Whoever runs the image without the chart sets `SMTP_TLS=on` next to `SMTP_USER` and `SMTP_PASSWORD`.
-* **The search sidecar moves to wordpress-idx 1.3.10. Nothing has to be done.** It loads the index of 1.3.9 that is there and builds nothing at its first start, unless `idx.forceUpdate` is set or the index is missing, empty or cannot be read. An upgrade from 7.1.410 or earlier builds the index once, with what "To 7.1.411" says about the room on the volume and the time until the pod is ready.
+* **The search sidecar moves to wordpress-idx 1.3.11. Nothing has to be done.** It loads the index of 1.3.9 that is there and builds nothing at its first start, unless `idx.forceUpdate` is set or the index is missing, empty or cannot be read. An upgrade from 7.1.410 or earlier builds the index once, with what "To 7.1.411" says about the room on the volume and the time until the pod is ready.
 
 ### To 7.1.412
 
