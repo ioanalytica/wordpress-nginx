@@ -3220,7 +3220,7 @@
             "string",
             "number"
           ],
-          "default": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2"
+          "default": "docker.dragonflydb.io/dragonflydb/dragonfly:v2.1.0"
         },
         "password": {
           "description": "Dragonfly password",

@@ -62,7 +62,7 @@ annotations:
     - name: mariadb
       image: docker.io/mariadb:12.3.3-noble
     - name: dragonfly
-      image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.0.2
+      image: docker.dragonflydb.io/dragonflydb/dragonfly:v2.1.0
     - name: busybox
       image: docker.io/busybox:latest
 
