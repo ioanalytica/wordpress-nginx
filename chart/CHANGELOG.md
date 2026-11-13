@@ -1,9 +1,12 @@
 # Changelog
 
-## Unreleased
+## 7.1.414
+
+* Image hardening: the image is rebuilt on the current Alpine packages, among them `krb5-libs` 1.22.3 and `libpq` and `libecpg` 18.7. Nothing else changes in the image or the chart; the search sidecar stays wordpress-idx 1.3.11.
 
 ### Project and CI
 
+* The daily CVE scan no longer fails on CVE-2026-78661 in `golang.org/x/net` of nginx-prometheus-exporter 1.5.3, the latest release of the exporter: the finding has an entry in `.github/cve-scan-accepted.yaml` that expires on 2027-01-15. The entry goes once an exporter release built with a fixed module exists; without one the run fails on the finding again from that date, and the entry is renewed or removed. Code scanning keeps showing it.
 * The start check of the weekly Dragonfly tracker accepts the listener of Dragonfly v2.1, which binds `::` without `--bind` and logs `:::11211`. The check waited for `0.0.0.0:11211` only, and the run failed on an image that had come up.
 
 ## 7.1.413
