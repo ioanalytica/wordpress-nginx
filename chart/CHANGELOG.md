@@ -6,7 +6,7 @@
 
 ### Project and CI
 
-* The daily CVE scan no longer fails on CVE-2026-78661 in `golang.org/x/net` of nginx-prometheus-exporter 1.5.3, the latest release of the exporter: the finding has an entry in `.github/cve-scan-accepted.yaml` until an exporter release built with a fixed module exists. Code scanning keeps showing it.
+* The daily CVE scan no longer fails on CVE-2026-78661 in `golang.org/x/net` of nginx-prometheus-exporter 1.5.3, the latest release of the exporter: the finding has an entry in `.github/cve-scan-accepted.yaml` that expires on 2027-01-15. The entry goes once an exporter release built with a fixed module exists; without one the run fails on the finding again from that date, and the entry is renewed or removed. Code scanning keeps showing it.
 * The start check of the weekly Dragonfly tracker accepts the listener of Dragonfly v2.1, which binds `::` without `--bind` and logs `:::11211`. The check waited for `0.0.0.0:11211` only, and the run failed on an image that had come up.
 
 ## 7.1.413
