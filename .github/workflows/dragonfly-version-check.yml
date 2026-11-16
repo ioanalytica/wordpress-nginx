@@ -22,9 +22,14 @@ jobs:
 
       - name: Get latest Dragonfly release
         id: upstream
+        # With the job's token: without one the API counts the request
+        # against the runner's address, which other jobs share, and answers
+        # 403 once that limit is used up.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag=$(curl -fsSL https://api.github.com/repos/dragonflydb/dragonfly/releases/latest | jq -r '.tag_name')
+          tag=$(gh api repos/dragonflydb/dragonfly/releases/latest --jq '.tag_name')
           if [ -z "$tag" ] || [ "$tag" = "null" ]; then
             echo "Could not determine latest Dragonfly release" >&2
             exit 1
