@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Project and CI
+
+* The weekly Dragonfly tracker asks GitHub for the latest release with the job's token. Without one the request counted against the limit of the runner's address, which other jobs share, and the run failed with a 403 when that limit was used up.
+
 ## 7.1.414
 
 * Image hardening: the image is rebuilt on the current Alpine packages, among them `krb5-libs` 1.22.3 and `libpq` and `libecpg` 18.7. Nothing else changes in the image or the chart; the search sidecar stays wordpress-idx 1.3.11.
