@@ -55,6 +55,15 @@ ENV PHP_UPLOAD_MAX_FILESIZE="32M"
 # this by default and has dropped the default again, so the image states it.
 ENV PHP_SESSION_USE_STRICT_MODE="1"
 
+# NGINX keeps an idle client connection open for 120 seconds. A proxy in
+# front reuses its connections to the pod: Traefik keeps an idle one for 90
+# seconds, and NGINX's own default of 75 closes it first, so the proxy can
+# send a request on a connection that has just gone. The base image has this
+# default since shinsenter/php 6.2.0 and has taken defaults back before, so
+# the image states it. The start hook writes the value into
+# custom.d/00-keepalive_timeout.conf.
+ENV NGINX_KEEPALIVE_TIMEOUT="120"
+
 ################################################################################
 # installs wp-cli
 ARG WPCLI_URL=https://raw.githubusercontent.com/wp-cli/builds/gh-pages/phar/wp-cli.phar

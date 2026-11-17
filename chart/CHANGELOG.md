@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 7.1.415
+
+* **NGINX keeps an idle connection open for 120 seconds** (75 before, the NGINX default). An ingress controller reuses its connections to the pod, and Traefik keeps an idle one for 90 seconds: NGINX closed it first, so Traefik could send a request on a connection that had just gone and answer it with a 502. The image sets `NGINX_KEEPALIVE_TIMEOUT=120`, which is also the default of the base image since shinsenter/php 6.2.0. Where the proxy in front keeps idle connections longer than that, a higher value goes into `extraEnvVars`.
+* **NGINX compresses with Brotli** for a client that sends `Accept-Encoding: br`, and with gzip for every other one, as before. The NGINX of the base image has the module since shinsenter/php 6.2.0, and its configuration switches it on. Whether a visitor gets Brotli depends on the proxies in front passing the request header on.
+* The image is built on shinsenter/php 6.2.0, whose layers are compressed with zstd. Pulling it needs containerd 1.5 or Docker Engine 23.0, or later. PHP stays in the 8.4 series.
 
 ### Project and CI
 

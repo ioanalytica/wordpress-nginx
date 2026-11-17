@@ -359,6 +359,13 @@ cexec 'echo "# rest hardening inert" > /etc/nginx/custom.d/00-rest-hardening.con
 reload_nginx
 assert "REST users passes in off mode" 200 /wp-json/wp/v2/users INDEX-EXECUTED
 
+echo "=== NGINX keeps idle client connections longer than the proxy in front"
+# Traefik keeps an idle connection to the pod for 90 seconds. The image sets
+# NGINX_KEEPALIVE_TIMEOUT=120, and the base image's start hook writes the
+# directive from it. The dump has to succeed first, as above; exactly one
+# keepalive_timeout may stand in it, or a second one could override this one.
+check "the NGINX configuration has keepalive_timeout 120s" 'nginx -T >/tmp/smoke-nginx-T 2>/dev/null && [ "$(sed -E "s/#.*//" /tmp/smoke-nginx-T | grep -E "(^|[[:space:];{])keepalive_timeout[[:space:]]" | tr -s "[:space:]" " " | sed -E "s/^ | $//g")" = "keepalive_timeout 120s;" ]'
+
 echo "=== NGINX closes its connection to PHP-FPM after every request"
 # With fastcgi_keep_conn on, which the base image sets, a PHP-FPM worker
 # stays bound to the connection for a minute after the response, and five
