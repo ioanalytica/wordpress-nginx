@@ -4,9 +4,8 @@
 
 * Update to WordPress 7.1.5, a security release. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.
 * **The file-integrity watcher no longer reports a directory that is deleted while it scans.** WordPress keeps the previous version of a plugin or theme in `wp-content/upgrade-temp-backup` during an update and deletes it afterwards. A scan that ran at that moment listed the directories, found them gone when it read them, and raised `unreadable` findings that cleared with the next scan. A directory that is still there and cannot be read is reported as before.
-* Image hardening: NGINX is 1.30.7, a security release, from Alpine's package and of NGINX's stable series (1.31.8 before, of the mainline series and built by the base image). The image is rebuilt on the current Alpine packages.
-* Brotli stays on. Alpine's NGINX has it as a module of its own, so the image installs `nginx-mod-http-brotli` and its `nginx.conf` loads the modules under `/etc/nginx/modules`. Where a later base image brings its own NGINX at Alpine's version or above, with Brotli compiled in, the build keeps that one and installs no module.
-* The image no longer carries `nginx.conf.apk-new`, the packaged configuration file a package upgrade leaves next to the one in use. Nothing read it.
+* Image hardening: NGINX is 1.31.9, a security release of NGINX's mainline series, built by the base image (1.31.8 before). The image is rebuilt on the current Alpine packages.
+* The image build copes with an NGINX that comes from Alpine's package. The base image puts its own NGINX, with Brotli compiled in, over that package, and a package upgrade during the build can put Alpine's NGINX back in its place. Alpine's has Brotli as a module of its own, so the build then installs `nginx-mod-http-brotli`, which `nginx.conf` loads from `/etc/nginx/modules`, and removes `nginx.conf.apk-new`, the packaged configuration file the upgrade leaves next to the one in use. The released image has the base image's NGINX: Brotli is compiled in, and the build installed and removed nothing.
 
 ## 7.1.415
 
