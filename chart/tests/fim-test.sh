@@ -97,6 +97,27 @@ scan() {
     docker volume rm "$vol" >/dev/null
 }
 
+# Scans the current tree repeatedly while a second container creates and
+# deletes a directory tree below wp-content/upgrade-temp-backup.
+scan_during_churn() {
+    local vol churn
+    vol="$(docker volume create)"
+    COPYFILE_DISABLE=1 tar -C "$WORK/vol" -cf - . \
+      | docker run --rm -i --user 0 --network none --entrypoint sh \
+            -v "$vol:/watch" "$IMAGE" -c 'tar -xf - -C /watch && chmod -R a+rX /watch'
+    churn="$(docker run -d --user 0 --network none --entrypoint sh -v "$vol:/watch" "$IMAGE" -c '
+        d=/watch/wordpress/wp-content/upgrade-temp-backup/plugins/gallery
+        while :; do
+            for i in $(seq 1 300); do mkdir -p "$d/$i/a/b"; done
+            rm -rf "$d"
+        done')"
+    docker run --rm --user 33:33 --network none --entrypoint sh \
+        -v "$vol:/watch:ro" -v "$WORK/fim:/fim:ro" -e FIM_CONFIG=/fim/config.json \
+        "$IMAGE" -c 'for i in $(seq 1 40); do /usr/local/bin/php /fim/fim.php --scan-once; done' 2>&1
+    docker rm -f "$churn" >/dev/null
+    docker volume rm "$vol" >/dev/null
+}
+
 # expect <desc> <present|absent> <needle>: one scan of the current tree.
 OUT=""
 expect() {
@@ -166,6 +187,14 @@ expect "executable in a static mount"         present 'path="alt/b.php",rule="ex
 expect "mu-plugins directory"                 present 'path="wp-content/mu-plugins",rule="mu-plugins-dir"'
 expect "changed baseline with its digest"     present 'path="salts.php",rule="baseline-modified",sha256="fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9"'
 expect "unreadable directory"                 present 'path="wp-content/uploads/locked",rule="unreadable"'
+
+echo "=== A directory removed during the scan is not a finding"
+# A plugin update moves the old version to wp-content/upgrade-temp-backup and
+# deletes it afterwards. One container keeps creating and deleting such a tree
+# while another scans the volume over and over.
+base; OUT="$(scan_during_churn)"
+expect "the scans ran"                        present 'wp_fim_last_scan_timestamp_seconds'
+expect "no vanished directory is reported"    absent  'rule="unreadable"'
 
 echo
 if [ "$FAILURES" -gt 0 ]; then

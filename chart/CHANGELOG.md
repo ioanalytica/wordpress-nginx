@@ -1,5 +1,9 @@
 # Changelog
 
+## 7.1.416
+
+* **The file-integrity watcher no longer reports a directory that is deleted while it scans.** WordPress keeps the previous version of a plugin or theme in `wp-content/upgrade-temp-backup` during an update and deletes it afterwards. A scan that ran at that moment listed the directories, found them gone when it read them, and raised `unreadable` findings that cleared with the next scan. A directory that is still there and cannot be read is reported as before.
+
 ## 7.1.415
 
 * **NGINX keeps an idle connection open for 120 seconds** (75 before, the NGINX default). An ingress controller reuses its connections to the pod, and Traefik keeps an idle one for 90 seconds: NGINX closed it first, so Traefik could send a request on a connection that had just gone and answer it with a 502. The image sets `NGINX_KEEPALIVE_TIMEOUT=120`, which is also the default of the base image since shinsenter/php 6.2.0. Where the proxy in front keeps idle connections longer than that, a higher value goes into `extraEnvVars`.

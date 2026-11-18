@@ -243,7 +243,10 @@ final class Scan
     /**
      * Walk a tree without following symlinks. A directory that cannot be read
      * is a finding of its own: a directory its owner made unreadable would
-     * otherwise hide everything below it.
+     * otherwise hide everything below it. A directory that is gone by the
+     * time it is read is none: the site deletes directories while a scan
+     * runs, for one the backup a plugin update keeps until it is through.
+     * Only the directory the walk starts at is reported either way.
      *
      * @return iterable<array{0: string, 1: string, 2: string}> [relative path, lowercased name, absolute path]
      */
@@ -254,7 +257,11 @@ final class Scan
             [$dir, $relDir] = array_pop($stack);
             $names = @scandir($dir);
             if ($names === false) {
-                $this->flag($relDir === '' ? '.' : $relDir, 'unreadable');
+                // PHP caches the lstat() that put the directory on the stack.
+                clearstatcache(true, $dir);
+                if ($dir === $abs || self::is_real_dir($dir)) {
+                    $this->flag($relDir === '' ? '.' : $relDir, 'unreadable');
+                }
                 continue;
             }
             foreach ($names as $name) {
