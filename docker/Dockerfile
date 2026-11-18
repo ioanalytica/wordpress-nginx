@@ -18,9 +18,35 @@ RUN sed -i 's/#\(.*\/community\)/\1/' /etc/apk/repositories
 # unchanged, which would ship an older build's package set. The release
 # workflow passes the tag here, so every release upgrades afresh.
 ARG APK_REFRESH
-RUN apk update && apk upgrade --no-cache && rm -rf /var/cache/apk/*
+# An upgrade of a package whose configuration file the base image has changed
+# leaves the packaged file next to it as <name>.apk-new (nginx.conf.apk-new
+# with an NGINX upgrade). Nothing reads those files, so they go: the image
+# carries no second, unused configuration, and the guards further down see
+# only what NGINX loads.
+RUN apk update && apk upgrade --no-cache && rm -rf /var/cache/apk/* \
+ && find /etc -xdev -name '*.apk-new' -delete
 
-ENV WP_VERSION=7.1.4
+# The base image builds its own NGINX with the Brotli module compiled in
+# (1.31.8 of the mainline series in shinsenter/php 6.2.0) and puts it over
+# the files of Alpine's nginx package, whose version the package database
+# keeps (1.30.6-r0 there, so `apk info` does not tell which NGINX runs;
+# `nginx -v` does). When Alpine publishes a later package, the upgrade above
+# puts Alpine's NGINX in its place, which has Brotli as a module of its own
+# (nginx-mod-http-brotli, loaded through /etc/nginx/modules/*.conf, which
+# this image's nginx.conf includes). The base image's configuration switches
+# Brotli on, so NGINX would not start without the module. With the base
+# image's own NGINX in place nothing is installed: loading the module into a
+# binary that has it compiled in fails as well. The module is asked for at
+# the version of the NGINX that is there, the only one it loads into.
+RUN built="$(nginx -V 2>&1)"; version="$(nginx -v 2>&1)"; \
+    case "$built" in \
+        *--add-module=*ngx_brotli*) ;; \
+        *) apk add --no-cache "nginx-mod-http-brotli=~${version##*/}" \
+            && rm -rf /var/cache/apk/* \
+            && [ -f /usr/lib/nginx/modules/ngx_http_brotli_filter_module.so ] ;; \
+    esac
+
+ENV WP_VERSION=7.1.5
 
 # Links the GHCR package to this repository.
 LABEL org.opencontainers.image.source="https://github.com/ioanalytica/wordpress-nginx"

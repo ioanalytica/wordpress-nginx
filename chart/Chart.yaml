@@ -3,8 +3,8 @@
 
 apiVersion: v2
 name: wordpress-nginx
-version: 7.1.416
-appVersion: "7.1.4"
+version: 7.1.500
+appVersion: "7.1.5"
 
 description: >-
   WordPress with NGINX for Kubernetes. Supports internal or external MariaDB,
@@ -54,9 +54,9 @@ annotations:
       url: https://github.com/ioanalytica/wordpress-nginx/issues
   artifacthub.io/images: |
     - name: wordpress-nginx
-      image: ghcr.io/ioanalytica/wordpress-nginx:7.1.416
+      image: ghcr.io/ioanalytica/wordpress-nginx:7.1.500
     - name: wordpress-idx
-      image: ghcr.io/ioanalytica/wordpress-idx:7.1.416
+      image: ghcr.io/ioanalytica/wordpress-idx:7.1.500
     - name: nginx-prometheus-exporter
       image: docker.io/nginx/nginx-prometheus-exporter:1.5.3
     - name: mariadb

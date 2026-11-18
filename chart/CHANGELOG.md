@@ -1,8 +1,12 @@
 # Changelog
 
-## 7.1.416
+## 7.1.500
 
+* Update to WordPress 7.1.5, a security release. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.
 * **The file-integrity watcher no longer reports a directory that is deleted while it scans.** WordPress keeps the previous version of a plugin or theme in `wp-content/upgrade-temp-backup` during an update and deletes it afterwards. A scan that ran at that moment listed the directories, found them gone when it read them, and raised `unreadable` findings that cleared with the next scan. A directory that is still there and cannot be read is reported as before.
+* Image hardening: NGINX is 1.30.7, a security release, from Alpine's package and of NGINX's stable series (1.31.8 before, of the mainline series and built by the base image). The image is rebuilt on the current Alpine packages.
+* Brotli stays on. Alpine's NGINX has it as a module of its own, so the image installs `nginx-mod-http-brotli` and its `nginx.conf` loads the modules under `/etc/nginx/modules`. Where a later base image brings its own NGINX at Alpine's version or above, with Brotli compiled in, the build keeps that one and installs no module.
+* The image no longer carries `nginx.conf.apk-new`, the packaged configuration file a package upgrade leaves next to the one in use. Nothing read it.
 
 ## 7.1.415
 
