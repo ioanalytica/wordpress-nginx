@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.1.501
+
+* Image hardening: PHP is 8.4.28, a security release of the 8.4 series (8.4.27 before). The image is built on shinsenter/php 6.2.1 and the current Alpine packages, among them OpenSSL 3.5.9-r1. NGINX stays 1.31.9.
+* The package database of the image names the NGINX that runs: `apk info nginx` shows 1.31.9, the version the base image builds, where it showed the version of Alpine's own package before (1.30.7). A scanner that reads the package database no longer judges the image by a version it does not contain.
+
 ## 7.1.500
 
 * Update to WordPress 7.1.5, a security release. Review the [WordPress release notes](https://wordpress.org/news/) before upgrading.
