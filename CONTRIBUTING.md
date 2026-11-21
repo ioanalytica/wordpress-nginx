@@ -242,22 +242,26 @@ to that image: a pull request with the new commit and a line under
 `## Unreleased` that names the wordpress-idx version. After a fresh clone,
 `git submodule update --init` checks the submodule out.
 
-Renovate opens the pull requests for new versions of GitHub Actions, the
-tools the workflows install, the third-party images the chart pins and the
-site's packages (`.github/renovate.json`). A pull request that moves an image
-the chart pins needs its line under `## Unreleased` as well; the bot's pull
+Renovate opens the pull requests for new versions of GitHub Actions, the tools
+the workflows install, the third-party images the chart pins and the site's
+packages (`.github/renovate.json`). A pull request that moves an image the
+chart pins needs its line under `## Unreleased` as well; the bot's pull
 request says so. The config extends the shared preset of
 [ioanalytica/renovate-config](https://github.com/ioanalytica/renovate-config):
 early on Mondays (Europe/Berlin), for releases at least three days old, a
 security fix at any time, each with a review request, and never merged by the
 bot. Nothing waits for approval on its Dependency Dashboard issue: an update
 that is a deliberate move (a new major, a moved action tag, a new MariaDB
-series) comes as a pull request with the label `decision`. Closing it
-declines it: a new major stays away until someone moves to it by hand, any
-other update until the next version or commit, which comes as a new pull
-request. A pull request of a group whose updates go to different versions
-comes back after it is closed. A declined update stays listed on the
-dashboard under "Ignored or Blocked": ticking it there brings its pull
+series) comes as a pull request with the label `decision`. What closing such a
+pull request declines depends on it. One whose body says **Immortal**, as most
+groups with updates to different versions do, declines nothing: Renovate opens
+it again at its next scheduled run, so an update to hold back is excluded in
+`.github/renovate.json` instead. Otherwise Renovate says in a comment on the
+closed pull request what it now ignores: for a minor or patch update only that
+version, for a major every release of that major (the next major comes again;
+moving to the declined major by hand brings its updates back), for a digest
+such as a moved action tag only that digest. A declined update stays listed on
+the dashboard under "Ignored or Blocked": ticking it there brings its pull
 request back.
 
 The sums of oras and hadolint, which `.github/actions/setup-oras` and
