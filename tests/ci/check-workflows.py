@@ -13,7 +13,9 @@ One line per broken rule, exit status 1 if there is any:
   asks for it itself
 - no job has `permissions: write-all`, and at most one job of the repository
   can get an OIDC token (id-token: write) besides the one that deploys the
-  documentation site with actions/deploy-pages
+  documentation site with actions/deploy-pages and the one that calls the
+  pin-checksums workflow of ioanalytica/renovate-config, which reads its own
+  commit from the token
 - a run script contains no ${{ }} expression: a value reaches it through
   env, where the shell cannot read it as code
 - a checkout leaves no token in .git/config, unless a later step of the job
@@ -34,6 +36,7 @@ RUNNER = re.compile(r"^ubuntu-\d+\.\d+(-arm)?$")
 VERSION_PIN = re.compile(r"^\s*\w+_VERSION:\s*v?\d[\w.-]*\s*$")
 RENOVATE_LINE = re.compile(r"^\s*# renovate: datasource=\S+ depName=\S+\s*$")
 READ_ONLY = {"read", "none"}
+PIN_CHECKSUMS = re.compile(r"^ioanalytica/renovate-config/\.github/workflows/pin-checksums\.yml@[0-9a-f]{40}$")
 
 
 def runners(job):
@@ -96,8 +99,11 @@ def check(path, problems, oidc_jobs):
             problems.append(f"{where} has permissions: write-all")
         elif isinstance(permissions, dict) and permissions.get("id-token") == "write":
             # The Pages deployment proves the run's identity to Pages with
-            # its token; every other job with one counts.
-            if not any(str(step.get("uses", "")).startswith("actions/deploy-pages@") for step in steps):
+            # its token, and the pin-checksums workflow reads from it which
+            # commit of renovate-config it runs; every other job with one
+            # counts.
+            pages = any(str(step.get("uses", "")).startswith("actions/deploy-pages@") for step in steps)
+            if not pages and not PIN_CHECKSUMS.match(str(job.get("uses", ""))):
                 oidc_jobs.append(where)
         if "uses" in job:
             unpinned(str(job["uses"]), where, problems)
