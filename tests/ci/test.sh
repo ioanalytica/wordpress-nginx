@@ -448,17 +448,17 @@ has "the base image's PHP series moves by hand"  'any(.packageRules[]; .matchDep
 # The preset and the workflow pin-checksums.yml come from the same release,
 # and Renovate moves both in one pull request. The preset's packageRules come
 # before this file's, so its group renovate-config would lose the workflow's
-# pin to a group of this file that matches it (the github-actions manager, its
-# datasource github-tags, its name): the rule here comes after every such
-# group.
+# pin to a group of this file that may match it (the github-actions manager,
+# its datasource github-tags, its name or a pattern of names): the rule here
+# comes after every such group.
 has "the preset and the pin-checksums workflow move in one pull request" '
   .packageRules | to_entries
   | ([.[] | select(.value.matchDepNames == ["ioanalytica/renovate-config"] and .value.groupName == "renovate-config") | .key] | max) as $own
   | ([.[] | select(.value.groupName != null and .value.groupName != "renovate-config"
                    and ((.value.matchManagers // ["github-actions"]) | index("github-actions"))
                    and ((.value.matchDatasources // ["github-tags"]) | index("github-tags"))
-                   and ((.value.matchDepNames // ["ioanalytica/renovate-config"]) | index("ioanalytica/renovate-config"))
-                   and ((.value.matchPackageNames // ["ioanalytica/renovate-config"]) | index("ioanalytica/renovate-config"))) | .key] | max // -1) as $other
+                   and ((.value.matchDepNames // ["*"]) | any(.[]; . == "ioanalytica/renovate-config" or test("^[/!]|[*?{]")))
+                   and ((.value.matchPackageNames // ["*"]) | any(.[]; . == "ioanalytica/renovate-config" or test("^[/!]|[*?{]")))) | .key] | max // -1) as $other
   | $own != null and $own > $other'
 preset="$(jq -r '.extends[0] | sub(".*#"; "")' "$RENOVATE")"
 if grep -qE "uses: ioanalytica/renovate-config/\.github/workflows/pin-checksums\.yml@[0-9a-f]{40} # $preset\$" "$ROOT/.github/workflows/pin-checksums.yml"; then
@@ -477,10 +477,13 @@ root = sys.argv[1]
 table = yaml.safe_load(open(f"{root}/.github/checksums.yaml"))
 listed = {(p["file"], p["var"]) for e in table for p in e["pins"]}
 pin = re.compile(r"^\s*(?:(?:ARG|export)\s+)?(\w+)\s*(?:=|:\s)\s*[\"']?[0-9a-fA-F]{64}", re.M)
+env = re.compile(r"^\s*ENV\s+(\w+)[=\s]\s*[\"']?[0-9a-fA-F]{64}", re.M)
 problems = []
 files = sorted(glob.glob(f"{root}/.github/workflows/*.y*ml") + glob.glob(f"{root}/.github/actions/*/action.y*ml")
                + glob.glob(f"{root}/docker/**/Dockerfile*", recursive=True))
 for path in (os.path.relpath(f, root) for f in files):
+    for var in env.findall(open(f"{root}/{path}").read()):
+        problems.append(f"{path}: {var} is a hash pin in an ENV line, which pin-checksums.yml does not fill; write it as ARG")
     for var in pin.findall(open(f"{root}/{path}").read()):
         if path.startswith(".github/workflows/"):
             problems.append(f"{path}: {var} is a hash pin in a workflow, which pin-checksums.yml may not change; it belongs in a local action")
