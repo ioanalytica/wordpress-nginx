@@ -135,20 +135,7 @@ jobs:
           persist-credentials: false
 
       - name: Install hadolint
-        env:
-          # renovate: datasource=github-releases depName=hadolint/hadolint
-          HADOLINT_VERSION: 2.15.1
-          # The sum of hadolint-linux-x86_64 in the release's checksums.sha256,
-          # copied here and not read from the release at run time: a replaced
-          # release would bring its own sums. It moves with the version, by
-          # hand; this step fails until it matches.
-          HADOLINT_SHA256: c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507
-        run: |
-          curl -fsSL -o "$RUNNER_TEMP/hadolint" \
-            "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-x86_64"
-          echo "$HADOLINT_SHA256  $RUNNER_TEMP/hadolint" | sha256sum -c -
-          sudo install -m 0755 "$RUNNER_TEMP/hadolint" /usr/local/bin/hadolint
-          hadolint --version
+        uses: ./.github/actions/setup-hadolint
 
       # Every Dockerfile of the repository; an `ignore` comment in the file
       # says why a rule does not apply to a line.

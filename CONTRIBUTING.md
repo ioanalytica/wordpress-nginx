@@ -243,9 +243,28 @@ to that image: a pull request with the new commit and a line under
 `git submodule update --init` checks the submodule out.
 
 Renovate opens the pull requests for new versions of GitHub Actions, the
-third-party images the chart pins and the site's packages
-(`.github/renovate.json`). A pull request that moves an image the chart pins
-needs its line under `## Unreleased` as well; the bot's pull request says so.
+tools the workflows install, the third-party images the chart pins and the
+site's packages (`.github/renovate.json`). A pull request that moves an image
+the chart pins needs its line under `## Unreleased` as well; the bot's pull
+request says so. The config extends the shared preset of
+[ioanalytica/renovate-config](https://github.com/ioanalytica/renovate-config):
+early on Mondays (Europe/Berlin), for releases at least three days old, a
+security fix at any time, each with a review request, and never merged by the
+bot. Nothing waits for approval on its Dependency Dashboard issue: an update
+that is a deliberate move (a new major, a moved action tag, a new MariaDB
+series) comes as a pull request with the label `decision`. Closing it
+declines that version; Renovate proposes the next one.
+
+The sums of oras and hadolint, which `.github/actions/setup-oras` and
+`.github/actions/setup-hadolint` check their downloads against, are listed in
+[`.github/checksums.yaml`](.github/checksums.yaml). On the bot's branch, the
+workflow `.github/workflows/pin-checksums.yml` fills them from the release,
+after checking the PGP signature of the oras sums, as a signed commit of the
+GitHub App `ioanalytica-renovate-helper`. When a check fails it commits
+nothing and says why in a comment; the rebase checkbox of the pull request
+runs it again (a re-run by hand does nothing). A new hash pin needs its entry
+in the table (`tests/ci/test.sh`), and a pin belongs in a local action under
+`.github/actions/`, not in a workflow: the app may not change workflows.
 
 The PHP series of the image is not Renovate's: the tag of the base image in
 `docker/Dockerfile` names it, and the maintainers move it by hand, because the

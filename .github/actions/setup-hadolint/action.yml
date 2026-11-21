@@ -1,0 +1,29 @@
+name: Set up hadolint
+description: >-
+  Installs hadolint at the version below, checked against the SHA-256 sum
+  pinned with it, as /usr/local/bin/hadolint. The job hadolint of
+  docker-test.yml checks the Dockerfiles with it.
+
+runs:
+  using: composite
+  steps:
+    - name: Install hadolint
+      shell: bash
+      env:
+        # renovate: datasource=github-releases depName=hadolint/hadolint
+        HADOLINT_VERSION: 2.15.1
+        # The sum of hadolint-linux-x86_64 in the release's checksums.sha256.
+        # Not read from the release at run time: a replaced release would
+        # bring its own sums. It moves with the version: the workflow
+        # pin-checksums.yml fills it on Renovate's pull request
+        # (.github/checksums.yaml), and this step fails until it matches.
+        HADOLINT_SHA256: c7187db94eeeeca956519a6af171adc31453941a1e777961f6e680f697c8c507
+      run: |
+        # The job runs on x64; an arm64 runner would get a binary it cannot
+        # run.
+        [ "$RUNNER_OS-$RUNNER_ARCH" = Linux-X64 ] || { echo "hadolint is installed for Linux X64 only, not $RUNNER_OS $RUNNER_ARCH" >&2; exit 1; }
+        curl -fsSL -o "$RUNNER_TEMP/hadolint" \
+          "https://github.com/hadolint/hadolint/releases/download/v${HADOLINT_VERSION}/hadolint-linux-x86_64"
+        echo "$HADOLINT_SHA256  $RUNNER_TEMP/hadolint" | sha256sum -c -
+        sudo install -m 0755 "$RUNNER_TEMP/hadolint" /usr/local/bin/hadolint
+        hadolint --version
