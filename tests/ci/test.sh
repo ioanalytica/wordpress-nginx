@@ -477,12 +477,13 @@ root = sys.argv[1]
 table = yaml.safe_load(open(f"{root}/.github/checksums.yaml"))
 listed = {(p["file"], p["var"]) for e in table for p in e["pins"]}
 pin = re.compile(r"^\s*(?:(?:ARG|export)\s+)?(\w+)\s*(?:=|:\s)\s*[\"']?[0-9a-fA-F]{64}", re.M)
-env = re.compile(r"^\s*ENV\s+(\w+)[=\s]\s*[\"']?[0-9a-fA-F]{64}", re.M)
+env = re.compile(r"^\s*ENV\s.*$", re.M)
+env_pair = re.compile(r"(?:^|\s)(\w+)(?:=|\s+)[\"']?[0-9a-fA-F]{64}")
 problems = []
 files = sorted(glob.glob(f"{root}/.github/workflows/*.y*ml") + glob.glob(f"{root}/.github/actions/*/action.y*ml")
                + glob.glob(f"{root}/docker/**/Dockerfile*", recursive=True))
 for path in (os.path.relpath(f, root) for f in files):
-    for var in env.findall(open(f"{root}/{path}").read()):
+    for var in (v for line in env.findall(open(f"{root}/{path}").read()) for v in env_pair.findall(line[line.index("ENV") + 3:])):
         problems.append(f"{path}: {var} is a hash pin in an ENV line, which pin-checksums.yml does not fill; write it as ARG")
     for var in pin.findall(open(f"{root}/{path}").read()):
         if path.startswith(".github/workflows/"):

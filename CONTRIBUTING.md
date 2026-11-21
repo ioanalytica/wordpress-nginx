@@ -256,7 +256,9 @@ series) comes as a pull request with the label `decision`. Closing it
 declines it: a new major stays away until someone moves to it by hand, any
 other update until the next version or commit, which comes as a new pull
 request. A pull request of a group whose updates go to different versions
-comes back after it is closed.
+comes back after it is closed. A declined update stays listed on the
+dashboard under "Ignored or Blocked": ticking it there brings its pull
+request back.
 
 The sums of oras and hadolint, which `.github/actions/setup-oras` and
 `.github/actions/setup-hadolint` check their downloads against, are listed in
