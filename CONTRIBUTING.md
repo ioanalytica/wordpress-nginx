@@ -253,7 +253,10 @@ security fix at any time, each with a review request, and never merged by the
 bot. Nothing waits for approval on its Dependency Dashboard issue: an update
 that is a deliberate move (a new major, a moved action tag, a new MariaDB
 series) comes as a pull request with the label `decision`. Closing it
-declines that version; Renovate proposes the next one.
+declines it: a new major stays away until someone moves to it by hand, any
+other update until the next version or commit, which comes as a new pull
+request. A pull request of a group that holds several updates comes back
+after it is closed.
 
 The sums of oras and hadolint, which `.github/actions/setup-oras` and
 `.github/actions/setup-hadolint` check their downloads against, are listed in
