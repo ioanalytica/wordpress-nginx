@@ -250,10 +250,13 @@ request says so. The config extends the shared preset of
 [ioanalytica/renovate-config](https://github.com/ioanalytica/renovate-config):
 every night (Europe/Berlin), each with a review request, and never merged by
 the bot. A release must be three days old before its pull request comes, with
-two exceptions: the images the chart pins and the base images of the
-Dockerfiles come in the night after their release, and a security fix comes
-at any time. Renovate itself and the site's packages come once a month.
-Nothing waits for approval on its Dependency Dashboard issue: an update
+three exceptions. The images the chart pins and the base images of the
+Dockerfiles come in the night after their release. A new digest under an
+unchanged tag has no release date and does not wait. And a fix for a
+vulnerability that GitHub's advisories or the OSV database list for a package
+comes at any time; a security fix they do not list comes like any other
+release of that component. Renovate itself and the site's packages come once a
+month. Nothing waits for approval on its Dependency Dashboard issue: an update
 that is a deliberate move (a new major, a moved action tag, a new MariaDB
 series) comes as a pull request with the label `decision`. What closing such a
 pull request declines depends on it. One whose body says **Immortal**, as most
