@@ -88,9 +88,9 @@ about PHP, WordPress or a site's plugins.
 | Image | Tracked |
 |---|---|
 | Dragonfly (`memcached.image`) | weekly, by a workflow of its own; the pull request is opened only after a container has started with the flags the chart passes |
-| NGINX Prometheus exporter (`metrics.image`) | weekly, by [Renovate](https://docs.renovatebot.com/) |
+| NGINX Prometheus exporter (`metrics.image`) | every night, by [Renovate](https://docs.renovatebot.com/) |
 | wordpress-idx | built by every release from the source this repository pins as a submodule; the pin is moved by hand, with a changelog line |
-| MariaDB (`mariadb.image`) | weekly, by Renovate. A new MariaDB series upgrades the data directory of an existing installation, so its pull request waits for a maintainer's approval. Set `mariadb.image` to follow MariaDB releases on your own schedule |
+| MariaDB (`mariadb.image`) | every night, by Renovate. A new MariaDB series upgrades the data directory of an existing installation, so its pull request waits for a maintainer's approval. Set `mariadb.image` to follow MariaDB releases on your own schedule |
 
 Renovate also proposes new versions of the GitHub Actions and tools the
 workflows use. A pull request it opens runs the same tests as any other and is
