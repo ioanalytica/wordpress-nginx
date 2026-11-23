@@ -248,9 +248,12 @@ packages (`.github/renovate.json`). A pull request that moves an image the
 chart pins needs its line under `## Unreleased` as well; the bot's pull
 request says so. The config extends the shared preset of
 [ioanalytica/renovate-config](https://github.com/ioanalytica/renovate-config):
-every night (Europe/Berlin), for releases at least three days old, at once
-for what the images and the chart contain, a security fix at any time, each with a review request, and never merged by the
-bot. Nothing waits for approval on its Dependency Dashboard issue: an update
+every night (Europe/Berlin), each with a review request, and never merged by
+the bot. A release must be three days old before its pull request comes, with
+two exceptions: the images the chart pins and the base images of the
+Dockerfiles come in the night after their release, and a security fix comes
+at any time. Renovate itself and the site's packages come once a month.
+Nothing waits for approval on its Dependency Dashboard issue: an update
 that is a deliberate move (a new major, a moved action tag, a new MariaDB
 series) comes as a pull request with the label `decision`. What closing such a
 pull request declines depends on it. One whose body says **Immortal**, as most
