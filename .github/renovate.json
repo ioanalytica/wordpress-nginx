@@ -1,7 +1,7 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "description": "Dependency update pull requests for wordpress-nginx, on the shared preset of ioanalytica/renovate-config (schedule, minimum release age, DCO, review requests, the label decision): GitHub Actions and the tools the workflows install, the Dockerfiles' base images, the third-party images the chart pins, the documentation site's npm packages. WordPress and Dragonfly have their own workflows (wp-version-check.yml, dragonfly-version-check.yml), and the wordpress-idx submodule moves by hand. The hash pins that go with a version pin are .github/checksums.yaml's: the workflow pin-checksums.yml fills them on the bot's branch. tests/ci/test.sh guards what the bot updates and what stays manual.",
-  "extends": ["github>ioanalytica/renovate-config#v1.0.2"],
+  "extends": ["github>ioanalytica/renovate-config#v1.1.0"],
   "semanticCommits": "disabled",
   "ignorePaths": ["**/node_modules/**", "chart/tests/**", "docker/tests/**", "site/tests/**", "tests/**", "wordpress-idx/**"],
   "git-submodules": {
