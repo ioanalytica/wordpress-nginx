@@ -250,22 +250,26 @@ request says so. The config extends the shared preset of
 [ioanalytica/renovate-config](https://github.com/ioanalytica/renovate-config):
 every night (Europe/Berlin), each with a review request, and never merged by
 the bot. A release must be three days old before its pull request comes, with
-two exceptions: the images the chart pins and the base images of the
-Dockerfiles come in the night after their release, and a security fix comes
-at any time. Renovate itself and the site's packages come once a month.
-Nothing waits for approval on its Dependency Dashboard issue: an update
-that is a deliberate move (a new major, a moved action tag, a new MariaDB
-series) comes as a pull request with the label `decision`. What closing such a
-pull request declines depends on it. One whose body says **Immortal**, as most
-groups with updates to different versions do, declines nothing: Renovate opens
-it again at its next scheduled run, so an update to hold back is excluded in
-`.github/renovate.json` instead. Otherwise Renovate says in a comment on the
-closed pull request what it now ignores: for a minor or patch update only that
-version, for a major every release of that major (the next major comes again;
-moving to the declined major by hand brings its updates back), for a digest
-such as a moved action tag only that digest. A declined update stays listed on
-the dashboard under "PR Closed (Blocked)": ticking it there brings its pull
-request back.
+three exceptions. The images the chart pins and the base images of the
+Dockerfiles come in the night after their release. A new digest under an
+unchanged tag has no release date and does not wait. And a fix that Renovate
+raises a [vulnerability
+alert](https://docs.renovatebot.com/configuration-options/#vulnerabilityalerts)
+for comes at any time, as a pull request of its own. Every other security fix
+comes like any other release of that component. Renovate itself and the site's
+packages come once a month. Nothing waits for approval on its Dependency
+Dashboard issue: an update that is a deliberate move (a new major, a moved
+action tag, a new MariaDB series) comes as a pull request with the label
+`decision`. What closing such a pull request declines depends on it. One whose
+body says **Immortal**, as most groups with updates to different versions do,
+declines nothing: Renovate opens it again at its next scheduled run, so an
+update to hold back is excluded in `.github/renovate.json` instead. Otherwise
+Renovate says in a comment on the closed pull request what it now ignores: for
+a minor or patch update only that version, for a major every release of that
+major (the next major comes again; moving to the declined major by hand brings
+its updates back), for a digest such as a moved action tag only that digest. A
+declined update stays listed on the dashboard under "PR Closed (Blocked)":
+ticking it there brings its pull request back.
 
 The sums of oras and hadolint, which `.github/actions/setup-oras` and
 `.github/actions/setup-hadolint` check their downloads against, are listed in
