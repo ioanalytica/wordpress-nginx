@@ -1,5 +1,10 @@
 # Changelog
 
+## 7.1.502
+
+* Image hardening: the image is rebuilt on the current Alpine packages, among them `libxml2` 2.13.9-r5, and on shinsenter/php 6.3.0. NGINX is 1.31.10, a security release of NGINX's mainline series (1.31.9 before). PHP stays 8.4.28.
+* NGINX is no longer part of the image's package database. The base image builds it from source and, since shinsenter/php 6.3.0, installs it without a package entry: `apk info nginx` shows nothing, and `nginx -v` names the version. A scanner that reads the package database does not report on NGINX in this image, as it does not on PHP; the changelog names both versions with every release that changes them.
+
 ## 7.1.501
 
 * Image hardening: PHP is 8.4.28, a security release of the 8.4 series (8.4.27 before). The image is built on shinsenter/php 6.2.1 and the current Alpine packages, among them OpenSSL 3.5.9-r1. NGINX stays 1.31.9.

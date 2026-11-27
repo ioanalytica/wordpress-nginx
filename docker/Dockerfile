@@ -27,16 +27,16 @@ RUN apk update && apk upgrade --no-cache && rm -rf /var/cache/apk/* \
  && find /etc -xdev -name '*.apk-new' -delete
 
 # The base image builds its own NGINX with the Brotli module compiled in
-# (1.31.9 of the mainline series in shinsenter/php 6.2.1) and puts it over
-# the files of Alpine's nginx package. Since 6.2.1 the package database
-# records the version that was built, so the upgrade above leaves that NGINX
-# alone as long as Alpine's package is the older one. Up to 6.2.0 the
-# database kept the version of Alpine's package (`apk info` said 1.30.6-r0
-# where `nginx -v` said 1.31.8), and a later Alpine package replaced the base
-# image's NGINX. This step covers that case, should it come back: Alpine's
-# NGINX has Brotli as a module of its own (nginx-mod-http-brotli, loaded
-# through /etc/nginx/modules/*.conf, which this image's nginx.conf includes).
-# The base image's configuration switches Brotli on, so NGINX would not start
+# (1.31.10 of the mainline series in shinsenter/php 6.3.0). Since 6.3.0 it is
+# no package at all: the package database has no nginx entry, so the upgrade
+# above cannot touch it, `apk info` does not show it and a scanner that reads
+# the package database does not see it. `nginx -v` tells which NGINX runs.
+# Up to 6.2.1 the base image put its NGINX over the files of Alpine's nginx
+# package, and up to 6.2.0 a later Alpine package replaced it during the
+# upgrade. This step covers that case, should it come back: Alpine's NGINX
+# has Brotli as a module of its own (nginx-mod-http-brotli, loaded through
+# /etc/nginx/modules/*.conf, which this image's nginx.conf includes). The
+# base image's configuration switches Brotli on, so NGINX would not start
 # without the module. With the base image's own NGINX in place nothing is
 # installed: loading the module into a binary that has it compiled in fails
 # as well. The module is asked for at the version of the NGINX that is there,
